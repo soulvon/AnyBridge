@@ -13363,11 +13363,16 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   position: relative;
 }
 
-/* 核心双栏分析 */
+/* 核心双栏分析：两栏等高，右栏卡片自动拉伸填满，避免左侧排行榜长、右侧留大片空白 */
 .ez-grid-duo {
   display: grid;
   grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
   gap: 12px;
+  align-items: stretch;
+}
+.ez-grid-duo > .ez-card {
+  display: flex;
+  flex-direction: column;
 }
 
 /* 排行列表 (对标 EasyUI Table + Meter) */
@@ -13446,12 +13451,15 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* 数据通道微卡片 */
+/* 数据通道微卡片：随右栏高度自动拉伸，行高均分 */
 .ez-channels-deck {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
   gap: 8px;
   min-height: 180px;
+  flex: 1 1 auto;
+  align-content: stretch;
 }
 .ez-channel-card {
   border: 1px solid var(--border);
@@ -13557,6 +13565,16 @@ html[data-scheme="dark"] .endpoint-brand-icon-dark,
   font-size: 12px;
   padding: 24px 8px;
   text-align: center;
+}
+
+.ez-hm-cell {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ez-hm-cell:hover {
+  transform: scale(1.32);
+  box-shadow: 0 0 0 1.5px rgba(59, 130, 246, 0.85);
+  z-index: 2;
+  position: relative;
 }
 
 @media (max-width: 1100px) {

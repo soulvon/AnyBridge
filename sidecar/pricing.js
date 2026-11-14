@@ -11,6 +11,9 @@ const PRICING = [
   { match: /gpt-5|gpt-4\.1|gpt-4o/i, input: 2.5, output: 10, cacheRead: 1.25, cacheWrite: 2.5 },
   { match: /^o[34](-|$)/i, input: 2, output: 8, cacheRead: 0.5, cacheWrite: 2 },
   // Google Gemini
+  // Gemini 4 家族（argon/carbon/hydrogen）：intro 价 $2/$10（global）至 2026-11-30，
+  // 2026-12-01 起涨至 $4/$20；缓存读 $0.10（隐式缓存不收写入费，cacheWrite 记 0）。
+  { match: /gemini-4/i, input: 2, output: 10, cacheRead: 0.1, cacheWrite: 0 },
   { match: /gemini.*flash/i, input: 0.3, output: 2.5, cacheRead: 0.075, cacheWrite: 0.3 },
   { match: /gemini/i, input: 1.25, output: 10, cacheRead: 0.31, cacheWrite: 1.25 },
   // 国产/第三方常见族

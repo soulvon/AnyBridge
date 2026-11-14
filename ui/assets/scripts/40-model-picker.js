@@ -787,6 +787,23 @@ function providerFetchButtonContent(label, loading = false) {
 globalThis.selectedModels = [];
 globalThis.editorDraftModelCaps = {};
 
+/**
+ * 预设一键预填模型清单：灌进候选面板并全部勾选。
+ * Vertex AI 这类拿不到列表接口的供应商专用（Express Key 无 models.list）。
+ */
+globalThis.applyPresetModels = function (models, defaultModel) {
+  const list = (Array.isArray(models) ? models : []).map((m) => String(m || '').trim()).filter(Boolean);
+  if (!list.length) return;
+  activeModelsList = Array.from(new Set([...list, ...activeModelsList]));
+  selectedModels = list.slice();
+  if (defaultModel && selectedModels.includes(defaultModel)) {
+    selectedModels = [defaultModel, ...selectedModels.filter((m) => m !== defaultModel)];
+  }
+  modelGroupStates = {};
+  updateSelectedModelsUI();
+  if (typeof filterModelPanel === 'function') filterModelPanel();
+};
+
 function updateSelectedModelsUI() {
   if (typeof sortModelsNaturally === 'function') {
     selectedModels = sortModelsNaturally(selectedModels);
@@ -1068,7 +1085,7 @@ function isGeneratedProviderApiPath(apiFormat, apiPath) {
   const path = cleanProviderApiPath(apiPath).toLowerCase();
   if (!path) return false;
   if (apiFormat === 'gemini') {
-    return path.includes(':generatecontent') || path.includes(':streamgeneratecontent') || path.endsWith('/models');
+    return /^\/v1beta\/models(?:\/[^/]+:(?:stream)?generatecontent)?$/.test(path);
   }
   if (apiFormat === 'openai') {
     return [
@@ -1145,7 +1162,19 @@ function onFormatChange() {
 function autoDetectFormatFromHost(hostValue) {
   if (!hostValue) return 'anthropic';
   const v = hostValue.toLowerCase();
-  if (v.includes('generativelanguage.googleapis.com') || v.includes('gemini') || v.includes('/v1beta')) {
+  // 先拦截明确的 OpenAI / Anthropic 特征，避免误伤区域 Vertex Claude 或 OpenAI 兼容路径
+  const isVertexGoogle = v.includes('/publishers/google/models')
+    || (/(?:^|\/\/)aiplatform\.googleapis\.com(?:\/|:|\?|$)/.test(v)
+      && !v.includes('anthropic')
+      && !v.includes('/messages')
+      && !v.includes('chat/completions')
+      && !v.includes('/endpoints/openapi'));
+  if (v.includes('generativelanguage.googleapis.com')
+      || v.includes('gemini')
+      || v.includes('/v1beta')
+      || v.includes(':generatecontent')
+      || v.includes(':streamgeneratecontent')
+      || isVertexGoogle) {
     return 'gemini';
   }
   if (v.includes('anthropic') || v.includes('/v1/messages')) {
@@ -1291,6 +1320,10 @@ function openProviderEditor(id) {
   document.getElementById('pf-path').value = p ? displayProviderApiPath(apiFormat, path) : '';
   document.getElementById('pf-key').value = p ? p.apiKey : '';
   document.getElementById('pf-key').type = 'password';
+  // 打开编辑页即同步：Vertex 端点禁用「获取模型列表」并常驻说明
+  if (typeof globalThis.syncVertexModelListHint === 'function') globalThis.syncVertexModelListHint();
+  // 编辑已有 Vertex 卡时同样给出「地区 + 测速」行（从路径反解当前地区）
+  if (typeof globalThis.syncVertexRegionPicker === 'function') globalThis.syncVertexRegionPicker();
   const caps = providerCapabilities(p || { apiPath: document.getElementById('pf-path').value });
   const gzipEl = document.getElementById('pf-cap-gzip');
   if (gzipEl) gzipEl.checked = caps.gzip;
@@ -1609,6 +1642,38 @@ function isProviderEditorPageActive() {
   return document.getElementById('page-provider-editor')?.classList.contains('active') === true;
 }
 
+// Vertex AI（Express Key）没有模型列表接口：请求只会拿到上游 HTML 404 页。
+// 识别这类端点后禁用「获取模型列表」并常驻一行说明，模型走模板预置或手动添加。
+function isVertexModelListEndpoint(host, apiPath) {
+  const text = `${host || ''} ${apiPath || ''}`.toLowerCase();
+  return text.includes('aiplatform.googleapis.com') || text.includes('/publishers/google/models');
+}
+
+globalThis.syncVertexModelListHint = function () {
+  const host = document.getElementById('pf-host')?.value || '';
+  const path = document.getElementById('pf-path')?.value || '';
+  const btn = document.getElementById('pf-fetch-btn');
+  const vertex = isVertexModelListEndpoint(host, path);
+  if (btn) {
+    btn.disabled = vertex;
+    btn.title = vertex ? '该供应商不支持在线拉取模型列表，模型已在模板中预置' : '获取模型列表';
+  }
+  let hint = document.getElementById('pf-vertex-list-hint');
+  if (!vertex) {
+    if (hint) hint.hidden = true;
+    return;
+  }
+  if (!hint) {
+    hint = document.createElement('div');
+    hint.id = 'pf-vertex-list-hint';
+    hint.style.cssText = 'font-size:12px; color:var(--text-secondary); margin:8px 16px 0; line-height:1.5;';
+    const header = document.querySelector('#modelPanel .model-panel-header');
+    if (header) header.insertAdjacentElement('afterend', hint);
+  }
+  hint.textContent = 'Vertex AI 没有在线模型列表接口：模型已在模板中预置，也可以手动添加模型 ID。';
+  hint.hidden = false;
+};
+
 // 结论写入结果条并持续保留，直到下次操作覆盖或离开页面清除；文案复用既有结论原文
 function setEditorResultBar(type, message, boxId) {
   const box = document.getElementById(boxId);
@@ -1702,6 +1767,11 @@ async function fetchModelsForEditor(options = {}) {
   const isBackground = !!options.background;
   if (!baseUrl || !apiKey) {
     addLog('warn', '请先填写 API 地址和密钥');
+    return;
+  }
+  if (isVertexModelListEndpoint(baseUrl, apiPath)) {
+    if (typeof globalThis.syncVertexModelListHint === 'function') globalThis.syncVertexModelListHint();
+    showProviderEditorTestToast('该供应商不支持在线拉取模型列表，模型已在模板中预置，也可手动添加', 'warn', { duration: 2600 });
     return;
   }
   if (btn?.dataset.loading === '1') return;

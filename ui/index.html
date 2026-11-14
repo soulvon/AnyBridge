@@ -958,7 +958,7 @@
         <script type="application/json" id="providerPresetsData">
 {
   "version": 1,
-  "note": "供应商预设目录。只维护稳定信息（地址/格式/申请入口），不内置模型名——模型会随厂商迭代过期，统一走「获取模型列表」实时拉取。",
+  "note": "供应商预设目录。只维护稳定信息（地址/格式/申请入口），不内置模型名——模型会随厂商迭代过期，统一走「获取模型列表」实时拉取。例外：Vertex AI 的 Express Key 没有模型列表接口，预置一份实测可用清单（2026-11-12 实测）。",
   "groups": [
     {
       "id": "official-cn",
@@ -1306,11 +1306,43 @@
       "id": "vertexai",
       "name": "Google Vertex AI",
       "group": "cloud",
-      "format": "openai",
-      "url": "https://us-central1-aiplatform.googleapis.com",
+      "format": "gemini",
+      "url": "https://aiplatform.googleapis.com",
+      "path": "/v1/projects/{project}/locations/{region}/publishers/google/models",
+      "regions": [
+        { "id": "global", "label": "全球（推荐）" },
+        { "id": "us", "label": "美国多区" },
+        { "id": "eu", "label": "欧洲多区" },
+        { "id": "asia-east1", "label": "台湾（彰化）" },
+        { "id": "asia-northeast1", "label": "东京" },
+        { "id": "asia-northeast2", "label": "大阪" },
+        { "id": "asia-southeast1", "label": "新加坡" },
+        { "id": "australia-southeast1", "label": "悉尼" },
+        { "id": "europe-west4", "label": "荷兰" },
+        { "id": "us-east4", "label": "弗吉尼亚" },
+        { "id": "us-central1", "label": "爱荷华" }
+      ],
+      "defaultRegion": "global",
+      "probeModel": "gemini-3.5-flash-lite",
+      "models": [
+        "gemini-4-argon",
+        "gemini-4-carbon",
+        "gemini-4-hydrogen",
+        "gemini-3.8-flash",
+        "gemini-3.7-flash",
+        "gemini-3.6-flash",
+        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-3-flash-preview",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-image",
+        "gemini-3-pro-image"
+      ],
+      "defaultModel": "gemini-4-argon",
       "website": "https://console.cloud.google.com",
       "icon": "vertexai",
-      "hint": "区域与项目需按实际开通情况替换；鉴权走服务账号"
+      "hint": "把路径里的 {project} 换成 GCP 项目 ID；地区默认全球端点，访问慢可切换其它地区并点「测速」自动选最快。各地区可用模型略有差异，切换地区后建议用「测试连接」验证目标模型"
     },
     {
       "id": "copilot",
@@ -4360,6 +4392,22 @@
               </section>
             </div>
 
+            <!-- 4.5 Token 活动热力图 -->
+            <section class="ez-card">
+              <div class="ez-card-header" style="flex-wrap: wrap; gap: 12px; align-items: center;">
+                <div>
+                  <h2 class="ez-card-title">Token 活动</h2>
+                  <span class="ez-card-subtitle">最近 53 周每日消耗，颜色越深用量越大</span>
+                </div>
+                <div id="statsHeatmapKpis" style="display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; align-items: center;">
+                  <span class="ez-badge" id="statsHeatmapTotal">—</span>
+                </div>
+              </div>
+              <div id="statsTokenHeatmap" style="padding: 8px 20px 18px; overflow-x: auto;">
+                <div class="ez-skel-bone" style="height: 110px; border-radius: 8px;"></div>
+              </div>
+            </section>
+
             <!-- 5. 实时调用审计流 (结构化表格) -->
             <section class="ez-card">
               <div class="ez-card-header">
@@ -4371,14 +4419,14 @@
               </div>
 
               <div class="ez-table-wrap">
-                <table class="ez-table" aria-label="请求调用明细">
+                <table class="ez-table" aria-label="请求调用明细" style="table-layout: auto;">
                   <thead>
                     <tr>
-                      <th style="width: 95px;">请求时间</th>
-                      <th style="width: 75px;">终态</th>
-                      <th style="width: 130px;">出口通道</th>
+                      <th style="width: 85px; white-space: nowrap;">请求时间</th>
+                      <th style="width: 60px; white-space: nowrap;">终态</th>
+                      <th style="width: 160px; white-space: nowrap;">出口通道</th>
                       <th>路由映射 (请求 → 实际)</th>
-                      <th style="width: 100px; text-align: right;">消耗 / 耗时</th>
+                      <th style="min-width: 200px; text-align: right; white-space: nowrap;">消耗 / 耗时</th>
                     </tr>
                   </thead>
                   <tbody id="statsRecentTbody">

@@ -31,6 +31,17 @@ const SIMPLE_EFFORT_TOKENS = new Set(['none', 'minimal', 'low', 'medium', 'high'
 const VOCAB_CLAUDE = ['low', 'medium', 'high', 'max'];
 const VOCAB_GPT = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 const VOCAB_GEMINI = ['minimal', 'low', 'medium', 'high'];
+
+// Gemini 的思考档位没有枚举，只有 thinkingConfig.thinkingBudget（token 预算）：
+// 0 = 关闭思考，-1 = 模型自动，正整数 = 预算上限。这里按档位给等价值。
+const GEMINI_THINKING_BUDGET = {
+  minimal: 512,
+  low: 1024,
+  medium: 4096,
+  high: 16384,
+  xhigh: 24576,
+  max: 32768,
+};
 const VOCAB_GENERIC = ['low', 'medium', 'high'];
 const FAMILY_VOCAB = {
   claude: VOCAB_CLAUDE,
@@ -265,6 +276,33 @@ export function applyThinkingToPayload(apiPayload, conn, resolved) {
     } else {
       apiPayload.reasoning_effort = effort;
     }
+    return;
+  }
+  if (conn.format === 'gemini') {
+    // 档位写进 generationConfig.thinkingConfig，只覆盖这一项，保留 temperature 等其它字段。
+    // 实测（2026-11-12）：Gemini 3.x/4.x 只认 thinkingLevel（low|medium|high），
+    // 传 thinkingBudget 会 400 "Thinking budget is not supported for this model"；
+    // 2.5 及更早则相反，只认 thinkingBudget。
+    const config = { ...(apiPayload.generationConfig || {}) };
+    const model = String(conn.model || '').toLowerCase();
+    const usesLevel = /gemini-(?:3|4)(?:[.\-]|$)/.test(model);
+    if (usesLevel) {
+      if (resolved.mode === 'off') {
+        // 3.x/4.x 没有「完全关闭」档（minimal 都 400），关闭时不注入、交回模型默认
+        delete config.thinkingConfig;
+      } else {
+        const level = resolved.level === 'medium'
+          ? 'medium'
+          : (['high', 'xhigh', 'max'].includes(resolved.level) ? 'high' : 'low');
+        config.thinkingConfig = { thinkingLevel: level };
+      }
+    } else if (resolved.mode === 'off') {
+      config.thinkingConfig = { thinkingBudget: 0 };
+    } else {
+      const budget = GEMINI_THINKING_BUDGET[resolved.level];
+      config.thinkingConfig = { thinkingBudget: Number.isFinite(budget) ? budget : -1 };
+    }
+    apiPayload.generationConfig = config;
   }
 }
 

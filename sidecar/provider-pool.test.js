@@ -184,3 +184,71 @@ test('resolveTarget joins apiHost path prefixes with normalized API paths', () =
   assert.equal(conn.hostname, 'api.longcat.chat');
   assert.equal(conn.apiPath, '/openai/v1/chat/completions');
 });
+
+test('resolveTarget auto-detects Vertex Express /publishers/google/models as Gemini without explicit apiFormat', () => {
+  const providers = new Map([[
+    'vertex',
+    {
+      id: 'vertex',
+      name: 'Google Vertex Express',
+      enabled: true,
+      apiHost: 'https://aiplatform.googleapis.com',
+      apiKey: 'AQ.test-vertex-key',
+      apiPath: '/v1/publishers/google/models',
+      defaultModel: 'gemini-3.8-flash',
+    },
+  ]]);
+
+  const conn = resolveTarget({
+    providerId: 'vertex',
+    model: 'gemini-3.1-pro-preview',
+  }, providers);
+
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.format, 'gemini');
+  assert.equal(conn.host, 'aiplatform.googleapis.com');
+  assert.equal(conn.apiPath, '/v1/publishers/google/models/gemini-3.1-pro-preview:generateContent');
+});
+
+test('resolveTarget preserves explicit Vertex model :generateContent path and does not hijack regional Vertex Claude', () => {
+  const providers = new Map([
+    [
+      'vertex-fixed',
+      {
+        id: 'vertex-fixed',
+        name: 'Google Vertex Fixed',
+        enabled: true,
+        apiHost: 'https://aiplatform.googleapis.com',
+        apiKey: 'AQ.test-vertex-key',
+        apiPath: '/v1/publishers/google/models/gemini-3.8-flash:generateContent',
+        defaultModel: 'gemini-3.8-flash',
+      },
+    ],
+    [
+      'vertex-claude',
+      {
+        id: 'vertex-claude',
+        name: 'Vertex Claude',
+        enabled: true,
+        apiHost: 'https://us-central1-aiplatform.googleapis.com',
+        apiKey: 'ya29.test',
+        apiPath: '/v1/projects/p/locations/us-central1/publishers/anthropic/models/claude-sonnet-4:rawPredict',
+        defaultModel: 'claude-sonnet-4',
+      },
+    ],
+  ]);
+
+  const fixed = resolveTarget({
+    providerId: 'vertex-fixed',
+    model: 'gemini-3.8-flash',
+  }, providers);
+  assert.equal(fixed.format, 'gemini');
+  assert.equal(fixed.apiPath, '/v1/publishers/google/models/gemini-3.8-flash:generateContent');
+
+  const claude = resolveTarget({
+    providerId: 'vertex-claude',
+    model: 'claude-sonnet-4',
+    apiFormat: 'anthropic',
+  }, providers);
+  assert.equal(claude.format, 'anthropic');
+});

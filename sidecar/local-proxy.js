@@ -20,7 +20,7 @@ import { getCodexProxyRoutes, getProxyRoutes } from './config-cache.js';
 import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
 import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
 import { httpsAgentFor } from './system-proxy.js';
-import { recordError, recordLatency, recordUsage } from './stats.js';
+import { recordError, recordLatency, recordRecentOutcome, recordUsage } from './stats.js';
 import { createTracker } from './request-tracker.js';
 import {
   responsesToChatCompletions,
@@ -38,6 +38,7 @@ import {
   createChatSSEConverter,
 } from './lib/chat-sse-transform.js';
 import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
+import { cleanGeminiToolParameters } from './lib/gemini-schema.js';
 import {
   attachUpstreamWatchdog,
   providerGateKey,
@@ -1040,6 +1041,9 @@ export const __localProxyTest = {
   anthropicTools,
   responsesToolChoice,
   normalizeToolParameters,
+  geminiTools,
+  geminiGenerationConfig,
+  geminiStreamApiPath,
   antigravityErrorSnapshot,
   writeAntigravityStreamError,
   upstreamErrorText,
@@ -1438,7 +1442,9 @@ function geminiTools(tools) {
     declarations.push({
       name,
       description: String(fn.description || ''),
-      parameters: fn.parameters || fn.input_schema || { type: 'object', properties: {} },
+      // 上游是 Gemini 原生：parameters 必须清洗成 OpenAPI Schema 子集，
+      // 否则客户端带来的 $schema / additionalProperties 会让 Vertex 400（Invalid JSON payload）。
+      parameters: cleanGeminiToolParameters(fn.parameters || fn.input_schema),
     });
   }
   return declarations.length ? [{ functionDeclarations: declarations }] : undefined;
@@ -1458,9 +1464,27 @@ function geminiGenerationConfig(ctx) {
   const raw = ctx.rawBody?.generationConfig || ctx.rawBody?.generation_config || {};
   const config = isPlainObject(raw) ? { ...raw } : {};
   delete config.max_output_tokens;
-  config.maxOutputTokens = ctx.maxTokens;
+  // 输出上限只在客户端显式给出时下发：Gemini 不传 maxOutputTokens 时按模型自身上限生成。
+  // 之前无条件写 ctx.maxTokens（默认 4096），长文件/长回答会被静默截断。
+  const explicitMax = raw.maxOutputTokens ?? raw.max_output_tokens
+    ?? ctx.rawBody?.max_output_tokens ?? ctx.rawBody?.max_tokens ?? ctx.rawBody?.max_completion_tokens;
+  if (explicitMax === undefined || explicitMax === null || explicitMax === '') delete config.maxOutputTokens;
+  else config.maxOutputTokens = ctx.maxTokens;
   if (ctx.temperature !== undefined) config.temperature = ctx.temperature;
   return config;
+}
+
+// Gemini 原生的两种方法只差路径后缀：generateContent ↔ streamGenerateContent。
+// 流式必须带 alt=sse（否则返回 JSON 数组流，无法逐事件解析）。
+function geminiStreamApiPath(conn) {
+  const apiPath = String(conn?.apiPath || '');
+  if (!apiPath) return apiPath;
+  if (/:streamGenerateContent/i.test(apiPath)) {
+    return /[?&]alt=sse/i.test(apiPath) ? apiPath : `${apiPath}${apiPath.includes('?') ? '&' : '?'}alt=sse`;
+  }
+  const withMethod = apiPath.replace(/:generateContent$/i, ':streamGenerateContent');
+  if (withMethod === apiPath) return apiPath;
+  return `${withMethod}${withMethod.includes('?') ? '&' : '?'}alt=sse`;
 }
 
 // Anthropic 上游不认识 thoughtSignature（Gemini 内部透传字段），发送前剥离，避免严格网关 400
@@ -1550,7 +1574,7 @@ function upstreamBody(conn, ctx) {
     return finishAnthropicBody(conn, ctx, cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: anthropicMessages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: anthropicToolChoice(ctx.toolChoice) }));
   }
   if (conn.format === 'gemini') {
-    return cleanBody({
+    const body = cleanBody({
       ...extras,
       contents: geminiContents(ctx.system, ctx.messages),
       systemInstruction: ctx.system ? { parts: [{ text: ctx.system }] } : undefined,
@@ -1560,6 +1584,14 @@ function upstreamBody(conn, ctx) {
       safetySettings: ctx.rawBody?.safetySettings || ctx.rawBody?.safety_settings || undefined,
       cachedContent: ctx.rawBody?.cachedContent || ctx.rawBody?.cached_content || undefined,
     });
+    // 客户端的思考档位（chat/responses 的 reasoning_effort、anthropic 的 thinking.budget）
+    // 映射成 Gemini 的 generationConfig.thinkingConfig；Gemini 客户端自带的配置原样保留。
+    const geminiEffort = clientReasoningEffort(conn, ctx)
+      || clientChatReasoningEffort(conn, ctx)
+      || clientAnthropicEffort(conn, ctx);
+    if (geminiEffort === 'none') applyThinkingToPayload(body, conn, { mode: 'off' });
+    else if (geminiEffort) applyThinkingToPayload(body, conn, { mode: 'level', level: geminiEffort });
+    return body;
   }
   const codexUnlock = codexUnlockForTarget(conn);
   // wireApi=chat: 仅当客户端发来 Responses API 请求时，才做 Responses→Chat 转换
@@ -2174,6 +2206,8 @@ export async function execute(ctx) {
   const selfHealCfg = { ...DEFAULT_SELF_HEAL_CONFIG, ...(enhancement.selfHeal || {}) };
   const effective = await maybeVisionFallback(ctx, resolved.slot, providers, mapConfig);
   effective.preserveExtraParams = preserveExtraParams;
+  // 审计表要区分流式/非流式：流式的真实 tokens 在出口收尾时按 requestId 回补
+  tracker.streamMode = effective.stream === true;
 
   // ── 系统提示词注入 ──
   if (enhancement.systemPromptPrefixEnabled === true && enhancement.systemPromptPrefix) {
@@ -2255,9 +2289,84 @@ export async function execute(ctx) {
     const started = Date.now();
     let retryCount = 0;
     // 智能重试状态：每个 target 独立，每个整流器最多触发一次防无限循环
-    const healState = { signatureHealed: false, budgetHealed: false, mediaHealed: false };
+    const healState = { signatureHealed: false, budgetHealed: false, mediaHealed: false, thinkingHealed: false };
     while (true) {
       try {
+        // ── 真流式路径：chat 入站 + Gemini 原生上游 ──
+        // Gemini SSE 每个事件是累计快照，出口转换器按已发长度做 diff 出增量。
+        // 这样 Carbon/Pro 这类慢思考模型首字节就能吐字，长输出也不撞客户端超时。
+        if (ctx.kind === 'openai' && effective.stream === true && conn.format === 'gemini') {
+          const streamConn = { ...conn, apiPath: geminiStreamApiPath(conn) };
+          const r = await requestUpstreamStream(streamConn, payload, enhancement);
+          recordLatency(r.durationMs); markSuccess(targetKey(target));
+          if (r.statusCode >= 200 && r.statusCode < 300) {
+            const extraRespHeaders = {};
+            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
+              for (const h of enhancement.responseHeaders) {
+                if (h && h.key) extraRespHeaders[h.key] = h.value;
+              }
+            }
+            const contentType = String(r.response.headers?.['content-type'] || '');
+            // 上游没有按 SSE 返回（alt=sse 被忽略）：降级为整包，出口仍按非流式处理
+            if (!contentType.includes('text/event-stream')) {
+              const text = await collectStreamBody(r.response);
+              const json = safeParse(text);
+              const bodyText = extractText(conn, json);
+              const toolCalls = extractToolCalls(conn, json);
+              const usage = usageFrom(conn, json, estimateTokens(effective.messages, effective.system), Math.ceil(bodyText.length / 4));
+              recordUsage(usage);
+              tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+              tracker.finish();
+              if (tracker.recentRequestId) {
+                recordRecentOutcome({
+                  requestId: tracker.recentRequestId,
+                  inputTokens: Number(usage?.inputTokens) || 0,
+                  outputTokens: Number(usage?.outputTokens) || 0,
+                  cachedTokens: Number(usage?.cachedTokens) || 0,
+                  latencyMs: r.durationMs,
+                  stream: false,
+                  statusCode: r.statusCode,
+                });
+              }
+              return { conn, text: bodyText, toolCalls, json, usage, extraHeaders: extraRespHeaders };
+            }
+            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
+            tracker.finish();
+            return {
+              conn: streamConn,
+              stream: true,
+              upstreamResponse: r.response,
+              extraHeaders: extraRespHeaders,
+              watchdog: r.watchdog,
+              recentRequestId: tracker.recentRequestId,
+              startedAt: started,
+            };
+          }
+          const errorText = await collectStreamBody(r.response);
+          const errorJson = safeParse(errorText);
+          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
+          if (r.statusCode === 400 && payload?.generationConfig?.thinkingConfig
+            && /thinking/i.test(errorText) && !healState.thinkingHealed) {
+            healState.thinkingHealed = true;
+            const nextConfig = { ...payload.generationConfig };
+            delete nextConfig.thinkingConfig;
+            payload = { ...payload, generationConfig: nextConfig };
+            console.log('[local-proxy] [self-heal] gemini thinkingConfig rejected, retrying without it');
+            continue;
+          }
+          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
+            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
+          }
+          failures.push({
+            providerName: conn.providerName,
+            statusCode: r.statusCode,
+            headers: r.headers,
+            body: errorText,
+            message: msg,
+            wireApi: conn.wireApi,
+          });
+          break;
+        }
         // ── 真流式路径：wireApi=chat 且客户端请求 stream（仅 Responses API）──
         if (conn.wireApi === 'chat' && ctx.kind === 'responses' && effective.stream === true) {
           const r = await requestUpstreamStream(conn, payload, enhancement);
@@ -2271,7 +2380,15 @@ export async function execute(ctx) {
             }
             tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
             tracker.finish();
-            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
+            return {
+              conn,
+              stream: true,
+              upstreamResponse: r.response,
+              extraHeaders: extraRespHeaders,
+              watchdog: r.watchdog,
+              recentRequestId: tracker.recentRequestId,
+              startedAt: started,
+            };
           }
           // 非 2xx：收集错误 body，走重试逻辑
           const errorText = await collectStreamBody(r.response);
@@ -2323,11 +2440,30 @@ export async function execute(ctx) {
               recordUsage(usage);
               tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
               tracker.finish();
+              if (tracker.recentRequestId) {
+                recordRecentOutcome({
+                  requestId: tracker.recentRequestId,
+                  inputTokens: Number(usage?.inputTokens) || 0,
+                  outputTokens: Number(usage?.outputTokens) || 0,
+                  cachedTokens: Number(usage?.cachedTokens) || 0,
+                  latencyMs: r.durationMs,
+                  stream: false,
+                  statusCode: r.statusCode,
+                });
+              }
               return { conn, text: bodyText, toolCalls, json, usage, extraHeaders: extraRespHeaders };
             }
             tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
             tracker.finish();
-            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
+            return {
+              conn,
+              stream: true,
+              upstreamResponse: r.response,
+              extraHeaders: extraRespHeaders,
+              watchdog: r.watchdog,
+              recentRequestId: tracker.recentRequestId,
+              startedAt: started,
+            };
           }
           const errorText = await collectStreamBody(r.response);
           const errorJson = safeParse(errorText);
@@ -2367,7 +2503,15 @@ export async function execute(ctx) {
             }
             tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
             tracker.finish();
-            return { conn, stream: true, upstreamResponse: r.response, extraHeaders: extraRespHeaders, watchdog: r.watchdog };
+            return {
+              conn,
+              stream: true,
+              upstreamResponse: r.response,
+              extraHeaders: extraRespHeaders,
+              watchdog: r.watchdog,
+              recentRequestId: tracker.recentRequestId,
+              startedAt: started,
+            };
           }
           const errorText = await collectStreamBody(r.response);
           const errorJson = safeParse(errorText);
@@ -2409,6 +2553,17 @@ export async function execute(ctx) {
             : null;
           tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
           tracker.finish();
+          if (tracker.recentRequestId) {
+            recordRecentOutcome({
+              requestId: tracker.recentRequestId,
+              inputTokens: Number(usage?.inputTokens ?? usage?.input) || 0,
+              outputTokens: Number(usage?.outputTokens ?? usage?.output) || 0,
+              cachedTokens: Number(usage?.cachedTokens ?? usage?.cacheRead) || 0,
+              latencyMs: r.durationMs,
+              stream: false,
+              statusCode: r.statusCode,
+            });
+          }
           return { conn, text, toolCalls, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
         }
         const msg = compactText(upstreamMessage(r));
@@ -2419,6 +2574,18 @@ export async function execute(ctx) {
             console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
             continue;
           }
+        }
+        // ── 智能重试：Gemini 思考档位不被该模型接受（3.x/4.x 只认 level、2.5 只认 budget）
+        // 时去掉 thinkingConfig 重试一次——宁可丢档位，也不让整轮对话中断。
+        if (conn.format === 'gemini' && r.statusCode === 400
+          && payload?.generationConfig?.thinkingConfig && /thinking/i.test(r.text || '')
+          && !healState.thinkingHealed) {
+          healState.thinkingHealed = true;
+          const nextConfig = { ...payload.generationConfig };
+          delete nextConfig.thinkingConfig;
+          payload = { ...payload, generationConfig: nextConfig };
+          console.log('[local-proxy] [self-heal] gemini thinkingConfig rejected, retrying without it');
+          continue;
         }
         if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
           retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
@@ -2597,6 +2764,17 @@ async function sendOpenAIChatStream(ctx, res, result) {
       for (const out of converter.flush()) sse(res, null, out);
       const usage = converter.getUsage();
       if (usage) recordUsage(usageFrom({ format: 'openai' }, { usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, input_tokens_details: usage.prompt_tokens_details } }, 0, 0));
+      // 审计表：流式结束才有真实 tokens 与总耗时，按 requestId 回补同一条目
+      if (result.recentRequestId) {
+        recordRecentOutcome({
+          requestId: result.recentRequestId,
+          inputTokens: Number(usage?.prompt_tokens) || 0,
+          outputTokens: Number(usage?.completion_tokens) || 0,
+          cachedTokens: Number(usage?.prompt_tokens_details?.cached_tokens) || 0,
+          latencyMs: Date.now() - (Number(result.startedAt) || Date.now()),
+          stream: true,
+        });
+      }
     }
   } catch (e) {
     // 流中途失败：已发出的 chunk 无法收回，按 SSE 错误事件告知客户端（与 OpenAI 流式错误语义一致）
@@ -2661,6 +2839,16 @@ function sendOpenAIResponses(ctx, res, result) {
         const finalResp = converter.getResponse();
         const usage = usageFrom(result.conn, { usage: finalResp.usage }, 0, 0);
         recordUsage(usage);
+        if (result.recentRequestId) {
+          recordRecentOutcome({
+            requestId: result.recentRequestId,
+            inputTokens: Number(usage.inputTokens) || 0,
+            outputTokens: Number(usage.outputTokens) || 0,
+            cachedTokens: Number(usage.cachedTokens) || 0,
+            latencyMs: Date.now() - (Number(result.startedAt) || Date.now()),
+            stream: true,
+          });
+        }
       } catch (e) {
         // 流中途出错，尽量优雅结束
         try { sse(res, 'error', { type: 'error', message: e?.message || 'stream error' }); } catch {}
@@ -3339,6 +3527,16 @@ export async function handleLocalProxyRequest(req, res, body) {
             }
             const streamUsage = converter.getUsage();
             if (streamUsage) recordUsage(streamUsage);
+            if (result.recentRequestId) {
+              recordRecentOutcome({
+                requestId: result.recentRequestId,
+                inputTokens: Number(streamUsage?.inputTokens ?? streamUsage?.prompt_tokens) || 0,
+                outputTokens: Number(streamUsage?.outputTokens ?? streamUsage?.completion_tokens) || 0,
+                cachedTokens: Number(streamUsage?.cachedTokens ?? streamUsage?.prompt_tokens_details?.cached_tokens) || 0,
+                latencyMs: Date.now() - (Number(result.startedAt) || Date.now()),
+                stream: true,
+              });
+            }
             res.end();
             return;
           }

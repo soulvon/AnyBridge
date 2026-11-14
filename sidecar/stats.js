@@ -294,6 +294,9 @@ function pushRecent(entry) {
   if (state.recent.length > 20) state.recent.length = 20;
 }
 
+/** 审计条目自增 id：请求开始时先落一条，结束后按 id 回补消耗与耗时。 */
+let recentSeq = 0;
+
 export function recordRequest({ provider, requestedModel, resolvedModel }) {
   rollDayIfNeeded();
   state.requests += 1;
@@ -303,7 +306,36 @@ export function recordRequest({ provider, requestedModel, resolvedModel }) {
   const k = resolvedModel || 'unknown';
   state.byModel[k] = (state.byModel[k] || 0) + 1;
   activeBucket().requests += 1;
-  pushRecent({ type: 'request', provider, requestedModel, resolvedModel });
+  const id = ++recentSeq;
+  pushRecent({ id, type: 'request', provider, requestedModel, resolvedModel });
+  schedulePersist();
+  return id;
+}
+
+/**
+ * 把一次请求的结果（tokens / 耗时 / 是否流式 / 状态码）补到审计表对应条目上。
+ * 只影响 recent 展示，不重复记账（账本由 recordUsage 负责）。
+ */
+export function recordRecentOutcome({
+  requestId = null,
+  inputTokens = 0,
+  outputTokens = 0,
+  cachedTokens = 0,
+  latencyMs = 0,
+  stream = false,
+  statusCode = null,
+} = {}) {
+  rollDayIfNeeded();
+  const target = requestId ? state.recent.find((e) => e && e.id === requestId) : null;
+  if (!target) return;
+  target.usage = {
+    input: Number(inputTokens) || 0,
+    output: Number(outputTokens) || 0,
+    cacheRead: Number(cachedTokens) || 0,
+  };
+  target.latencyMs = Number(latencyMs) || 0;
+  target.stream = !!stream;
+  if (statusCode != null) target.statusCode = Number(statusCode) || null;
   schedulePersist();
 }
 
@@ -329,11 +361,21 @@ export function recordUsage({ model = null, inputTokens = 0, outputTokens = 0, c
   schedulePersist();
 }
 
-export function recordError({ provider, message }) {
+export function recordError({ provider, message, requestId = null }) {
   rollDayIfNeeded();
   state.errors += 1;
   state.lastError = message;
   activeBucket().errors += 1;
+  // 有 requestId 时把开始时那条 request 原地改成失败，避免同一次请求在审计表里
+  // 出现「成功 + 失败」两行（前者其实是还在进行中的占位）。
+  const target = requestId ? state.recent.find((e) => e && e.id === requestId) : null;
+  if (target) {
+    target.type = 'error';
+    target.message = message;
+    if (provider) target.provider = target.provider || provider;
+    schedulePersist();
+    return;
+  }
   pushRecent({ type: 'error', provider, message });
   schedulePersist();
 }
@@ -514,6 +556,24 @@ export function snapshot() {
     visionFallback: state.visionFallback,
     visionLogFile: visionLogPath(),
     historyDays: Object.keys(state.history).length,
+    // 每日用量（最近 53 周/约 371 天）：给统计页的 Token 活动热力图用
+    daily: dailySeries(371),
     rate: rateStats(),
   };
+}
+
+/** 按天汇总序列（含今天），升序；用于热力图与趋势。 */
+function dailySeries(limit = 371) {
+  const merged = { ...state.history, [state.day]: dailySnapshot() };
+  return Object.entries(merged)
+    .map(([day, v]) => ({
+      day,
+      requests: Number(v?.requests) || 0,
+      errors: Number(v?.errors) || 0,
+      tokens: (Number(v?.inputTokens) || 0) + (Number(v?.outputTokens) || 0),
+      cachedTokens: Number(v?.cachedTokens) || 0,
+    }))
+    .filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d.day))
+    .sort((a, b) => a.day.localeCompare(b.day))
+    .slice(-limit);
 }

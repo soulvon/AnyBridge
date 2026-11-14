@@ -157,10 +157,15 @@ function shouldUseAnthropicBearerAuth(host, apiPath) {
 function inferApiFormatFromPath(apiPath) {
   const path = cleanApiPath(apiPath).toLowerCase();
   if (!path) return null;
-  if (path.includes(':generatecontent') || path.includes(':streamgeneratecontent') || path.includes('/v1beta/models/')) return 'gemini';
-  if (path.endsWith('/messages') || path.includes('/messages/')) return 'anthropic';
   if (path.endsWith('/chat/completions') || path.endsWith('/responses')) return 'openai';
   if (path.includes('/openai/') || path.includes('/compatible-mode')) return 'openai';
+  if (path.endsWith('/messages') || path.includes('/messages/')) return 'anthropic';
+  if (path.includes(':generatecontent')
+      || path.includes(':streamgeneratecontent')
+      || path.includes('/v1beta/models/')
+      || path.includes('/publishers/google/models')) {
+    return 'gemini';
+  }
   return null;
 }
 
@@ -172,7 +177,7 @@ function inferApiFormatFromHost(host) {
     .toLowerCase();
   if (hostname === 'api.anthropic.com') return 'anthropic';
   if (hostname === 'api.openai.com' || hostname.endsWith('.openai.azure.com')) return 'openai';
-  if (hostname === 'generativelanguage.googleapis.com') return 'gemini';
+  if (hostname === 'generativelanguage.googleapis.com' || hostname === 'aiplatform.googleapis.com') return 'gemini';
   return null;
 }
 

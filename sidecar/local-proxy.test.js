@@ -365,6 +365,32 @@ test('Gemini Native requests convert to Gemini upstream payloads', () => {
   });
 });
 
+test('Gemini 输出上限：客户端未显式指定时不下发 maxOutputTokens', () => {
+  const gen = __localProxyTest.geminiGenerationConfig;
+  const implicit = gen({ rawBody: { contents: [] }, maxTokens: 4096 });
+  assert.equal(implicit.maxOutputTokens, undefined);
+  const explicit = gen({ rawBody: { max_tokens: 800 }, maxTokens: 800 });
+  assert.equal(explicit.maxOutputTokens, 800);
+  const native = gen({ rawBody: { generationConfig: { maxOutputTokens: 2048 } }, maxTokens: 2048 });
+  assert.equal(native.maxOutputTokens, 2048);
+  const snake = gen({ rawBody: { max_output_tokens: 512 }, maxTokens: 512 });
+  assert.equal(snake.maxOutputTokens, 512);
+});
+
+test('geminiStreamApiPath 把 generateContent 换成 streamGenerateContent?alt=sse', () => {
+  const f = __localProxyTest.geminiStreamApiPath;
+  assert.equal(
+    f({ apiPath: '/v1beta/models/gemini-3.8-flash:generateContent' }),
+    '/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse'
+  );
+  assert.equal(
+    f({ apiPath: '/v1/projects/p/locations/global/publishers/google/models/gemini-4-argon:generateContent' }),
+    '/v1/projects/p/locations/global/publishers/google/models/gemini-4-argon:streamGenerateContent?alt=sse'
+  );
+  assert.equal(f({ apiPath: '/x:streamGenerateContent' }), '/x:streamGenerateContent?alt=sse');
+  assert.equal(f({ apiPath: '/x:streamGenerateContent?alt=sse' }), '/x:streamGenerateContent?alt=sse');
+});
+
 test('Gemini streamGenerateContent renders single-event SSE snapshot', () => {
   const writes = [];
   const res = {
@@ -1191,6 +1217,34 @@ test('Gemini upstream keeps Google uppercase schema enums (no cross-protocol cor
   // normalizeGeminiTools 不改写原始 schema，Gemini 目标仍应拿到 Google 大写枚举
   assert.equal(ctx.tools[0].function.parameters.type, 'OBJECT');
   assert.equal(ctx.tools[0].function.parameters.properties.task.type, 'STRING');
+});
+
+test('Gemini upstream receives sanitized tool schema (no $schema/additionalProperties)', () => {
+  const tools = __localProxyTest.geminiTools([{
+    type: 'function',
+    function: {
+      name: 'read_file',
+      description: 'Read a file',
+      parameters: {
+        $schema: 'http://json-schema.org/draft-07/schema#',
+        additionalProperties: false,
+        type: 'object',
+        required: ['path'],
+        properties: {
+          path: { type: 'string', description: 'file path' },
+          limit: { type: ['integer', 'null'] },
+        },
+      },
+    },
+  }]);
+  const parameters = tools[0].functionDeclarations[0].parameters;
+  assert.equal(parameters.$schema, undefined);
+  assert.equal(parameters.additionalProperties, undefined);
+  assert.equal(parameters.type, 'OBJECT');
+  assert.equal(parameters.properties.path.type, 'STRING');
+  assert.equal(parameters.properties.limit.type, 'INTEGER');
+  assert.equal(parameters.properties.limit.nullable, true);
+  assert.deepEqual(parameters.required, ['path']);
 });
 
 test('Responses upstream receives flat tools (AnyRouter 520 regression)', () => {

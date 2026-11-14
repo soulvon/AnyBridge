@@ -252,8 +252,95 @@ export function createChatSSEPassthrough(model, id, created) {
   };
 }
 
+// ─── Gemini SSE → Chat SSE ─────────────────────────────
+// 实测（2026-11-12，Vertex gemini-3.8-flash）：streamGenerateContent?alt=sse 的每个 data
+// 是「增量片段」（各事件文本互不重叠），不是累计快照——直接下发即可，不能再做 diff。
+// thought:true 的片段不发给客户端；functionCall 按 name+args 去重（同一调用可能重复出现）。
+export function createChatSSEFromGemini(model, id, created) {
+  const sentCalls = new Set();
+  let nextToolIndex = 0;
+  let usage = null;
+  let finishReason = 'stop';
+
+  const textChunk = (text) => ({
+    ...chunkBase(id, created, model),
+    choices: [{ index: 0, delta: { content: text }, finish_reason: null }],
+  });
+
+  const reasonFromFinish = (raw) => {
+    const s = String(raw || '').toUpperCase();
+    if (s === 'MAX_TOKENS') return 'length';
+    if (['SAFETY', 'RECITATION', 'BLOCKLIST', 'PROHIBITED_CONTENT', 'SPII'].includes(s)) return 'content_filter';
+    return 'stop';
+  };
+
+  return {
+    write(event) {
+      if (!event || typeof event !== 'object') return [];
+      const out = [];
+      const candidate = Array.isArray(event.candidates) ? event.candidates[0] : null;
+      const parts = candidate?.content?.parts || [];
+
+      const text = parts
+        .filter((p) => p?.text && p.thought !== true)
+        .map((p) => p.text)
+        .join('');
+      if (text) out.push(textChunk(text));
+
+      for (const part of parts) {
+        const call = part?.functionCall || part?.function_call;
+        if (!call?.name) continue;
+        const argsText = JSON.stringify(call.args || {});
+        const key = `${call.name}|${argsText}`;
+        if (sentCalls.has(key)) continue;
+        sentCalls.add(key);
+        const toolIndex = nextToolIndex;
+        nextToolIndex += 1;
+        out.push({
+          ...chunkBase(id, created, model),
+          choices: [{
+            index: 0,
+            delta: {
+              tool_calls: [{
+                index: toolIndex,
+                id: call.id || randomCallId(),
+                type: 'function',
+                function: { name: call.name, arguments: argsText },
+              }],
+            },
+            finish_reason: null,
+          }],
+        });
+      }
+
+      if (candidate?.finishReason) {
+        finishReason = sentCalls.size ? 'tool_calls' : reasonFromFinish(candidate.finishReason);
+      }
+
+      const gm = event.usageMetadata || event.usage_metadata;
+      if (gm) {
+        const prompt = Number(gm.promptTokenCount || gm.prompt_token_count) || 0;
+        const completion = Number(gm.candidatesTokenCount || gm.candidates_token_count) || 0;
+        const cached = Number(gm.cachedContentTokenCount || gm.cached_content_token_count) || 0;
+        usage = { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion };
+        if (cached > 0) usage.prompt_tokens_details = { cached_tokens: cached };
+      }
+      return out;
+    },
+    flush() {
+      return [{
+        ...chunkBase(id, created, model),
+        choices: [{ index: 0, delta: {}, finish_reason: finishReason }],
+        ...(usage ? { usage } : {}),
+      }];
+    },
+    getUsage() { return usage; },
+  };
+}
+
 // 按上游形态选择转换器。
 export function createChatSSEConverter(conn, model, id, created) {
+  if (conn?.format === 'gemini') return createChatSSEFromGemini(model, id, created);
   if (conn?.format === 'anthropic') return createChatSSEFromAnthropic(model, id, created);
   const path = String(conn?.apiPath || '').toLowerCase();
   if (path.includes('/responses') || conn?.unlockKind === 'codex') return createChatSSEFromResponses(model, id, created);

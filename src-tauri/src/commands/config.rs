@@ -2310,6 +2310,14 @@ pub async fn fetch_models(args: FetchModelsArgs) -> Result<FetchModelsResult, St
     } else {
         normalize_anthropic_api_path(args.path.as_deref())
     };
+    // Vertex AI 没有模型列表接口（Express Key 也不支持），直接返回明确指引：
+    // 否则会对三条不存在的列表路径各打一次 404，把上游 HTML 报错页丢给用户。
+    if fmt == "gemini"
+        && (host.contains("aiplatform.googleapis.com")
+            || chat_path.to_ascii_lowercase().contains("/publishers/google/models"))
+    {
+        return Err("Google Vertex AI 不支持在线拉取模型列表：模型已在模板中预置，也可在编辑页底部手动添加模型 ID".to_string());
+    }
     // 按协议分发凭证头；DeepSeek 的 Anthropic 兼容入口使用 Bearer。
     // 避免把 key 同时塞进两种头发给非预期端点。
     let auth = |req: reqwest::RequestBuilder| {

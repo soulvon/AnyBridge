@@ -165,13 +165,38 @@ describe('applyThinkingToPayload', () => {
     assert.deepEqual(p.reasoning, { effort: 'none' });
   });
 
-  it('resolved 为 null / 非支持协议 → 不修改', () => {
+  it('gemini 3.x/4.x → thinkingLevel（budget 会被上游 400）', () => {
+    const geminiConn = { format: 'gemini', model: 'gemini-4-argon' };
+    const high = {};
+    applyThinkingToPayload(high, geminiConn, { mode: 'level', level: 'high' });
+    assert.deepEqual(high.generationConfig, { thinkingConfig: { thinkingLevel: 'high' } });
+    const medium = {};
+    applyThinkingToPayload(medium, geminiConn, { mode: 'level', level: 'medium' });
+    assert.deepEqual(medium.generationConfig, { thinkingConfig: { thinkingLevel: 'medium' } });
+    // 保留客户端/其它步骤写进 generationConfig 的字段
+    const merged = { generationConfig: { temperature: 0.2 } };
+    applyThinkingToPayload(merged, geminiConn, { mode: 'level', level: 'minimal' });
+    assert.deepEqual(merged.generationConfig, { temperature: 0.2, thinkingConfig: { thinkingLevel: 'low' } });
+    // 3.x/4.x 没有关闭档：off 不注入 thinkingConfig
+    const off = { generationConfig: { temperature: 0.3 } };
+    applyThinkingToPayload(off, geminiConn, { mode: 'off' });
+    assert.deepEqual(off.generationConfig, { temperature: 0.3 });
+  });
+
+  it('gemini 2.5 及更早 → thinkingBudget', () => {
+    const oldConn = { format: 'gemini', model: 'gemini-2.5-flash' };
+    const high = {};
+    applyThinkingToPayload(high, oldConn, { mode: 'level', level: 'high' });
+    assert.deepEqual(high.generationConfig, { thinkingConfig: { thinkingBudget: 16384 } });
+    const off = {};
+    applyThinkingToPayload(off, oldConn, { mode: 'off' });
+    assert.deepEqual(off.generationConfig, { thinkingConfig: { thinkingBudget: 0 } });
+  });
+
+  it('resolved 为 null → 不修改', () => {
     const p = {};
     applyThinkingToPayload(p, anthropicConn, null);
     assert.deepEqual(p, {});
-    const g = {};
-    applyThinkingToPayload(g, { format: 'gemini', model: 'gemini-3.1-pro' }, { mode: 'level', level: 'high' });
-    assert.deepEqual(g, {});
   });
 });
 

@@ -102,7 +102,9 @@ export function attachUpstreamWatchdog(apiReq, {
     }
     armIdle();
     if (apiRes && typeof apiRes.on === 'function') {
-      apiRes.on('data', touch);
+      // 不能监听 'data'：那会把响应流切到 flowing 模式，与调用方的 for-await(SSE 解析)
+      // 竞争，前面的 chunk 会被 watchdog 吞掉（实测 Gemini 流式丢首事件、首字节异常延后）。
+      // idle 计时由消费方在每个事件后 touch() 重置。
       apiRes.on('end', clearAll);
       apiRes.on('close', clearAll);
       apiRes.on('error', clearAll);

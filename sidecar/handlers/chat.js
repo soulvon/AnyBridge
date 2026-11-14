@@ -24,6 +24,7 @@ import { AnthropicStreamProcessor, parseSSEChunk } from './anthropic-stream.js';
 import { OpenAIChatCompletionsStreamProcessor, OpenAIStreamProcessor, parseOpenAISSEChunk } from './openai-stream.js';
 import { wrapEnvelope, endOfStreamEnvelope, endOfStreamErrorEnvelope, streamHeaders, gzipSync, unwrapRequest } from '../connect.js';
 import { getInjectedByUid, getSlot, loadModelMapConfig, loadProviders, resolveTarget, rememberProviderToolSchemaCompat, updateModelCapabilities } from '../provider-pool.js';
+import { sanitizeGeminiSchema } from '../lib/gemini-schema.js';
 import { mitmLog } from '../mitm-logger.js';
 import { getRuntimeModelSlotStatus } from '../rename-models.js';
 import { httpsAgentFor } from '../system-proxy.js';
@@ -741,36 +742,18 @@ function isGeminiModel(model = '') {
   return /gemini/i.test(String(model));
 }
 
-// Gemini(OpenAI 兼容层)对 JSON Schema 支持是子集。
-// 这里递归剔除常见不兼容关键字，避免 INVALID_ARGUMENT 400。
-function sanitizeJsonSchemaForGemini(schema) {
-  if (schema == null || typeof schema !== 'object') return schema;
-  if (Array.isArray(schema)) return schema.map(sanitizeJsonSchemaForGemini);
-
-  const allowed = new Set([
-    'type', 'properties', 'required', 'items', 'description', 'enum',
-    'nullable', 'format', 'minimum', 'maximum', 'minLength', 'maxLength',
-    'minItems', 'maxItems', 'additionalProperties', 'default', 'title'
-  ]);
-
-  const out = {};
-  for (const [k, v] of Object.entries(schema)) {
-    if (!allowed.has(k)) continue;
-    out[k] = sanitizeJsonSchemaForGemini(v);
-  }
-  return out;
-}
-
+// Gemini(OpenAI 兼容层/原生)对 JSON Schema 支持是子集。
+// 清洗实现收敛在 lib/gemini-schema.js，与网关出站（local-proxy）共用同一份。
 function normalizeToolSchema(inputSchema, model, forceGeminiCompat = false) {
   const raw = typeof inputSchema === 'string' ? JSON.parse(inputSchema) : (inputSchema || {});
-  return (forceGeminiCompat || isGeminiModel(model)) ? sanitizeJsonSchemaForGemini(raw) : raw;
+  return (forceGeminiCompat || isGeminiModel(model)) ? sanitizeGeminiSchema(raw) : raw;
 }
 
 function shouldAutoEnableGeminiSchemaCompat(statusCode, errBody = '') {
   if (statusCode !== 400) return false;
   const s = String(errBody || '');
   return /Invalid JSON payload received/i.test(s)
-    && /(exclusiveMinimum|propertyNames|function_declarations)/i.test(s);
+    && /(exclusiveMinimum|propertyNames|function_declarations|\$schema|additionalProperties)/i.test(s);
 }
 
 

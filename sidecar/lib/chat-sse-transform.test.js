@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import {
   createChatSSEFromResponses,
   createChatSSEFromAnthropic,
+  createChatSSEFromGemini,
   createChatSSEPassthrough,
   createChatSSEConverter,
 } from './chat-sse-transform.js';
@@ -135,4 +136,49 @@ test('createChatSSEConverter picks by upstream shape', () => {
   assert.ok(codexUnlock.write({ type: 'response.output_text.delta', delta: 'x' }).length === 1);
   const chat = createChatSSEConverter({ format: 'openai', apiPath: '/v1/chat/completions' }, 'm', ID, CREATED);
   assert.equal(chat.write({ choices: [{ delta: { content: 'y' } }] })[0].choices[0].delta.content, 'y');
+  const gemini = createChatSSEConverter({ format: 'gemini', apiPath: '/v1beta/models/x:streamGenerateContent?alt=sse' }, 'm', ID, CREATED);
+  assert.equal(gemini.write({ candidates: [{ content: { parts: [{ text: 'g' }] } }] })[0].choices[0].delta.content, 'g');
+});
+
+// Gemini SSE 每个事件是增量片段（实测事件文本互不重叠），直接下发即可。
+test('Gemini SSE: 增量片段直接下发，thought 跳过', () => {
+  const c = createChatSSEFromGemini('m', ID, CREATED);
+  const first = c.write({ candidates: [{ content: { parts: [{ text: '1\n2\n' }] } }] });
+  assert.equal(first.length, 1);
+  assert.equal(first[0].choices[0].delta.content, '1\n2\n');
+
+  const second = c.write({ candidates: [{ content: { parts: [{ text: '3\n4\n' }] } }] });
+  assert.equal(second[0].choices[0].delta.content, '3\n4\n', '下一段增量原样下发，不能被截断');
+
+  const thought = c.write({ candidates: [{ content: { parts: [{ text: 'thinking...', thought: true }] } }] });
+  assert.equal(thought.length, 0, 'thought 片段不进正文');
+
+  const mixed = c.write({ candidates: [{ content: { parts: [{ text: 'hmm', thought: true }, { text: '5\n' }] } }] });
+  assert.equal(mixed[0].choices[0].delta.content, '5\n', '同一事件里只取非 thought 文本');
+});
+
+test('Gemini SSE: 工具调用去重 + finish/usage（含缓存命中）', () => {
+  const c = createChatSSEFromGemini('m', ID, CREATED);
+  const call = { functionCall: { name: 'read_file', args: { path: 'a.txt' } } };
+  const first = c.write({ candidates: [{ content: { parts: [call] } }] });
+  assert.equal(first[0].choices[0].delta.tool_calls[0].function.name, 'read_file');
+  assert.equal(first[0].choices[0].delta.tool_calls[0].function.arguments, JSON.stringify({ path: 'a.txt' }));
+
+  const duplicate = c.write({ candidates: [{ content: { parts: [call] } }] });
+  assert.equal(duplicate.length, 0, '同一调用在后续快照里不重复发');
+
+  c.write({
+    candidates: [{ content: { parts: [call] }, finishReason: 'STOP' }],
+    usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 3, cachedContentTokenCount: 4 },
+  });
+  const flushed = c.flush();
+  assert.equal(flushed[0].choices[0].finish_reason, 'tool_calls');
+  assert.equal(flushed[0].usage.total_tokens, 13);
+  assert.deepEqual(flushed[0].usage.prompt_tokens_details, { cached_tokens: 4 });
+});
+
+test('Gemini SSE: MAX_TOKENS 映射为 length', () => {
+  const c = createChatSSEFromGemini('m', ID, CREATED);
+  c.write({ candidates: [{ content: { parts: [{ text: 'x' }] }, finishReason: 'MAX_TOKENS' }] });
+  assert.equal(c.flush()[0].choices[0].finish_reason, 'length');
 });

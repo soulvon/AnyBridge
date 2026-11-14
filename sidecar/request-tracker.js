@@ -13,7 +13,7 @@
 //
 // 明确不做：本模块不写文件、不碰网络。明细账本由 usage-ledger.js 消费 finish 结果。
 
-import { recordError, recordLatency, recordRequest, recordRetry, recordUsage } from './stats.js';
+import { recordError, recordLatency, recordRecentOutcome, recordRequest, recordRetry, recordUsage } from './stats.js';
 import { appendRecord } from './usage-ledger.js';
 
 const STATUSES = new Set(['ok', 'failed', 'rejected', 'aborted']);
@@ -64,6 +64,10 @@ export class RequestTracker {
 
     this.finalized = false;
     this.openAttempt = -1;
+    /** 是否流式请求（审计表要显示「流式」标记；流式的真实 tokens 在出口收尾时再补） */
+    this.streamMode = false;
+    /** 审计表条目 id：beginAttempt 时由 recordRequest 返回，finish 按 id 回补展示字段 */
+    this.recentRequestId = null;
   }
 
   // 与 chat.js 的 messageId 绑定，供日志/明细关联。首个绑定生效。
@@ -102,7 +106,9 @@ export class RequestTracker {
     this.servedModel = model;
 
     // 与旧实现一致：attempt 开始即 +1 requests。
-    recordRequest({ provider, requestedModel: this.requestedModel, resolvedModel: model });
+    const recentId = recordRequest({ provider, requestedModel: this.requestedModel, resolvedModel: model });
+    attempt.recentRequestId = recentId;
+    this.recentRequestId = recentId;
     return this;
   }
 
@@ -221,9 +227,30 @@ export class RequestTracker {
       recordError({
         provider: this.provider || this.errorKind,
         message: this.errorMessage || this.errorKind,
+        requestId: this.recentRequestId,
       });
     }
     // aborted 只进 requests，不进 errors。
+
+    // 审计表：把本次结果回补到对应条目（消耗/耗时/流式/状态码）。
+    // 流式的 usage 此刻还是 0，由出口收尾时按 same requestId 再补一次。
+    // 失败请求也要落状态码与耗时，否则审计表整行只有「—」，排查时看不出是哪一步死的。
+    if (this.recentRequestId) {
+      const lastAttempt = this.attempts[this.attempts.length - 1] || null;
+      const statusCode = okAttempt?.statusCode ?? lastAttempt?.statusCode ?? null;
+      const latency = Number.isFinite(this.latencyMs)
+        ? this.latencyMs
+        : (Number(lastAttempt?.ms) || 0);
+      recordRecentOutcome({
+        requestId: this.recentRequestId,
+        inputTokens: this.usage.input,
+        outputTokens: this.usage.output,
+        cachedTokens: this.usage.cacheRead,
+        latencyMs: latency,
+        stream: this.streamMode === true,
+        statusCode,
+      });
+    }
 
     if (this.retries.count > 0) {
       recordRetry({ count: this.retries.count, reason: this.retries.lastReason, provider: this.provider });

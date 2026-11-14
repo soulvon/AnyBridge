@@ -199,6 +199,22 @@
               </section>
             </div>
 
+            <!-- 4.5 Token 活动热力图 -->
+            <section class="ez-card">
+              <div class="ez-card-header" style="flex-wrap: wrap; gap: 12px; align-items: center;">
+                <div>
+                  <h2 class="ez-card-title">Token 活动</h2>
+                  <span class="ez-card-subtitle">最近 53 周每日消耗，颜色越深用量越大</span>
+                </div>
+                <div id="statsHeatmapKpis" style="display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; align-items: center;">
+                  <span class="ez-badge" id="statsHeatmapTotal">—</span>
+                </div>
+              </div>
+              <div id="statsTokenHeatmap" style="padding: 8px 20px 18px; overflow-x: auto;">
+                <div class="ez-skel-bone" style="height: 110px; border-radius: 8px;"></div>
+              </div>
+            </section>
+
             <!-- 5. 实时调用审计流 (结构化表格) -->
             <section class="ez-card">
               <div class="ez-card-header">
@@ -210,14 +226,14 @@
               </div>
 
               <div class="ez-table-wrap">
-                <table class="ez-table" aria-label="请求调用明细">
+                <table class="ez-table" aria-label="请求调用明细" style="table-layout: auto;">
                   <thead>
                     <tr>
-                      <th style="width: 95px;">请求时间</th>
-                      <th style="width: 75px;">终态</th>
-                      <th style="width: 130px;">出口通道</th>
+                      <th style="width: 85px; white-space: nowrap;">请求时间</th>
+                      <th style="width: 60px; white-space: nowrap;">终态</th>
+                      <th style="width: 160px; white-space: nowrap;">出口通道</th>
                       <th>路由映射 (请求 → 实际)</th>
-                      <th style="width: 100px; text-align: right;">消耗 / 耗时</th>
+                      <th style="min-width: 200px; text-align: right; white-space: nowrap;">消耗 / 耗时</th>
                     </tr>
                   </thead>
                   <tbody id="statsRecentTbody">

@@ -283,8 +283,19 @@ globalThis.applyProviderPreset = function (id) {
   globalThis.PROVIDER_PRESET_ACTIVE_ID = preset.id;
   if (typeof onFormatChange === 'function') onFormatChange();
   if (typeof syncFormatDropdownUi === 'function') syncFormatDropdownUi(preset.format || 'auto');
+  // Vertex 这类需要完整资源路径的供应商：预设带 path 时直接写入隐藏字段（{project} 由用户替换）
+  const pathEl = document.getElementById('pf-path');
+  if (pathEl && preset.path) pathEl.value = withPresetRegion(preset.path, preset.defaultRegion || '');
+  // 拿不到模型列表接口的供应商（Vertex Express）：预设自带实测模型清单，一键勾选
+  if (Array.isArray(preset.models) && preset.models.length && typeof globalThis.applyPresetModels === 'function') {
+    globalThis.applyPresetModels(preset.models, preset.defaultModel);
+  }
   renderProviderPresetStatus(preset);
   setProviderPresetModal(false);
+  // 预设可能写入 Vertex 资源路径：同步「获取模型列表」的可用状态
+  if (typeof globalThis.syncVertexModelListHint === 'function') globalThis.syncVertexModelListHint();
+  // 预设声明了地区：长出「地区下拉 + 测速」一行
+  if (typeof globalThis.syncVertexRegionPicker === 'function') globalThis.syncVertexRegionPicker();
 
   // 免密供应商直接引导去拉模型，其余先填密钥
   const target = preset.noKey
@@ -292,6 +303,156 @@ globalThis.applyProviderPreset = function (id) {
     : document.getElementById('pf-key');
   if (target && typeof target.focus === 'function') target.focus();
 };
+
+// ── Vertex 地区选择与测速 ──
+// Express Key 的模型按地区部署（Gemini 4 只在 global/us/eu 可用），各地延迟差异明显。
+// 这里给一行「地区下拉 + 测速」：测速用最便宜的 flash-lite 打一发，按耗时排序并自动切到最快。
+function withPresetRegion(template, region) {
+  return String(template || '').replace('{region}', region || 'global');
+}
+
+function vertexRegionFromPath(pathValue) {
+  const m = String(pathValue || '').match(/\/locations\/([^/]+)\//);
+  return m ? m[1] : '';
+}
+
+function rewriteVertexRegion(pathValue, region) {
+  const text = String(pathValue || '');
+  if (!region || !/\/locations\/[^/]+\//.test(text)) return text;
+  return text.replace(/\/locations\/[^/]+\//, `/locations/${region}/`);
+}
+
+/** 当前是否处于 Vertex 场景：模板声明了 regions，或路径/地址本身指向 Vertex。 */
+function activeVertexRegionPreset() {
+  const providers = (globalThis.PROVIDER_PRESET_CATALOG || {}).providers || [];
+  const activeId = String(globalThis.PROVIDER_PRESET_ACTIVE_ID || '');
+  const byActive = providers.find((p) => p.id === activeId);
+  if (byActive && Array.isArray(byActive.regions) && byActive.regions.length) return byActive;
+  const pathValue = document.getElementById('pf-path')?.value || '';
+  const hostValue = document.getElementById('pf-host')?.value || '';
+  if (/\/publishers\/google\/models/.test(pathValue) || /aiplatform\.googleapis\.com/.test(hostValue)) {
+    return providers.find((p) => p.id === 'vertexai' && Array.isArray(p.regions)) || null;
+  }
+  return null;
+}
+
+globalThis.syncVertexRegionPicker = function () {
+  const preset = activeVertexRegionPreset();
+  const hostEl = document.getElementById('pf-host');
+  const field = hostEl && hostEl.closest('.field');
+  if (!field) return;
+  const existing = document.getElementById('pf-vertex-region-row');
+  if (!preset) {
+    if (existing) existing.remove();
+    return;
+  }
+  const pathEl = document.getElementById('pf-path');
+  // 编辑已有卡时 pf-path 可能为空、完整路径在显示用的 API 地址里，两处都要反解
+  const current = vertexRegionFromPath(pathEl && pathEl.value)
+    || vertexRegionFromPath(hostEl && hostEl.value)
+    || preset.defaultRegion
+    || preset.regions[0].id;
+  const options = preset.regions
+    .map((r) => `<option value="${escAttr(r.id)}">${escapeHtml(r.label || r.id)}</option>`)
+    .join('');
+  let row = existing;
+  if (!row) {
+    row = document.createElement('div');
+    row.id = 'pf-vertex-region-row';
+    row.style.cssText = 'display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--text-secondary);';
+    const label = document.createElement('span');
+    label.textContent = '地区';
+    label.style.cssText = 'white-space:nowrap;';
+    const select = document.createElement('select');
+    select.id = 'pf-vertex-region';
+    select.style.cssText = 'height:30px; padding:0 8px; border-radius:8px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:12px;';
+    select.addEventListener('change', () => {
+      const target = document.getElementById('pf-path');
+      if (target) target.value = rewriteVertexRegion(target.value, select.value);
+      const resultEl = document.getElementById('pf-vertex-latency-result');
+      if (resultEl) resultEl.textContent = '';
+    });
+    const probeBtn = document.createElement('button');
+    probeBtn.type = 'button';
+    probeBtn.id = 'pf-vertex-latency';
+    probeBtn.textContent = '测速';
+    probeBtn.style.cssText = 'height:30px; padding:0 10px; border-radius:8px; border:1px solid var(--border); background:var(--bg-card); color:var(--text-primary); font-size:12px; cursor:pointer;';
+    probeBtn.addEventListener('click', () => probeVertexRegions(preset));
+    const resultEl = document.createElement('span');
+    resultEl.id = 'pf-vertex-latency-result';
+    row.append(label, select, probeBtn, resultEl);
+    field.insertAdjacentElement('afterend', row);
+  }
+  const select = row.querySelector('#pf-vertex-region');
+  if (select) {
+    select.innerHTML = options;
+    if (preset.regions.some((r) => r.id === current)) select.value = current;
+  }
+};
+
+/** 用最便宜的轻量模型并发探测各地区，按耗时排序并把路径切到最快地区。 */
+async function probeVertexRegions(preset) {
+  const call = typeof invoke === 'function' ? invoke : null;
+  const resultEl = document.getElementById('pf-vertex-latency-result');
+  const btn = document.getElementById('pf-vertex-latency');
+  const setResult = (text) => { if (resultEl) resultEl.textContent = text; };
+  if (!call) { setResult('应用通道未就绪'); return; }
+  const hostValue = (document.getElementById('pf-host')?.value || '').trim();
+  const apiKey = (document.getElementById('pf-key')?.value || '').trim();
+  const pathValue = document.getElementById('pf-path')?.value || '';
+  if (!hostValue || !apiKey) { setResult('先填 API 地址与密钥再测速'); return; }
+  if (hostValue.includes('{project}') || pathValue.includes('{project}')) { setResult('先把路径里的 {project} 换成项目 ID'); return; }
+  // 编辑已有卡时「API 地址」框是 host+path 拼接的显示值：正则抓出完整资源路径，host 取 origin
+  const joined = `${hostValue} ${pathValue}`;
+  const pathMatch = joined.match(/\/v1\/projects\/[^/\s]+\/locations\/[^/\s]+\/publishers\/google\/models/);
+  const basePath = pathMatch ? pathMatch[0] : '';
+  if (!basePath) { setResult('没解析出 Vertex 资源路径，检查 API 地址是否完整'); return; }
+  const apiHost = (typeof globalThis.providerEndpointParts === 'function'
+    ? globalThis.providerEndpointParts(hostValue, 'gemini', pathValue || null).apiHost
+    : hostValue.replace(/\/v1\/.*$/, ''));
+  const model = preset.probeModel || 'gemini-3.5-flash-lite';
+  const regions = preset.regions.slice();
+  if (btn) { btn.disabled = true; btn.textContent = '测速中…'; }
+  setResult(`正在用 ${model} 探测 ${regions.length} 个地区…`);
+  const results = [];
+  const queue = regions.slice();
+  const worker = async () => {
+    while (queue.length) {
+      const region = queue.shift();
+      const started = Date.now();
+      try {
+        const r = await call('test_connection', {
+          args: {
+            host: apiHost,
+            api_key: apiKey,
+            path: rewriteVertexRegion(basePath, region.id),
+            api_format: 'gemini',
+            model,
+          },
+        });
+        results.push({ region: region.id, label: region.label || region.id, ms: Number(r && r.latencyMs) || (Date.now() - started) });
+      } catch (err) {
+        results.push({ region: region.id, label: region.label || region.id, ms: Infinity, error: String(err || '') });
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  const ok = results.filter((r) => Number.isFinite(r.ms)).sort((a, b) => a.ms - b.ms);
+  const failed = results.length - ok.length;
+  if (btn) { btn.disabled = false; btn.textContent = '测速'; }
+  if (!ok.length) {
+    const firstError = (results.find((r) => r.error) || {}).error || '';
+    setResult(`所有地区都失败：${firstError.slice(0, 120) || '检查密钥与网络'}`);
+    return;
+  }
+  const fastest = ok[0];
+  const summary = ok.map((r) => `${r.label} ${(r.ms / 1000).toFixed(1)}s`).join(' · ');
+  setResult(`${summary}${failed ? `｜${failed} 个失败` : ''}（已选最快：${fastest.label}）`);
+  const select = document.getElementById('pf-vertex-region');
+  if (select && regions.some((r) => r.id === fastest.region)) select.value = fastest.region;
+  const pathEl = document.getElementById('pf-path');
+  if (pathEl) pathEl.value = rewriteVertexRegion(basePath, fastest.region);
+}
 
 globalThis.resetProviderPresetUi = function (isNewProvider) {
   const field = document.getElementById('providerPresetField');
