@@ -7,7 +7,7 @@ use std::{
 
 use hudsucker::{
     certificate_authority::RcgenAuthority,
-    hyper::{header, Method, Request, Response, StatusCode, Uri},
+    hyper::{Method, Request, Uri},
     rustls::crypto::aws_lc_rs,
     Body, HttpContext, HttpHandler, Proxy, RequestOrResponse,
 };
@@ -148,18 +148,16 @@ impl HttpHandler for CursorRelay {
         if is_cursor_host(original.host().unwrap_or_default())
             && is_agent_run_websocket_upgrade(request.method(), original.path())
         {
-            // Cursor 3.27+/3.29+ 的 GET /agent/v1/run 是 WebSocket Upgrade（云端命令订阅 /
-            // Agent Run 传输）。BootstrapStatsig 门禁补丁会把客户端钉回 RunSSE 运行时，
-            // 但补丁依赖客户端缓存且 agent-host 有独立 gate 集合，残留升级请求仍可能出现：
-            // 回 501 + Connection: close 让 transport 明确回退 RunSSE。401 会被客户端当成
-            // 鉴权失败反复重试（Cursor 3.29.9 登录态实测口径）。
+            // Cursor 3.29.15 起客户端不再遵守 Statsig 门禁：登录官方账号后强制走
+            // Agent Run WebSocket，把 501 当成可重试错误，无限重连并最终报
+            // Connection stalled（issue #43 实测）。这里放行透传，让客户端自己完成
+            // 传输协商；推理请求仍由本地 BidiAppend / RunSSE 接管。
             tracing::info!(
                 target: "cursor_relay",
                 stage = "http",
                 path = CLOUD_AGENT_RUN_PATH,
-                "Agent Run WebSocket 本地禁用（强制回退 RunSSE 运行时）"
+                "Agent Run WebSocket 放行透传"
             );
-            return RequestOrResponse::Response(agent_run_websocket_disabled());
         }
         request.into()
     }
@@ -248,23 +246,9 @@ fn should_route_locally(path: &str, tab_mode: TabMode) -> bool {
 /// Agent Run 的 WebSocket 传输端点。
 const CLOUD_AGENT_RUN_PATH: &str = "/agent/v1/run";
 
-/// Agent Run 的 WebSocket 升级判定：GET + 路径。门禁补丁正常生效时客户端不该再发，
-/// 这里是「补丁未覆盖时的兜底闸门」。
+/// Agent Run 的 WebSocket 升级判定：GET + 路径，仅用于留痕。
 fn is_agent_run_websocket_upgrade(method: &Method, path: &str) -> bool {
     method == Method::GET && path == CLOUD_AGENT_RUN_PATH
-}
-
-/// 拒绝 Agent Run WebSocket 的固定答复：501 + Connection: close。
-/// 501 让客户端把该传输视为「未实现」干净回退 RunSSE；401 会被当成鉴权失败重试。
-fn agent_run_websocket_disabled() -> Response<Body> {
-    Response::builder()
-        .status(StatusCode::NOT_IMPLEMENTED)
-        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .header(header::CONNECTION, "close")
-        .body(Body::from(
-            "Agent Run WebSocket is disabled by the local BYOK gateway; use RunSSE.\n",
-        ))
-        .expect("static WebSocket rejection is well formed")
 }
 
 /// fallback 留痕：未命中本地路由的 Cursor 请求路径，去重后各记一条。
@@ -313,9 +297,8 @@ mod tests {
     }
 
     #[test]
-    fn agent_run_websocket_upgrade_is_detected_and_rejected_with_501() {
-        // 兜底闸门：门禁补丁未覆盖到的残留升级请求（GET /agent/v1/run）必须被 501 拒掉，
-        // 让客户端回退 RunSSE；非 GET 的同路径请求不受影响（保持原有转发语义）
+    fn agent_run_websocket_upgrade_is_detected_for_passthrough_logging() {
+        // 放行后该判定只用于留痕：GET /agent/v1/run 命中，其余方法与路径不命中。
         assert!(is_agent_run_websocket_upgrade(&Method::GET, "/agent/v1/run"));
         assert!(!is_agent_run_websocket_upgrade(
             &Method::POST,
@@ -325,12 +308,5 @@ mod tests {
             &Method::GET,
             "/agent/v1/other"
         ));
-
-        let response = agent_run_websocket_disabled();
-        assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
-        assert_eq!(
-            response.headers().get(header::CONNECTION),
-            Some(&header::HeaderValue::from_static("close"))
-        );
     }
 }
