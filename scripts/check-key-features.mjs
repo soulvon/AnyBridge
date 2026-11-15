@@ -375,6 +375,8 @@ section('提交卫生（不该提交的不提交）');
     /^docs\/subsystems\/[a-z0-9-]+\.md$/i,
     /(^|\/)README\.md$/i,
     /^\.github\/pull_request_template\.md$/i,
+    // 对外隐私政策：随应用形态长期维护（包管理器审核要求公开），属说明文档
+    /^PRIVACY\.md$/i,
     /^cursor-core\/prompt\//,        // 运行时提示词模板（程序资源）
     /^cursor-core\/UPSTREAM\.md$/i,  // 上游来源说明
     /^sidecar\/prompts\//,           // 运行时 prompt
