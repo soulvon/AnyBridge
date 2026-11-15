@@ -570,6 +570,12 @@ function officialRequestWithHardTimeout(host, options, payload, onResponse, time
   });
 }
 
+// 握手转发第二轮竞速前的退避：覆盖 DNS 重解析与代理切换后的连接恢复窗口
+const HANDSHAKE_RETRY_DELAY_MS = 700;
+function handshakeRetryDelay() {
+  return new Promise(resolve => setTimeout(resolve, HANDSHAKE_RETRY_DELAY_MS));
+}
+
 function officialRequestOnce(host, req, payload, pathname, search, timeoutMs) {
   return officialRequestWithHardTimeout(
     host,
@@ -825,11 +831,19 @@ export async function fetchOfficialAntigravityRaw(req, body, pathname) {
     ? Buffer.from('{}', 'utf8')
     : (Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf8'));
   const started = Date.now();
-  const ok = await raceOfficialSuccess(
+  const attempt = () => raceOfficialSuccess(
     OFFICIAL_ANTIGRAVITY_HOSTS.map(host =>
       officialRequestOnce(host, req, payload, pathname, url.search, 6000)
     ),
   );
+  let ok = await attempt();
+  if (!ok) {
+    // 瞬时网络抖动（DNS 解析失败 / 代理切换 / TLS 握手被断）会让首轮竞速全灭；
+    // 握手四件套若直接跌进 mock 兜底，LS 会拿到残缺账号信息。退避后补一轮竞速，
+    // 把瞬时抖动消在网关侧（2026-11-15 真机：每次代理切换后四件套成批失败）。
+    await handshakeRetryDelay();
+    ok = await attempt();
+  }
   if (!ok) {
     logHandshake(`${pathname} → 全部 host 失败/超时 (${Date.now() - started}ms)`);
     return null;
@@ -895,11 +909,17 @@ export async function fetchOfficialAntigravityJson(req, body, pathname) {
   const payload = body === undefined || body === null
     ? Buffer.from('{}', 'utf8')
     : (Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf8'));
-  const results = await Promise.all(
+  const attempt = () => Promise.all(
     OFFICIAL_ANTIGRAVITY_HOSTS.map(host =>
       officialRequestOnce(host, req, payload, pathname, url.search, 15000)
     )
   );
+  let results = await attempt();
+  if (!results.some(r => r && r.statusCode >= 200 && r.statusCode < 300 && r.body)) {
+    // 同 Raw 版：瞬时抖动下补一轮竞速，避免握手类后处理拿到 null 后跌进残缺数据
+    await handshakeRetryDelay();
+    results = await attempt();
+  }
   const ok = results.find(r => r && r.statusCode >= 200 && r.statusCode < 300 && r.body);
   if (!ok) return null;
   try {

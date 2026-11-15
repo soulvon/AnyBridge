@@ -613,6 +613,19 @@
       "severity": "high"
     },
     {
+      "id": "antigravity-handshake-forward-single-attempt",
+      "title": "握手转发必须带第二轮竞速退避，瞬时网络抖动不得跌进 mock 兜底",
+      "symptom": "代理切换 / DNS 抖动 / TLS 握手被断时首轮竞速全灭，握手四件套（loadCodeAssist / fetchUserInfo / fetchAdminControls / unknownProbingMethod）直接回落 mock，语言服务拿到残缺账号信息，IDE 表现为账号与能力异常；真机 11 月每月每天都有成批失败，峰值单日 148 次",
+      "lesson": "fetchOfficialAntigravityRaw 与 fetchOfficialAntigravityJson 必须在首轮竞速全灭后退避 700ms（HANDSHAKE_RETRY_DELAY_MS）补一轮竞速，把瞬时抖动消在网关侧；mock 只作最终兜底。AI 对话路由已有 5 次智能重试（RETRYABLE_CODES），握手转发不得成为无重试孤岛",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/antigravity-handler.js",
+        "must_contain": "handshakeRetryDelay"
+      },
+      "regression_test": "",
+      "severity": "high"
+    },
+    {
       "id": "cursor-free-login-seven-keys",
       "title": "免登录必须注入完整 7 键（含会员/订阅状态），只写 token 不够",
       "symptom": "只注入 accessToken/refreshToken 时客户端 auth 轮询仍拿不到凭证，Auth init timeout，agent 请求一次都不发——模型列表可见但发消息永远转圈",
