@@ -21,8 +21,6 @@ use crate::{config::managed_data_dir, Error, Result};
 
 const EMAIL: &str = "cursor@ai.com";
 
-/// Cursor 3.27 把真实登录 token 存成 `cursor-safe-storage:v1:...` 的加密形态。
-const SAFE_STORAGE_PREFIX: &str = "cursor-safe-storage";
 const SIGN_UP_TYPE: &str = "Google";
 const SUBJECT: &str = "cursor-local-user";
 const MEMBERSHIP_TYPE: &str = "ultra";
@@ -200,16 +198,17 @@ async fn write_ledger(
 
 /// 是否保留当前登录态、跳过注入。
 ///
-/// 只有「已经是本地账号 token」这一种情况才跳过；真实的 3.27 登录
-/// （`cursor-safe-storage:v1:...`）必须注入本地账号 —— 客户端只有在这个
-/// 本地账号下才不会拿官方模型目录校验自定义模型 ID，否则发消息会被拦在
-/// `Unknown model ID`，请求根本发不到服务端（2026-11-02 实测）。
+/// 混合模式（2026-11-15 恢复 2f6e3d2f 语义）：任何非空、非本地 token 都保留，
+/// 含 Cursor 3.27+ 的 safe-storage 加密登录。解锁靠门禁强制摁回 RunSSE
+/// （haxsd PR #9 同款方案）+ 模型清单注入 + MITM 接管，与账号无关。
+/// 此前「保留真实登录会被拦在 Unknown model ID」的结论是 3.27 时代没有门禁
+/// 方案时得出的（2026-11-02 实测），3.29.15 上两轮对话实测不再复现。
 ///
-/// 真实 token 会在覆盖前写入账本，关闭接管时按账本无条件还原
-/// （见 `restore_at` 里的 `still_injected_account` 判定），身份不会丢。
+/// 只有未登录（token 缺失/空/已是本地账号）才注入本地账号，注入前落账本；
+/// 关闭接管时按账本还原（restore_at 保留，兼容旧版本注入过的现场）。
 fn keeps_existing_login(value: &str, token: &str) -> bool {
     let value = value.trim();
-    !value.is_empty() && value != token && !value.starts_with(SAFE_STORAGE_PREFIX)
+    !value.is_empty() && value != token
 }
 
 async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
@@ -394,11 +393,10 @@ mod tests {
         value
     }
 
-    /// 真实登录（含 3.27 的 safe-storage 加密 token）必须被注入本地账号：
-    /// 客户端只有在本地账号下才不校验官方模型目录，否则发消息被拦在
-    /// `Unknown model ID`。覆盖前真号落账本，关闭时还原。
+    /// 混合模式：真实登录（含 3.27 的 safe-storage 加密 token）必须原样保留，
+    /// 不注入本地账号（2026-11-15 恢复；解锁靠门禁与 MITM 接管，与账号无关）。
     #[tokio::test]
-    async fn real_login_is_replaced_but_backed_up() {
+    async fn real_login_is_kept_in_hybrid_mode() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
         let ledger = dir.path().join(LEDGER_FILE_NAME);
@@ -407,29 +405,41 @@ mod tests {
 
         inject_if_missing_at(&path, &ledger).await.unwrap();
 
-        let injected = read(&path, "cursorAuth/accessToken").await;
-        assert_ne!(injected.as_deref(), Some(real), "真实 token 应被本地账号替换");
-        assert!(ledger.exists(), "覆盖真实登录前必须落账本");
-        let saved = tokio::fs::read_to_string(&ledger).await.unwrap();
-        assert!(saved.contains(real), "账本必须保存真实 token 原值");
+        let kept = read(&path, "cursorAuth/accessToken").await;
+        assert_eq!(kept.as_deref(), Some(real), "真实 token 必须原样保留");
+        assert!(!ledger.exists(), "未注入就不该落账本");
     }
 
-    /// 关键回归：Cursor 会把注入的本地 token 刷新成新 JWT，
-    /// 此时「当前值 ≠ 注入值」但身份仍是本地账号，关闭接管必须照常还原，
-    /// 否则用户真实登录永久丢失（2026-11-02 事故）。
+    /// 关键回归（旧版本注入过的现场）：Cursor 会把注入的本地 token 刷新成新 JWT，
+    /// 此时「当前值 ≠ 注入值」但身份仍是本地账号，按旧账本还原必须照常执行，
+    /// 否则用户真实登录永久丢失（2026-11-02 事故）。还原逻辑保留以兼容存量现场。
     #[tokio::test]
-    async fn restores_real_login_even_after_cursor_refreshed_the_token() {
+    async fn restores_real_login_from_legacy_ledger_even_after_token_refresh() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("state.vscdb");
         let ledger = dir.path().join(LEDGER_FILE_NAME);
         let real = "cursor-safe-storage:v1:real-user-token";
-        seed(&path, &[("cursorAuth/accessToken", real), ("cursorAuth/cachedEmail", "me@example.com")]).await;
-
-        inject_if_missing_at(&path, &ledger).await.unwrap();
-
-        // 模拟 Cursor 刷新 token：邮箱仍是我们注入的本地账号
-        let refreshed = "eyJhbGciOiJIUzI1NiJ9.refreshed-by-cursor.signature";
-        seed(&path, &[("cursorAuth/accessToken", refreshed)]).await;
+        // 模拟旧版本注入过的现场：账本已落、库里是本地账号，且 token 已被刷新
+        let ledger_json = serde_json::json!({
+            "version": 1,
+            "original": {
+                "cursorAuth/accessToken": real,
+                "cursorAuth/cachedEmail": "me@example.com"
+            },
+            "applied": {
+                "cursorAuth/accessToken": "eyJhbGciOiJIUzI1NiJ9.local-injected-by-old-build",
+                "cursorAuth/cachedEmail": EMAIL
+            }
+        });
+        tokio::fs::write(&ledger, ledger_json.to_string()).await.unwrap();
+        seed(
+            &path,
+            &[
+                ("cursorAuth/accessToken", "eyJhbGciOiJIUzI1NiJ9.refreshed-by-cursor.signature"),
+                ("cursorAuth/cachedEmail", EMAIL),
+            ],
+        )
+        .await;
 
         let outcome = restore_at(&path, &ledger).await.unwrap();
         assert!(

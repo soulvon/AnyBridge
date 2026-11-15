@@ -590,13 +590,13 @@
       "id": "cursor-free-login-safe-storage-overwrite",
       "title": "注入本地账号前必须落账本，关闭接入时按身份无条件还原",
       "symptom": "1) 把 safe-storage 当残留直接覆盖且不落账本 → 账号当场丢失；2) 还原时用「当前值 != 注入值」判定用户是否改过账号，而 Cursor 会把注入的 token 刷新成新 JWT，该判据恒为真，还原被整段跳过 → 真实登录永久丢失（2026-11-02 实测）",
-      "lesson": "3.27 的真实登录（cursor-safe-storage）需要被注入本地账号，否则客户端会拿官方模型目录校验自定义模型 ID，发消息被拦在 Unknown model ID，请求根本发不出去。代价必须用账本兜住：覆盖前逐键落盘，关闭时按「缓存邮箱是否仍是本地账号」判断——是就无条件还原（token 被刷新也算），只有用户真的换成别的账号才保留其改动。行为由 restores_real_login_even_after_cursor_refreshed_the_token 锁定",
+      "lesson": "3.27 的真实登录（cursor-safe-storage）历史上需要注入本地账号，否则客户端会拿官方模型目录校验自定义模型 ID，发消息被拦在 Unknown model ID（2026-11-02 实测）。2026-11-15 起恢复混合模式（2f6e3d2f 语义，haxsd PR #9 同款门禁方案）：门禁强制摁回 RunSSE + 模型清单注入 + MITM 接管后，保留真实登录不再触发该校验（Cursor 3.29.15 实测两轮通过），keeps_existing_login 恢复保留全部真实登录；注入仅用于未登录用户。覆盖前逐键落盘、关闭时按「缓存邮箱是否仍是本地账号」无条件还原的账本机制保留，用于兼容旧版本注入过的现场。行为由 real_login_is_kept_in_hybrid_mode 与 restores_real_login_from_legacy_ledger_even_after_token_refresh 锁定",
       "check": {
         "type": "source_contains",
         "file": "cursor-core/src/local_app/account.rs",
         "must_contain": "async fn still_injected_account"
       },
-      "regression_test": "cursor-core/src/local_app/account.rs::restores_real_login_even_after_cursor_refreshed_the_token",
+      "regression_test": "cursor-core/src/local_app/account.rs::restores_real_login_from_legacy_ledger_even_after_token_refresh",
       "severity": "high"
     },
     {
