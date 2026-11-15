@@ -610,21 +610,27 @@ export async function fetchOfficialAntigravityModels(req, body) {
     const payload = body === undefined || body === null
       ? Buffer.from('{}', 'utf8')
       : (Buffer.isBuffer(body) ? body : Buffer.from(typeof body === 'string' ? body : JSON.stringify(body), 'utf8'));
-    const results = await Promise.all(
+    const attempt = () => Promise.all(
       OFFICIAL_ANTIGRAVITY_HOSTS.map(host =>
         officialRequestOnce(host, req, payload, '/v1internal:fetchAvailableModels', url.search, 15000)
       )
     );
-    const ok = results.find(r => r && r.statusCode >= 200 && r.statusCode < 300 && r.body);
-    if (ok) {
+    const parseOk = (results) => {
+      const ok = results.find(r => r && r.statusCode >= 200 && r.statusCode < 300 && r.body);
+      if (!ok) return null;
       try {
         const parsed = JSON.parse(ok.body.toString('utf8'));
         if (parsed && typeof parsed.models === 'object' && !Array.isArray(parsed.models)) {
           return parsed;
         }
       } catch {}
-    }
-    return null;
+      return null;
+    };
+    const first = parseOk(await attempt());
+    if (first) return first;
+    // 模型列表是 LS 启动的关键输入：瞬时抖动下补一轮，避免下拉空窗与模型丢失
+    await handshakeRetryDelay();
+    return parseOk(await attempt());
   });
 }
 
@@ -647,48 +653,57 @@ export async function forwardToOfficialAntigravity(req, res, { body, customPath,
     payload = Buffer.from(typeof payload === 'string' ? payload : JSON.stringify(payload), 'utf8');
   }
 
-  for (let i = 0; i < hosts.length; i++) {
-    const host = hosts[i];
-    const isLast = i === hosts.length - 1;
-    try {
-      const handled = await officialRequestWithHardTimeout(
-        host,
-        {
-          path: fullPath,
-          method: req.method,
-          headers: officialHeaders(req.headers, payload, host),
-          rejectUnauthorized: true,
-          timeout: OFFICIAL_ATTEMPT_TIMEOUT_MS,
-        },
-        payload,
-        (fwdRes, finish, clearHardTimer) => {
-          // 如果官方返回 401 / 403 且提供了兜底回调，立即优雅切换到兜底响应，绝不向客户端下发 401 导致掉登录
-          if ((fwdRes.statusCode === 401 || fwdRes.statusCode === 403) && typeof onFailed === 'function') {
-            fwdRes.resume();
-            finish(false);
-            return;
-          }
-          // 响应头已到达并即将开始下发，取消硬超时，避免数十秒的长流式生成被中途掐断
-          if (typeof clearHardTimer === 'function') clearHardTimer();
-          const resHeaders = { ...fwdRes.headers };
-          resHeaders['access-control-allow-origin'] = '*';
-          resHeaders['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
-          resHeaders['access-control-allow-headers'] = '*';
+  // 两轮：首轮 3 host 串行全灭后，只要客户端还没收到任何字节（headersSent=false），
+  // 退避后再跑一轮，把 DNS / 代理切换 / TLS 握手被断这类瞬时抖动消在网关侧。
+  // 已经 pipe 出响应头就不能重试——流式语义只允许一次下发。
+  for (let round = 0; round < 2; round++) {
+    if (round > 0) {
+      if (res.headersSent) return;
+      await handshakeRetryDelay();
+    }
+    for (let i = 0; i < hosts.length; i++) {
+      const host = hosts[i];
+      const isLast = i === hosts.length - 1;
+      try {
+        const handled = await officialRequestWithHardTimeout(
+          host,
+          {
+            path: fullPath,
+            method: req.method,
+            headers: officialHeaders(req.headers, payload, host),
+            rejectUnauthorized: true,
+            timeout: OFFICIAL_ATTEMPT_TIMEOUT_MS,
+          },
+          payload,
+          (fwdRes, finish, clearHardTimer) => {
+            // 如果官方返回 401 / 403 且提供了兜底回调，立即优雅切换到兜底响应，绝不向客户端下发 401 导致掉登录
+            if ((fwdRes.statusCode === 401 || fwdRes.statusCode === 403) && typeof onFailed === 'function') {
+              fwdRes.resume();
+              finish(false);
+              return;
+            }
+            // 响应头已到达并即将开始下发，取消硬超时，避免数十秒的长流式生成被中途掐断
+            if (typeof clearHardTimer === 'function') clearHardTimer();
+            const resHeaders = { ...fwdRes.headers };
+            resHeaders['access-control-allow-origin'] = '*';
+            resHeaders['access-control-allow-methods'] = 'GET, POST, PUT, DELETE, OPTIONS';
+            resHeaders['access-control-allow-headers'] = '*';
 
-          res.writeHead(fwdRes.statusCode, resHeaders);
-          fwdRes.pipe(res);
-          fwdRes.on('end', () => finish(true));
-          fwdRes.on('error', () => {
-            if (!res.writableEnded) res.end();
-            finish(true);
-          });
-        },
-        OFFICIAL_ATTEMPT_TIMEOUT_MS,
-      );
+            res.writeHead(fwdRes.statusCode, resHeaders);
+            fwdRes.pipe(res);
+            fwdRes.on('end', () => finish(true));
+            fwdRes.on('error', () => {
+              if (!res.writableEnded) res.end();
+              finish(true);
+            });
+          },
+          OFFICIAL_ATTEMPT_TIMEOUT_MS,
+        );
 
-      if (handled) return;
-    } catch {
-      if (isLast) break;
+        if (handled) return;
+      } catch {
+        if (isLast) break;
+      }
     }
   }
 

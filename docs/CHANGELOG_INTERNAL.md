@@ -9,6 +9,15 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.12 - 2026-11-15
+
+### 转发链路韧性
+
+- 反重力官方转发三条路径（握手 Raw/Json、模型列表、对话转发）统一补第二轮退避重竞速（`handshakeRetryDelay` 700ms）：瞬时 DNS / 代理切换 / TLS 抖动消在网关侧。对话转发仅在未开始下发响应时重试，保持流式语义。
+- 覆盖核查：`officialRequestOnce` 四个调用点全部具备两轮竞速，无遗漏孤岛。
+- 判据：`antigravity-handshake-forward-single-attempt`；回归：`sidecar/antigravity.test.js`。
+- 版本号对账：各声明文件同步到当前版本。
+
 ## v1.1.11 - 2026-11-15
 
 ### 通道与账号接管加固

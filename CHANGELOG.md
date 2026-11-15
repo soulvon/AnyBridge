@@ -2,6 +2,11 @@
 
 All notable changes to AnyBridge will be documented in this file.
 
+## v1.1.12 - 2026-11-15
+
+- 优化：提升网络波动时的连接恢复能力，接入后更稳定
+- 其余功能不变，可直接覆盖安装
+
 ## v1.1.11 - 2026-11-15
 
 - 修复：新版客户端下接入后对话连接中断的问题
