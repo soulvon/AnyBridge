@@ -600,6 +600,19 @@
       "severity": "high"
     },
     {
+      "id": "cursor-account-profile-mismatch-skip-injection",
+      "title": "账号快照资料键与登录方式错位时禁止注入/还原（账号切换残留）",
+      "symptom": "接管快照落在「token 属 A 号、cachedEmail/会员键属 B 号」的错位状态上（账号切换扩展只换 token 不同步缓存键）：注入后落错位账本，还原时原样写回 → 用户看到别人的号（2026-11-15 真机事故，token=Google 号 insmoin、资料键=GitHub 号 859456603@qq.com）",
+      "lesson": "错位判定用明文键即可（无需解密 token）：stripeMembershipAuthId 的登录方式前缀（github| / google-oauth2|）必须与 cachedSignUpType 一致，且已登录（accessToken 非空、非本地号）时 cachedEmail 不得为空。判定为错位时跳过注入、不落账本，保留现状——错位态下 token 仍是有效官方登录，资料键只是缓存显示。还原路径同样校验账本原值，错位则整段跳过并保留账本供人工排查。还原写回后必须删除 cursorAuth/hasInvalidatedMembershipForUnifiedSemanticsV2 残留，否则客户端下次启动把登录态清成登出。行为由 inconsistent_profile_snapshot_skips_injection、restore_skips_inconsistent_legacy_ledger、snapshot_profile_is_inconsistent_detects_mixed_identity 锁定",
+      "check": {
+        "type": "source_contains",
+        "file": "cursor-core/src/local_app/account.rs",
+        "must_contain": "fn snapshot_profile_is_inconsistent"
+      },
+      "regression_test": "cursor-core/src/local_app/account.rs::restore_skips_inconsistent_legacy_ledger",
+      "severity": "high"
+    },
+    {
       "id": "cursor-free-login-seven-keys",
       "title": "免登录必须注入完整 7 键（含会员/订阅状态），只写 token 不够",
       "symptom": "只注入 accessToken/refreshToken 时客户端 auth 轮询仍拿不到凭证，Auth init timeout，agent 请求一次都不发——模型列表可见但发消息永远转圈",

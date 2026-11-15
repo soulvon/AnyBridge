@@ -211,6 +211,55 @@ fn keeps_existing_login(value: &str, token: &str) -> bool {
     !value.is_empty() && value != token
 }
 
+/// 资料键与登录方式互相矛盾（账号切换扩展残留的典型特征）时，返回 true。
+///
+/// 判据（全部明文可读，无需解密 token）：
+/// - `stripeMembershipAuthId` 的登录方式前缀（github| / google-oauth2|）必须与
+///   `cachedSignUpType`（Github / Google）一致；写的是哪个号，前缀就该是哪种。
+/// - 已登录（accessToken 非空）时 `cachedEmail` 不能为空。
+///
+/// 2026-11-15 真机事故：接管快照落在「token 属 Google 号、资料键属 GitHub 号」的
+/// 错位状态上，还原后用户看到别人的账号。错位快照一律视为不可信——跳过注入、
+/// 不落账本，保留现状让客户端自行更新（错位状态下 token 仍是有效的官方登录，
+/// 保留即可；资料键只是缓存显示，不影响鉴权）。
+fn snapshot_profile_is_inconsistent(current: &BTreeMap<String, Option<String>>) -> bool {
+    let value = |key: &str| -> String {
+        current
+            .get(key)
+            .and_then(Option::as_deref)
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    };
+    let access = value("cursorAuth/accessToken");
+    if access.is_empty() {
+        return false;
+    }
+    // 我们自己注入的本地号现场（幂等重注）不属于错位
+    if is_local_cursor_token(&access) {
+        return false;
+    }
+    let email = value("cursorAuth/cachedEmail");
+    if email.is_empty() {
+        return true;
+    }
+    let signup = value("cursorAuth/cachedSignUpType");
+    let stripe = value("cursorAuth/stripeMembershipAuthId");
+    let expected_signup = if let Some(rest) = stripe.strip_prefix("github|") {
+        (!rest.is_empty()).then_some("Github")
+    } else if let Some(rest) = stripe.strip_prefix("google-oauth2|") {
+        (!rest.is_empty()).then_some("Google")
+    } else if stripe.is_empty() {
+        None
+    } else {
+        Some(signup.as_str())
+    };
+    match expected_signup {
+        Some(expected) => signup != expected,
+        None => false,
+    }
+}
+
 async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
     let mut connection = connect(db_path).await?;
 
@@ -222,6 +271,18 @@ async fn inject_if_missing_at(db_path: &Path, ledger: &Path) -> Result<()> {
         .is_some_and(|value| keeps_existing_login(value, &token))
     {
         // 混合模式：用户已登录，账号一概不动。
+        return Ok(());
+    }
+    if snapshot_profile_is_inconsistent(&current) {
+        // 快照错位（token 与资料键分属两个账号，多为账号切换扩展残留）。
+        // 把它落账本等于固化错误：还原时会原样写回，用户看到的仍是别人的号。
+        // 错位状态下 token 仍是有效官方登录，保留现状即可，不需要免登录。
+        tracing::warn!(
+            email = %current.get("cursorAuth/cachedEmail").and_then(Option::as_deref).unwrap_or(""),
+            signup = %current.get("cursorAuth/cachedSignUpType").and_then(Option::as_deref).unwrap_or(""),
+            stripe = %current.get("cursorAuth/stripeMembershipAuthId").and_then(Option::as_deref).unwrap_or(""),
+            "账号快照资料键与登录方式错位，跳过免登录注入且不落账本（保留现状）"
+        );
         return Ok(());
     }
 
@@ -253,6 +314,20 @@ async fn restore_at(db_path: &Path, ledger: &Path) -> Result<RestoreOutcome> {
     let Some(record) = read_ledger(ledger).await? else {
         return Ok(RestoreOutcome::NotBackedUp);
     };
+    // 存量账本也可能是错位快照（账号切换扩展残留）：原样写回会固化别人的登录态
+    // （2026-11-15 真机事故）。校验不过就整段跳过，账本保留供人工排查。
+    if snapshot_profile_is_inconsistent(&record.original) {
+        tracing::warn!(
+            email = %record.original.get("cursorAuth/cachedEmail").and_then(Option::as_deref).unwrap_or(""),
+            signup = %record.original.get("cursorAuth/cachedSignUpType").and_then(Option::as_deref).unwrap_or(""),
+            stripe = %record.original.get("cursorAuth/stripeMembershipAuthId").and_then(Option::as_deref).unwrap_or(""),
+            "账本原值资料键与登录方式错位，跳过还原以免固化错误账号（账本保留）"
+        );
+        return Ok(RestoreOutcome::Restored {
+            restored: 0,
+            kept_user_changes: 0,
+        });
+    }
     if !db_path.exists() {
         return Err(Error::Config(format!(
             "未找到 Cursor state.vscdb，账号原值无法写回: {}",
@@ -296,6 +371,13 @@ async fn restore_at(db_path: &Path, ledger: &Path) -> Result<RestoreOutcome> {
         }
         restored += 1;
     }
+    // 还原账号后清理会员失效标记：该标记残留会让客户端在下次启动时把登录态
+    // 清成登出（2026-11-15 真机事故：账号数据其实还原成功，仅因这个残留键
+    // 被当成「会员失效」，整个登录被客户端自己清空）。账本 original 里没有
+    // 这个键（注入清单只有 7 键），所以原样还原不会带回来，删除是安全的。
+    sqlx::query("DELETE FROM ItemTable WHERE key = 'cursorAuth/hasInvalidatedMembershipForUnifiedSemanticsV2'")
+        .execute(&mut *transaction)
+        .await?;
     transaction.commit().await?;
     tokio::fs::remove_file(ledger).await?;
     tracing::info!(restored, kept_user_changes, "restored Cursor account state");
@@ -452,6 +534,120 @@ mod tests {
             "真实登录必须写回"
         );
         assert!(!ledger.exists(), "还原后账本应删除");
+        // 还原后不得残留会员失效标记，否则客户端下次启动会把登录态清空
+        assert_eq!(read(&path, "cursorAuth/hasInvalidatedMembershipForUnifiedSemanticsV2").await, None);
+    }
+
+    /// 错位快照（token 与资料键分属两个账号，账号切换扩展残留）→ 跳过注入、
+    /// 不落账本，保留现状。把错位快照当「用户原值」还原，会让用户看到别人的号
+    /// （2026-11-15 真机事故）。
+    #[tokio::test]
+    async fn inconsistent_profile_snapshot_skips_injection() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        let token = "cursor-safe-storage:v1:token-belongs-to-google-account";
+        // token 属 Google 号，但资料键全部是另一个 GitHub 号的——典型切换残留
+        seed(
+            &path,
+            &[
+                ("cursorAuth/accessToken", token),
+                ("cursorAuth/cachedEmail", "859456603@qq.com"),
+                ("cursorAuth/cachedSignUpType", "Github"),
+                ("cursorAuth/stripeMembershipAuthId", "google-oauth2|user_01JNS5QZQTF7NZGEKT35949CMH"),
+                ("cursorAuth/stripeMembershipType", "ultra"),
+                ("cursorAuth/stripeSubscriptionStatus", "active"),
+            ],
+        )
+        .await;
+
+        inject_if_missing_at(&path, &ledger).await.unwrap();
+
+        assert_eq!(
+            read(&path, "cursorAuth/accessToken").await.as_deref(),
+            Some(token),
+            "错位快照下 token 必须原样保留"
+        );
+        assert_eq!(
+            read(&path, "cursorAuth/cachedEmail").await.as_deref(),
+            Some("859456603@qq.com"),
+            "错位快照下资料键不得被本地账号覆盖"
+        );
+        assert!(!ledger.exists(), "错位快照不得落账本（还原时会固化错误状态）");
+    }
+
+    /// 错位判定纯函数：登录方式前缀与 sign-up 类型互相矛盾、或已登录却无邮箱，
+    /// 都算错位；未登录与资料齐全的正常快照不算。
+    #[test]
+    fn snapshot_profile_is_inconsistent_detects_mixed_identity() {
+        let map = |pairs: &[(&str, &str)]| -> BTreeMap<String, Option<String>> {
+            pairs
+                .iter()
+                .map(|(k, v)| (k.to_string(), Some(v.to_string())))
+                .collect()
+        };
+        // Google 号的 token 资料键却写着 Github —— 切换残留，错位
+        let mixed = map(&[
+            ("cursorAuth/accessToken", "any-real-token"),
+            ("cursorAuth/cachedEmail", "859456603@qq.com"),
+            ("cursorAuth/cachedSignUpType", "Github"),
+            ("cursorAuth/stripeMembershipAuthId", "google-oauth2|user_01JNS5QZ"),
+        ]);
+        assert!(snapshot_profile_is_inconsistent(&mixed));
+        // 已登录但没有缓存邮箱 —— 资料块损坏，错位
+        let no_email = map(&[
+            ("cursorAuth/accessToken", "any-real-token"),
+            ("cursorAuth/cachedSignUpType", "Google"),
+            ("cursorAuth/stripeMembershipAuthId", "google-oauth2|user_01JNS5QZ"),
+        ]);
+        assert!(snapshot_profile_is_inconsistent(&no_email));
+        // 资料齐全且前后一致 —— 正常
+        let consistent = map(&[
+            ("cursorAuth/accessToken", "any-real-token"),
+            ("cursorAuth/cachedEmail", "859456603@qq.com"),
+            ("cursorAuth/cachedSignUpType", "Github"),
+            ("cursorAuth/stripeMembershipAuthId", "github|user_01J7T36Z"),
+        ]);
+        assert!(!snapshot_profile_is_inconsistent(&consistent));
+        // 未登录（token 为空）不参与判定
+        let logged_out = map(&[("cursorAuth/accessToken", ""), ("cursorAuth/cachedEmail", "")]);
+        assert!(!snapshot_profile_is_inconsistent(&logged_out));
+    }
+
+    /// 存量错位账本在关闭接入时不得写回，否则固化别人的登录态。
+    #[tokio::test]
+    async fn restore_skips_inconsistent_legacy_ledger() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("state.vscdb");
+        let ledger = dir.path().join(LEDGER_FILE_NAME);
+        let ledger_json = serde_json::json!({
+            "version": 1,
+            "original": {
+                "cursorAuth/accessToken": "cursor-safe-storage:v1:token-of-google-account",
+                "cursorAuth/cachedEmail": "859456603@qq.com",
+                "cursorAuth/cachedSignUpType": "Github",
+                "cursorAuth/stripeMembershipAuthId": "google-oauth2|user_01JNS5QZ"
+            },
+            "applied": {
+                "cursorAuth/accessToken": EMAIL,
+                "cursorAuth/cachedEmail": EMAIL
+            }
+        });
+        tokio::fs::write(&ledger, ledger_json.to_string()).await.unwrap();
+        seed(
+            &path,
+            &[("cursorAuth/accessToken", EMAIL), ("cursorAuth/cachedEmail", EMAIL)],
+        )
+        .await;
+
+        let outcome = restore_at(&path, &ledger).await.unwrap();
+        assert!(matches!(outcome, RestoreOutcome::Restored { restored: 0, .. }));
+        assert_eq!(
+            read(&path, "cursorAuth/accessToken").await.as_deref(),
+            Some(EMAIL),
+            "错位账本不得写回，当前登录态必须保留"
+        );
+        assert!(ledger.exists(), "账本保留供人工排查");
     }
 
     /// 未登录（accessToken 缺失/空）→ 注入本地账号，让 BYOK 免登录可用。
