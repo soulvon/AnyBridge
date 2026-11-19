@@ -1,7 +1,31 @@
+import http from 'node:http';
 import https from 'node:https';
 import net from 'node:net';
 import tls from 'node:tls';
 import { execFileSync } from 'node:child_process';
+
+function sharedSocketInt(name, fallback) {
+  const n = parseInt(process.env[name] || '', 10);
+  return Number.isFinite(n) && n >= 1 ? n : fallback;
+}
+
+export const SHARED_HTTPS_AGENT = new https.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: sharedSocketInt('BYOK_PROXY_MAX_SOCKETS', 64),
+  maxFreeSockets: sharedSocketInt('BYOK_PROXY_MAX_FREE_SOCKETS', 16),
+});
+
+export const SHARED_HTTP_AGENT = new http.Agent({
+  keepAlive: true,
+  keepAliveMsecs: 30_000,
+  maxSockets: sharedSocketInt('BYOK_PROXY_MAX_SOCKETS', 64),
+  maxFreeSockets: sharedSocketInt('BYOK_PROXY_MAX_FREE_SOCKETS', 16),
+});
+
+export function httpAgentFor() {
+  return SHARED_HTTP_AGENT;
+}
 
 function parseProxyServer(raw) {
   const value = String(raw || '').trim();

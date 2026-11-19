@@ -7,7 +7,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const rust = fs.readFileSync(path.join(root, 'src-tauri/src/commands/plugins.rs'), 'utf8');
+const pluginsDir = path.join(root, 'src-tauri/src/commands/plugins');
+const rust = fs.readdirSync(pluginsDir)
+  .filter((f) => f.endsWith('.rs') && f !== 'tests.rs')
+  .map((f) => fs.readFileSync(path.join(pluginsDir, f), 'utf8'))
+  .join('\n');
 const init = fs.readFileSync(path.join(root, 'ui/assets/scripts/90-init.js'), 'utf8');
 
 describe('插件供应商热插拔', () => {

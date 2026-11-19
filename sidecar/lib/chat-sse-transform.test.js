@@ -10,6 +10,10 @@ import {
   createChatSSEPassthrough,
   createChatSSEConverter,
 } from './chat-sse-transform.js';
+import {
+  clearGeminiToolCallCache,
+  lookupGeminiToolCall,
+} from './gemini-thought-signature.js';
 
 const ID = 'chatcmpl-test';
 const CREATED = 1;
@@ -181,4 +185,59 @@ test('Gemini SSE: MAX_TOKENS 映射为 length', () => {
   const c = createChatSSEFromGemini('m', ID, CREATED);
   c.write({ candidates: [{ content: { parts: [{ text: 'x' }] }, finishReason: 'MAX_TOKENS' }] });
   assert.equal(c.flush()[0].choices[0].finish_reason, 'length');
+});
+
+test('Gemini SSE: 相同函数与参数但不同 call.id 不误去重', () => {
+  const c = createChatSSEFromGemini('m', ID, CREATED);
+  const out1 = c.write({
+    candidates: [{
+      content: {
+        parts: [
+          { functionCall: { id: 'call_a', name: 'read_file', args: { path: 'a.txt' } }, thoughtSignature: 'sig-1' },
+          { functionCall: { id: 'call_b', name: 'read_file', args: { path: 'a.txt' } } },
+        ],
+      },
+    }],
+  });
+  const emitted = out1.flatMap(chunk => chunk.choices[0].delta.tool_calls || []);
+  assert.equal(emitted.length, 2);
+  assert.equal(emitted[0].id, 'call_a');
+  assert.equal(emitted[1].id, 'call_b');
+
+  // 同一 id 再次出现仍需去重
+  const dup = c.write({
+    candidates: [{
+      content: { parts: [{ functionCall: { id: 'call_a', name: 'read_file', args: { path: 'a.txt' } } }] },
+    }],
+  });
+  assert.equal(dup.length, 0);
+});
+
+test('Gemini SSE: 继承前序 thought part 的 thoughtSignature 并缓存，无上游 id 时只记签名', () => {
+  clearGeminiToolCallCache();
+  const c = createChatSSEFromGemini('m', ID, CREATED);
+  c.write({ candidates: [{ content: { parts: [{ text: '思考中', thought: true, thoughtSignature: 'sig-from-thought' }] } }] });
+  const out = c.write({
+    candidates: [{
+      content: {
+        parts: [
+          { functionCall: { name: 'first_tool', args: { x: 1 } } },
+          { functionCall: { name: 'second_tool', args: { y: 2 } } },
+        ],
+      },
+    }],
+  });
+  const calls = out.flatMap(chunk => chunk.choices[0].delta.tool_calls || []);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(lookupGeminiToolCall(calls[0].id), { signature: 'sig-from-thought', upstreamId: '' });
+  assert.equal(lookupGeminiToolCall(calls[1].id), null, '前序签名只归首条调用继承，不重复污染后续并行调用');
+  clearGeminiToolCallCache();
+});
+
+test('Gemini SSE: 行内 error 对象显式抛错，不静默返回空 stop', () => {
+  const c = createChatSSEFromGemini('m', ID, CREATED);
+  assert.throws(
+    () => c.write({ error: { code: 400, message: 'Thinking budget unsupported' } }),
+    /Thinking budget unsupported/,
+  );
 });

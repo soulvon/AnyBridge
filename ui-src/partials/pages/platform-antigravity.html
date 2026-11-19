@@ -31,7 +31,7 @@
                   <span class="proxy-btn-text" id="antigravity-main-btn-text">一键接入</span>
                 </span>
               </button>
-              <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsole">刷新状态</button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsoleAction" data-pass-this>刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
               <!-- 汉化放最右（用户指定）：独立于网关接入的能力 -->
               <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
@@ -65,7 +65,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost accent platform-model-btn-icon" title="刷新模型列表" aria-label="刷新模型列表" data-action="antigravityRefreshConsole">
+                <button class="btn-ghost accent platform-model-btn-icon" id="antigravityRefreshModelsBtn" title="刷新模型列表" aria-label="刷新模型列表" data-action="antigravityRefreshConsoleAction" data-pass-this>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -205,7 +205,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="antigravitySettingsModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 接入策略</div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">长记忆上下文压缩与配额模拟选项</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">长记忆上下文压缩与配额模拟选项</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravitySettingsModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -213,7 +213,7 @@
             <div class="modal-body" style="padding: 22px 24px; background: var(--bg-card); display: flex; flex-direction: column; gap: 16px;">
               <div>
                 <label style="display:block; font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">长记忆上下文压缩阈值</label>
-                <p style="font-size:11.5px; color:var(--text-muted); margin-bottom:8px;">推迟 Antigravity 官方过早裁剪历史摘要的时机，避免长对话丢失代码细节。</p>
+                <p style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">推迟 Antigravity 官方过早裁剪历史摘要的时机，避免长对话丢失代码细节。</p>
                 <select id="modal-antigravity-context-window" class="field-input" style="width:100%; height:36px;">
                   <option value="131072">128K</option>
                   <option value="262144" selected>256K（推荐）</option>
@@ -225,7 +225,7 @@
                 <label style="display:flex; align-items:center; justify-content:space-between;">
                   <div>
                     <span style="font-size:13px; font-weight:700; color:var(--text-primary); display:block;">官方配额健康伪装</span>
-                    <span style="font-size:11.5px; color:var(--text-muted);">自动模拟 Google One AI Credits 配额，防止官方接口报 503 阻断。</span>
+                    <span style="font-size:12px; color:var(--text-muted);">自动模拟 Google One AI Credits 配额，防止官方接口报 503 阻断。</span>
                   </div>
                   <label class="switch">
                     <input type="checkbox" id="modal-antigravity-mock-credits" checked>
@@ -268,7 +268,8 @@
               <label class="codex-config-field" style="margin-bottom: 12px;">
                 <span>接口协议格式</span>
                 <select id="antigravity-config-api-format" class="field-input">
-                  <option value="openai" selected>OpenAI 兼容</option>
+                  <option value="">跟随源供应商</option>
+                  <option value="openai">OpenAI 兼容</option>
                   <option value="anthropic">Anthropic 消息格式</option>
                   <option value="gemini">Google Gemini 原生</option>
                 </select>
@@ -312,7 +313,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="antigravityLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 界面汉化</div>
-                  <div id="antigravityLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">界面词库注入 · 升级后自动保持</div>
+                  <div id="antigravityLangModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">界面词库注入 · 升级后自动保持</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravityLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -327,7 +328,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">当前状态：</span>
-                  <span id="antigravityLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                  <span id="antigravityLangModalStatusBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
@@ -346,7 +347,7 @@
                     <div style="font-weight: 650; color: var(--text-primary);">设置页与 Agent 面板</div>
                     <div id="antigravityLangCdpHint" style="color: var(--text-muted); margin-top: 3px; line-height: 1.5;">这部分由客户端内嵌网页渲染，需要以汉化模式启动后运行期注入。</div>
                   </div>
-                  <span id="antigravityLangCdpBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-glass-elevated, rgba(255,255,255,0.06)); color: var(--text-muted); flex-shrink: 0;">检测中</span>
+                  <span id="antigravityLangCdpBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: var(--bg-glass-elevated, rgba(255,255,255,0.06)); color: var(--text-muted); flex-shrink: 0;">检测中</span>
                 </div>
                 <button type="button" class="btn-ghost" id="antigravityLangCdpBtn" data-action="handleAntigravityCdpAction" style="margin-top: 10px; height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">以汉化模式重启 IDE</button>
               </div>
@@ -355,12 +356,12 @@
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 12px; padding: 2px 10px; height: 26px; border-radius: 6px;">清空日志</button>
                 </div>
-                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+              <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
                 界面文案汉化，代码区与模型思考内容不会误译。重启后生效，可一键还原。装新版后需重新汉化。
               </div>
             </div>

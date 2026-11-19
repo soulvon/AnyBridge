@@ -1,0 +1,49 @@
+        <!-- 故障转移配置模态框 -->
+        <div id="failoverModal" class="editor-overlay failover-modal-overlay" data-action="closeFailoverEditorOnBackdrop">
+          <div class="failover-modal-card">
+            <div class="card-header failover-modal-header">
+              <div class="failover-header-text">
+                <div class="card-title"><span class="dot"></span> 故障转移 · <span id="failoverModalSlot"></span></div>
+                <div class="card-subtitle">按列表顺序自上向下自动降级；当前序目标失败或不可用时，系统自动流转至下一备用目标。</div>
+              </div>
+              <button type="button" class="failover-close-btn" title="关闭" data-action="closeFailoverEditor">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            <div class="card-body failover-modal-body">
+              <div id="failoverRows" class="failover-pipeline-list"></div>
+              <div id="failoverEmpty" style="display:none;color:var(--text-muted);font-size:12.5px;padding:32px 0;text-align:center;">
+                尚无配置目标，点击下方「添加备选目标」新增。</div>
+              <button type="button" class="failover-add-btn" data-action="addFailoverRow">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                <span>添加备用目标</span>
+              </button>
+            </div>
+            <div class="card-footer failover-modal-footer">
+              <div class="failover-footer-tip">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px;opacity:0.8;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                首选目标排在第一位，可点击箭头调整优先级
+              </div>
+              <div class="failover-footer-actions">
+                <button type="button" class="btn-ghost secondary" style="padding:0 16px;height:34px;border-radius:8px;font-size:12.5px;" data-action="closeFailoverEditor">取消</button>
+                <button type="button" class="btn-primary" style="padding:0 18px;height:34px;border-radius:8px;font-size:12.5px;" data-action="saveFailoverFromEditor">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                    <polyline points="7 3 7 8 15 8"></polyline>
+                  </svg>
+                  <span>保存配置</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>

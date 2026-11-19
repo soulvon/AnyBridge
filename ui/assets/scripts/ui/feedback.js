@@ -70,7 +70,7 @@ export function showBottomToast(message, iconType = 'info', options = {}) {
   const isError = iconType === 'error';
   const isWarn = iconType === 'warn';
   const copyable = Boolean(options.copyable) || isError;
-  const defaultDuration = isError ? 8000 : isWarn ? 5000 : 2600;
+  const defaultDuration = isError ? 10000 : isWarn ? 5000 : 2600;
   const duration = Number(options.duration || defaultDuration);
 
   const toast = document.createElement('div');
@@ -338,6 +338,38 @@ export function clearLoading(el) {
   }
 }
 
+const _errorProtectMap = new WeakMap();
+
+/** 标记元素进入失败保护期（默认 10 秒），防止后台轮询立即抹掉错误提示 */
+export function markErrorProtected(el, ms = 10000) {
+  if (!el || typeof el !== 'object') return;
+  const ttl = Number(ms);
+  if (Number.isFinite(ttl) && ttl <= 0) {
+    _errorProtectMap.delete(el);
+    if (el.dataset) delete el.dataset.errorProtectUntil;
+    return;
+  }
+  const duration = Number.isFinite(ttl) && ttl > 0 ? ttl : 10000;
+  const until = Date.now() + duration;
+  _errorProtectMap.set(el, until);
+  if (el.dataset) el.dataset.errorProtectUntil = String(until);
+}
+
+/** 检查元素是否仍在失败保护期内；过期自动清理 */
+export function isErrorProtected(el) {
+  if (!el || typeof el !== 'object') return false;
+  let until = _errorProtectMap.get(el) || 0;
+  if (!until && el.dataset?.errorProtectUntil) {
+    until = Number(el.dataset.errorProtectUntil) || 0;
+  }
+  if (until > Date.now()) return true;
+  if (until) {
+    _errorProtectMap.delete(el);
+    if (el.dataset) delete el.dataset.errorProtectUntil;
+  }
+  return false;
+}
+
 const g = globalThis;
 g.showCustomAlert = showCustomAlert;
 g.showBottomToast = showBottomToast;
@@ -347,3 +379,5 @@ g.spinnerHtml = spinnerHtml;
 g.loadingHtml = loadingHtml;
 g.setLoading = setLoading;
 g.clearLoading = clearLoading;
+g.markErrorProtected = markErrorProtected;
+g.isErrorProtected = isErrorProtected;

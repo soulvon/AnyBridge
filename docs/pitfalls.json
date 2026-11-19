@@ -9,13 +9,13 @@
       "lesson": "损坏判据必须用结构完整性（是否含 </body>），中断的写入一定写不到闭合标签；体积在合法文件间差异极大且残骸大小不可预测",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_contain": "fn is_valid_workbench"
       },
-      "regression_test": "src-tauri/src/commands/app_localization.rs::small_but_valid_workbench_is_accepted",
+      "regression_test": "src-tauri/src/commands/app_localization/tests.rs::small_but_valid_workbench_is_accepted",
       "check_not": {
         "type": "source_not_regex",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_not_match": "MIN_VALID_WORKBENCH_LEN:\\s*usize\\s*=\\s*\\d{3,}"
       },
       "severity": "high"
@@ -27,7 +27,7 @@
       "lesson": "任何『是否已生效』的判定必须覆盖完整链路：目录存在 + 未被废弃标记 + 注册表指向的包真实生效（目录在 + 有核心翻译文件）。不限定官方包 id——功能完整的第三方中文包同样有效（实测 openubmc 包覆盖核心 + 100+ 内置扩展），旧判据只认官方包会把正常汉化误报为未生效",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_contain": "条件 2：不在 .obsolete"
       },
       "severity": "high"
@@ -39,7 +39,7 @@
       "lesson": "对称操作共用同一实现（如 kill_antigravity_language_server），结构上杜绝漏改；改任一处前必须先列全对称路径",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity.rs",
         "must_contain": "Self::kill_antigravity_language_server"
       },
       "severity": "high"
@@ -51,7 +51,7 @@
       "lesson": "注入内联 script 前先提取 CSP nonce 并带上；无 nonce 的平台退回普通标签",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_contain": "extract_csp_nonce"
       },
       "severity": "high"
@@ -63,7 +63,7 @@
       "lesson": "加锁入口与无锁内部实现分离（apply / apply_inner），并在注释里写明锁纪律",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/apply_and_keeper.rs",
         "must_contain": "fn apply_inner"
       },
       "severity": "high"
@@ -75,7 +75,7 @@
       "lesson": "含 IO/子进程/网络的命令一律 async + spawn_blocking；对称的 apply/restore 必须同时改",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/mod.rs",
         "must_contain": "pub async fn apply_app_localization"
       },
       "severity": "high"
@@ -87,10 +87,10 @@
       "lesson": "还原只剥离自己的块，保留其它注入块；并用单测锁住该行为",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/workbench_inject.rs",
+        "file": "src-tauri/src/commands/workbench_inject/tests.rs",
         "must_contain": "汉化块必须保留"
       },
-      "regression_test": "src-tauri/src/commands/workbench_inject.rs::strips_byok_block_and_keeps_hans_block",
+      "regression_test": "src-tauri/src/commands/workbench_inject/tests.rs::strips_byok_block_and_keeps_hans_block",
       "severity": "high"
     },
     {
@@ -100,7 +100,7 @@
       "lesson": "改用原生 Toolhelp32 枚举进程 + 路径比对；保留原有路径过滤语义避免误杀同名进程",
       "check": {
         "type": "source_not_regex",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity.rs",
         "must_not_match": "Get-CimInstance\\s+Win32_Process"
       },
       "severity": "medium"
@@ -112,7 +112,7 @@
       "lesson": "先给反馈，后刷新；刷新数据来源是 invoke 已返回的 report，后置安全",
       "check": {
         "type": "source_contains",
-        "file": "ui/assets/scripts/55-platforms.js",
+        "file": "ui/assets/scripts/platforms/antigravity_models.js",
         "must_contain": "重启确认是用户点这一下的第一诉求"
       },
       "severity": "medium"
@@ -124,10 +124,10 @@
       "lesson": "剥注释后再解析；解析失败必须报错中止，绝不覆盖原文件",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/lang_pack.rs",
         "must_contain": "fn parse_jsonc"
       },
-      "regression_test": "src-tauri/src/commands/app_localization.rs::parses_jsonc_argv",
+      "regression_test": "src-tauri/src/commands/app_localization/tests.rs::parses_jsonc_argv",
       "severity": "medium"
     },
     {
@@ -137,7 +137,7 @@
       "lesson": "『已安装』判定要能识别重置态；保活/重入时要能自动修复，而不是假定环境不变。另注意：IDE 运行中持有 .obsolete/languagepacks.json 的内存状态，外部修改可能在其启动/重载时被整体写回（实测 24 秒后被覆盖），修复动作要么在 IDE 退出时做，要么按「任意完整包生效」判以免误判",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_contain": "条件 3：languagepacks.json"
       },
       "severity": "high"
@@ -161,7 +161,7 @@
       "lesson": "对未知输入必须显式拒绝（None/Error），禁止静默兜底到默认值。两类防线：①通用函数的默认分支只服务其文档明确支持的输入；②调用方（尤其对平台 id 列表循环调用的场景）必须先用白名单自证身份，再调通用函数。修复时配套单测钉死（gui_probe_returns_none_for_platforms_without_source）",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/version_probe.rs",
+        "file": "src-tauri/src/commands/version_probe/gui_probe.rs",
         "must_contain": "白名单守卫"
       },
       "severity": "high"
@@ -197,7 +197,7 @@
       "lesson": "平台专属能力要么用 trait 抽象双实现（HideWindow 模式：Windows 用 CREATE_NO_WINDOW、其它 no-op），要么整函数 #[cfg] 守卫。检查脚本核验 80 处 Windows API 调用均在 cfg 上下文内；cert_install（UAC/证书子系统）列入白名单待多平台化时重构",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/system.rs",
+        "file": "src-tauri/src/commands/system/restart.rs",
         "must_contain": "trait HideWindow"
       },
       "severity": "high"
@@ -233,7 +233,7 @@
       "lesson": "setInterval 驱动的状态刷新都要先判 document.hidden；恢复可见时立即补一次刷新（visibilitychange 监听）",
       "check": {
         "type": "source_contains",
-        "file": "ui/assets/scripts/20-runtime.js",
+        "file": "ui/assets/scripts/runtime/ide-takeover.js",
         "must_contain": "document.hidden"
       },
       "severity": "medium"
@@ -271,7 +271,7 @@
       "lesson": "凡声明 npm 包，必须先 `npm view <pkg> version` 核对该包最新版本与用户实际安装版本是否同一产品线；同一产品若有官方自更新命令（claude/codex/grok/pi/hermes 均支持 `xxx update`），优先走官方命令，npm 仅作回退。桌面 IDE 一律不得填同名 CLI 的 npm 包（CodeBuddy IDE 1.106.1 vs CLI 2.171.0）",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/agent_spec.rs",
+        "file": "src-tauri/src/commands/agent_spec/specs.rs",
         "must_contain": "无 npm 包"
       },
       "severity": "high"
@@ -295,10 +295,10 @@
       "lesson": "接入前把字段原值记入 agent-stash.json（original 只在首次记录幂等 + applied 记录我写的值）；还原按字段写回原值，被外部改过的字段（当前值 != applied）保留用户改动；无记录退回删托管键旧语义。行为由 ANYBRIDGE_FIELD_RESTORE 门控，默认关闭时与旧版完全一致。记账是纯增量总是开启，记账失败不阻断切换",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/claude/mod.rs",
         "must_contain": "restore_claude_fields_via_stash"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::supplier_apply_records_original_once_and_restore_writes_it_back",
+      "regression_test": "src-tauri/src/commands/platforms/tests/claude_field.rs::supplier_apply_records_original_once_and_restore_writes_it_back",
       "severity": "high"
     },
     {
@@ -308,10 +308,10 @@
       "lesson": "新写入走 jsonc_edit 保形编辑：只动目标键值对的文本区间，注释、键顺序、缩进、CRLF、BOM 全保留；定位失败报错中止，绝不静默退回全量重写。由 ANYBRIDGE_FORMAT_PRESERVING_JSON 门控，默认关闭走旧路径",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/jsonc_edit.rs",
+        "file": "src-tauri/src/commands/jsonc_edit/mod.rs",
         "must_contain": "保形"
       },
-      "regression_test": "src-tauri/src/commands/jsonc_edit.rs::set_existing_key_replaces_value_only",
+      "regression_test": "src-tauri/src/commands/jsonc_edit/tests.rs::set_existing_key_replaces_value_only",
       "severity": "high"
     },
     {
@@ -321,10 +321,10 @@
       "lesson": "① 涉及记账/还原的测试必须显式传临时 stash 目录并显式传门控开关（禁止走读 agent_stash_dir()/field_restore_enabled() 的无参入口）；② 门控 env 统一走 with_gates 单层 helper（一把锁设任意组合），严禁嵌套两个 helper；③ 同一时间只允许一个 cargo 进程，跑测试/检查前先确认无残留 cargo",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/tests/mod.rs",
         "must_contain": "严禁嵌套调用"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::opencode_preserving_roundtrip_keeps_comments",
+      "regression_test": "src-tauri/src/commands/platforms/tests/grok_opencode.rs::opencode_preserving_roundtrip_keeps_comments",
       "severity": "high"
     },
     {
@@ -335,7 +335,14 @@
       "check": {
         "type": "source_not_regex",
         "file": "sidecar/handlers/chat.js",
-        "must_not_match": "record(Usage|Request|Error|Retry|Latency)\\("
+        "must_not_match": "record(Usage|Request|Error|Retry|Latency)\\(",
+        "files": [
+          "sidecar/handlers/chat.js",
+          "sidecar/handlers/chat/streaming.js",
+          "sidecar/handlers/chat/search-agent.js",
+          "sidecar/handlers/chat/upstream-builders.js",
+          "sidecar/handlers/chat/utils.js"
+        ]
       },
       "regression_test": "sidecar/request-tracker.test.js::成功尝试：一次 request、token 与延迟按成功 attempt 结算",
       "severity": "high"
@@ -411,15 +418,15 @@
       "lesson": "设置页/Agent 面板由独立引导窗口 out/vs/code/electron-browser/workbench/workbench-jetski-agent.html 渲染，只注入 workbench.html 覆盖不到。apply/restore/is_localized 必须共用 localization_target_htmls 注入全部入口；辅助窗口要跳过「隐藏首屏 + 等 .monaco-workbench 根」策略（否则白屏到 6 秒超时）；判定「已汉化」必须所有入口都带块，否则 keeper 不重注入",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/mod.rs",
         "must_contain": "AG_IDE_AGENT_WINDOW_HTML"
       },
       "check_not": {
         "type": "source_not_regex",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_not_match": "let html_path = workbench_html_path\\(platform\\)"
       },
-      "regression_test": "src-tauri/src/commands/app_localization.rs::injection_covers_main_and_agent_window",
+      "regression_test": "src-tauri/src/commands/app_localization/tests.rs::injection_covers_main_and_agent_window",
       "severity": "high"
     },
     {
@@ -442,10 +449,10 @@
       "lesson": "hans_script 组装时必须走 merge_dictionaries：基线打底、缓存同名词条覆盖、缓存独有词条追加；任一侧解析失败退回可用的一侧，绝不产出空词典。行为由 cached_dictionary_merges_with_baseline 锁定",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/scripts_and_dict.rs",
         "must_contain": "fn merge_dictionaries"
       },
-      "regression_test": "src-tauri/src/commands/app_localization.rs::cached_dictionary_merges_with_baseline",
+      "regression_test": "src-tauri/src/commands/app_localization/tests.rs::cached_dictionary_merges_with_baseline",
       "severity": "high"
     },
     {
@@ -455,14 +462,14 @@
       "lesson": "CDP 注入依赖 sidecar 的 /__byok/codex-cdp/inject，必须把「确保网关服务可用」提到 kill 之前：不可用就不重启客户端，直接返回带引导的主句。三层判据：①注入前置统一走 proxy::ensure_proxy_service_ready（端口探测优先，禁止各链路再写一份）；②ensure 调用必须早于 kill_codex；③双回环地址探测必须逐条保留失败原因，不能被 ::1 覆盖（否则排障被误导成 IPv6 问题）",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/codex_desktop.rs",
+        "file": "src-tauri/src/commands/codex_desktop/mod.rs",
         "must_contain": "ensure_proxy_service_ready"
       },
       "check_not": {
         "file": "src-tauri/src/commands/cursor_core.rs",
         "must_not_match": "fn ensure_proxy_running"
       },
-      "regression_test": "src-tauri/src/commands/codex_desktop.rs::connect_error_keeps_every_address_reason",
+      "regression_test": "src-tauri/src/commands/codex_desktop/tests.rs::connect_error_keeps_every_address_reason",
       "severity": "high"
     },
     {
@@ -472,7 +479,7 @@
       "lesson": "Codex 在同一台机器上有 CLI（npm 包 vendor/bin、cargo target 产物）、旧版 Desktop（Electron 宿主）、新版 Desktop（MSIX ChatGPT.exe）、包内 app-server 四种形态，其中三种进程名都叫 codex.exe。判定必须先按路径排除 CLI 目录（node_modules / vendor/*/bin / target/{debug,release} / .cargo/bin），app-server helper 只在 kill 路径算。矩阵由 scripts/check-codex-detect.mjs 用真实路径逐类执行",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/codex_desktop.rs",
+        "file": "src-tauri/src/commands/codex_desktop/mod.rs",
         "must_contain": "$isCliLike"
       },
       "regression_test": "scripts/check-codex-detect.mjs::CLI（npm 全局包 vendor/bin）",
@@ -502,10 +509,10 @@
       "lesson": "marker 常量定义在 payload 模块（HUB_PATCH_HEADER/HUB_PATCH_FLAG/HUB_DICT_GLOBAL），判据、去重锚点、备份判定全部引用同一常量；测试用最小 asar 锁定 幂等命中 + 备份版本防护 + 还原 round-trip。备份策略与 workbench_inject 的 product.json 同思路：原厂态一律刷新 app.asar.lang.bak，已汉化态缺备份必须报错（let _ = 吞掉 copy 失败 = 永久失去还原源）",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/antigravity_localization.rs",
+        "file": "src-tauri/src/commands/antigravity_localization/hub_patch.rs",
         "must_contain": "antigravity_loc_payload::HUB_PATCH_FLAG"
       },
-      "regression_test": "src-tauri/src/commands/antigravity_localization.rs::hub_patch_idempotent_backup_and_roundtrip",
+      "regression_test": "src-tauri/src/commands/antigravity_localization/tests.rs::hub_patch_idempotent_backup_and_roundtrip",
       "severity": "high"
     },
     {
@@ -515,10 +522,10 @@
       "lesson": "payload 启动时把覆盖块合并进内置 phrases（消费端在 payload 内，形态由测试锁定）；覆盖块形态固定为 window.__ANYBRIDGE_HANS_DICT = {JSON};，读盘用 is_safe_dict_override 校验（serde_json 可解析且为对象），download 侧未通过自检必须拒绝写盘——preload.js 顶层多个语法错误 = 客户端起不来",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/antigravity_localization.rs",
+        "file": "src-tauri/src/commands/antigravity_localization/hub_patch.rs",
         "must_contain": "fn is_safe_dict_override"
       },
-      "regression_test": "src-tauri/src/commands/antigravity_localization.rs::hub_dict_override_gate",
+      "regression_test": "src-tauri/src/commands/antigravity_localization/tests.rs::hub_dict_override_gate",
       "severity": "high"
     },
     {
@@ -567,10 +574,10 @@
       "lesson": "apply 的每类副作用都要可回滚：①CSP 插入行是固定字节序列，ensure 返回是否实际插入并记入 side-effects.json，restore 仅在记账确认且无 BYOK 块时精确移除；②NLS 加固有 .nls-origin 备份 + 版本防护（restore_nls），仅无 BYOK 块时还原；③locale 记录改前值（LocaleRecord::Was/Absent），仅当当前仍是我们写的 zh-cn 才回滚——用户中途手动改过的保留，绝不覆盖",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/mod.rs",
         "must_contain": "fn revert_locale_in_argv"
       },
-      "regression_test": "src-tauri/src/commands/app_localization.rs::locale_revert_restores_previous_value_or_removes_key",
+      "regression_test": "src-tauri/src/commands/app_localization/tests.rs::locale_revert_restores_previous_value_or_removes_key",
       "severity": "high"
     },
     {
@@ -580,10 +587,10 @@
       "lesson": "插入用固定字节序列（INSERTED_CSP_LINE），revert 按该序列精确移除一次；ensure 必须返回是否实际插入，插入必须记入 side-effects；revert 只允许在记账确认时调用——原厂自带 'unsafe-inline' 的文件缩进不同，盲删会误伤。行为由 csp_unsafe_inline_revert_is_exact_inverse 锁定",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/workbench_inject.rs",
+        "file": "src-tauri/src/commands/workbench_inject/mod.rs",
         "must_contain": "fn revert_csp_unsafe_inline"
       },
-      "regression_test": "src-tauri/src/commands/workbench_inject.rs::csp_unsafe_inline_revert_is_exact_inverse",
+      "regression_test": "src-tauri/src/commands/workbench_inject/tests.rs::csp_unsafe_inline_revert_is_exact_inverse",
       "severity": "high"
     },
     {
@@ -682,10 +689,10 @@
       "lesson": "注入格式 \\n{块}\\n 与剥离必须互为精确逆操作：strip_hans_block/strip_byok_block/claude_strip_inject 三处统一把注入自带的前导/尾随换行一并移除（多轮注入/剥离逐字节不变化的 round-trip 测试锁定）。存量泄漏用对齐自愈兜底：restore 回填原厂校验和后，按 base64(SHA-256) 哈希收敛 </body> 前多余换行（每步哈希背书，收敛成功=字节级复原；非换行差异如实放弃）",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/app_localization.rs",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
         "must_contain": "fn strip_injected_block"
       },
-      "regression_test": "src-tauri/src/commands/app_localization.rs::hans_strip_roundtrip_is_byte_exact",
+      "regression_test": "src-tauri/src/commands/app_localization/tests.rs::hans_strip_roundtrip_is_byte_exact",
       "severity": "high"
     },
     {
@@ -790,10 +797,10 @@
       "lesson": "providers.json 的写入方不只有前端：插件登记、卸载移除、配置变更、启动对账都会直接写盘。任何写盘后都要 emit providers-changed，前端监听后 loadProviders()；再用启动对账补齐被整体覆盖抹掉的登记、清掉孤立条目。登记/移除/同步/对账必须收敛到同一个 upsert 函数，避免漏改一侧",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/plugins.rs",
+        "file": "src-tauri/src/commands/plugins/mod.rs",
         "must_contain": "const PROVIDERS_CHANGED_EVENT"
       },
-      "regression_test": "src-tauri/src/commands/plugins.rs::orphan_ids_only_target_removed_plugins",
+      "regression_test": "src-tauri/src/commands/plugins/tests.rs::orphan_ids_only_target_removed_plugins",
       "severity": "high"
     },
     {
@@ -816,10 +823,10 @@
       "lesson": "把本地 CA 装进系统证书库只对 Electron/Chromium 有效；IDE 的 CloudCode 请求走 Node TLS 栈，只读进程启动时的 NODE_EXTRA_CA_CERTS，不读系统证书库。端点从明文改为 HTTPS 时必须同步补齐这条信任链，并与「安装/卸载 CA」对称：用户原有环境变量值必须合并进 bundle 且记账，卸载时按账本还原、用户改过就保留。判据要覆盖 Node 信任是否就绪，不能只看配置写入或系统信任库",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/cert_install.rs",
+        "file": "src-tauri/src/commands/cert_install/mod.rs",
         "must_contain": "pub fn ensure_node_ca_trust"
       },
-      "regression_test": "src-tauri/src/commands/cert_install.rs::node_ca_bundle_preserves_user_ca",
+      "regression_test": "src-tauri/src/commands/cert_install/tests.rs::node_ca_bundle_preserves_user_ca",
       "severity": "high"
     },
     {
@@ -829,10 +836,10 @@
       "lesson": "jetski.cloudCodeUrl 只被 IDE 主进程消费；Agent 面板的语言服务器是独立进程 agy.exe --hub，端点只认 --cloud_code_endpoint 参数或 CLOUD_CODE_URL 环境变量。v0.5.8（4c16b733）删除 setx CLOUD_CODE_URL 后黑底 IDE 再无接管路径（白底 Hub 有 patch_antigravity_hub_asar 覆盖）。必须在 extensions/agy/vscode/extension.js 的 buildServerEnv（构造 agy 启动 env 的函数）注入读取 settings.json 的自包含逻辑；注入代码不得引用 minify 内部标识符（客户端升级会改名 Ia/fd/$c），锚点用 buildServerEnvironment 赋值定位，return 段按第一个闭合花括号切分变量名。手工 setx 不可靠：环境变量块在进程创建时快照，setx 只对 Explorer 之后新启动的进程生效。还原撤键后注入块读不到 URL 自动回退官方端点，行为对称，补丁无需剥离",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity.rs",
         "must_contain": "patch_antigravity_ide_extension"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_binds_runtime_env_var",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_patch.rs::antigravity_extension_patch_binds_runtime_env_var",
       "severity": "high"
     },
     {
@@ -842,10 +849,10 @@
       "lesson": "白底客户端带 app-update.yml 自动更新，启动时 installer.exe 会整包替换 Antigravity.exe 与 app.asar；接入时打一次的补丁会被升级无声冲掉，仅靠一次性 apply 不够。必须在设置仍指向本地网关时定期幂等重打（spawn_antigravity_endpoint_keeper），重打判据用 settings.json 的 cloudCodeUrl 是否为本地地址，用户停止接入后绝不擅自改安装目录；重打必须持 inject_lock，避免与汉化 apply/restore 全量重写同一 asar 造成 lost update。黑底 IDE 的 extension.js 补丁同样会被升级覆盖，纳入同一个 keeper。另注：Electron 安装目录 ACL 只有具体 AppContainer SID、缺 ALL APPLICATION PACKAGES 时沙箱会拒绝读目录导致启动即退出，需最小授权只读执行",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity_patch.rs",
         "must_contain": "spawn_antigravity_endpoint_keeper"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_endpoint_keeper_only_restores_managed_clients",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_settings.rs::antigravity_endpoint_keeper_only_restores_managed_clients",
       "severity": "high"
     },
     {
@@ -868,7 +875,7 @@
       "lesson": "Gemini 客户端把 functionCall/functionResponse/非图片 inlineData 归一成内部 gemini_part，只有 Gemini 上游能原样透传。以前 upstreamBody 检测到非 Gemini 上游就直接抛 400，把「协议转换缺失」伪装成「配置错误」。functionCall→tool_use、functionResponse→tool_result 都有通用等价物，工具结果 id 必须与调用侧配对（先收集全部调用 id，按 name 队列解析同名多次调用，显式 id 优先，最后按调用顺序兜底），否则 OpenAI 上游会 400。非图片二进制附件无通用表达，降级为带 MIME 说明的文本占位而不是丢弃或硬塞 base64。转换必须返回新数组，不改 ctx.messages——execute 会拿同一 ctx 重试多个上游，原地改会污染 Gemini 目标；thoughtSignature 等内部字段不得泄漏到跨协议上游",
       "check": {
         "type": "source_contains",
-        "file": "sidecar/local-proxy.js",
+        "file": "sidecar/lib/local-proxy/upstream-payload.js",
         "must_contain": "messagesForNonGeminiUpstream"
       },
       "regression_test": "sidecar/local-proxy.test.js::Gemini Native tool history converts to OpenAI tool_calls instead of 400",
@@ -881,10 +888,10 @@
       "lesson": "patch_antigravity_extension_code 里 head = &code[..anchor] 已包含原来的 `return <env>}`；拼接不能用整个 head 再追加 `return (...)`，否则生成两份 return。v1.1.0 改为正则定位锚点前最后一个 `return <标识符>`，用 `&head[..whole.start()]` + 新表达式 + `&code[whole.end()..]` 原地替换（后缀 ;} 与换行原样保留）。只断言「含 marker / 含子串」的弱单测抓不住语法损坏，必须断言补丁后不残留原 return、只允许一处 `return (`，并把生成结果交给 node --check 真解析。真机验证若一直用手工打的正确补丁，会掩盖产品路径的 bug：还原操作触发 LS 重启才是产品代码第一次真正执行，必须专门测接入/还原后的重启链路。同理需校验白底 asar 内 languageServer.js 的语法",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity_patch.rs",
         "must_contain": "&head[..whole.start()]"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_binds_runtime_env_var",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_patch.rs::antigravity_extension_patch_binds_runtime_env_var",
       "severity": "critical"
     },
     {
@@ -894,10 +901,10 @@
       "lesson": "老版本 buildServerEnv 的 return 形态多样（return c} / return c;} / return $e; / 换行 / 不同变量名），导出可能是 .属性、方括号、裸赋值或对象键；必须正则定位锚点前最后一个 return <标识符> 并原地替换表达式本身，不能靠固定字符串切分或整个 head 拼接。白底 languageServer.js 的 --cloud_code_endpoint 值可能是单/双引号、任意缩进、LF/CRLF、任意官方端点域名或历史注入 IIFE，必须正则自愈且抽成可单测的纯函数。路径要从 dirs::home_dir/data_local_dir/config_dir 与 APPDATA/XDG 推导，扫描安装父目录里名字含 antigravity 的子目录，并支持 ANYBRIDGE_ANTIGRAVITY_IDE_APP_DIR / HUB_APP_DIR / HUB_ASAR / SETTINGS 显式覆盖；注入块里同样用 os.homedir + 多产品目录名 + 便携版 --user-data-dir，绝不硬编码 C:\\Users\\<name>。门控必须同时做源码判据、提取真实注入 JS 交 node --check、多形态 fixture 变换与 Rust 单测（scripts/check-antigravity-endpoint.mjs 挂进 npm run verify）",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity_patch.rs",
         "must_contain": "antigravity_install_app_dirs"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_extension_patch_supports_legacy_return_shapes",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_patch.rs::antigravity_extension_patch_supports_legacy_return_shapes",
       "severity": "high"
     },
     {
@@ -907,10 +914,10 @@
       "lesson": "三个叠加根因：①注入块只在 settings 有值时写入 e.CLOUD_CODE_URL，从不删除，而 buildServerEnv 以 {...process.env} 起步，IDE 主进程继承的会话级 CLOUD_CODE_URL 在撤键后仍被传给 agy.exe；②白底 languageServer.js 注入的 fallback 读 process.env.CLOUD_CODE_URL，把同一个脏值当端点；③黑底与白底共用一份 settings 候选目录，用户只还原黑底时，黑底 agy.exe 仍读到白底残留的本地网关地址。修复：注入块先 delete e.CLOUD_CODE_URL 再按需写入；白底 fallback 只回官方常量；候选按端隔离目录名（IDE 系列 / Hub 系列）；任一还原都成套清理两端残留托管端点（clear_antigravity_stale_managed_endpoints，含字段级还原的早退分支）；reg delete 只改注册表，必须同时终止两个语言服务（language_server.exe 与 ~/.gemini/bin/agy.exe，按路径白名单）促其以干净环境重建。判据要能可执行地模拟还原后带脏 env 的注入块行为，不能只查字符串",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity.rs",
         "must_contain": "clear_antigravity_stale_managed_endpoints"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_restore_clears_inherited_endpoint",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_settings.rs::antigravity_restore_clears_inherited_endpoint",
       "severity": "critical"
     },
     {
@@ -920,10 +927,10 @@
       "lesson": "两项目共享同一 IDE 实例：Kite 写 User/settings.json 的 antigravityKite.*（VS Code 配置 API）、直写 state.vscdb / Windows 凭据 gemini:antigravity / ~/.gemini、CDP 默认 9333（可配，另有 9222 与 DevToolsActivePort 兜底）、改 .lnk 快捷方式并重启 IDE、每次切号 killAgyEngine。契约：①AnyBridge 的 CDP 端口动态发现（跟随 antigravityKite.cdpPort / DevToolsActivePort / 9333 / 9222，缓存活跃端口，探测失败静默跳过），绝不写死；②调试端口已就绪时直接补注入，绝不抢 IDE 重启权（Kite 负责重启与快捷方式）；③settings.json 用「一行最小替换 + 写入前重读 + 无变更不写」，绝不 to_string_pretty 整体重写，否则 Kite 的键/注释/格式全丢；④不碰 Kite 独占资源（Antigravity 的 state.vscdb、凭据管理器、~/.gemini、.lnk、OAuth 11451~11550、antigravityKite.* 键）；⑤CDP 注入全局标记用 __anybridgeCdpHans，与 Kite 的 __kiteDeclGuard* 不重名。门控 scripts/check-kite-coexist.mjs 挂进 npm run verify",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity.rs",
         "must_contain": "upsert_settings_endpoint_text"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_settings_write_preserves_kite_keys_and_format",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_settings.rs::antigravity_settings_write_preserves_kite_keys_and_format",
       "severity": "high"
     },
     {
@@ -933,10 +940,10 @@
       "lesson": "含大量 JS 花括号的模板不要用 Rust format!（必须把每个 { 转义成 {{，漏一处或错一处就静默产出坏代码）。改用 __AB_XXX__ 形式的显式占位符 + str.replace 渲染，模板按可读的 JS 原样书写。更关键的是校验方式：node --check 只能证明语法合法，`{names}` 作为 shorthand 属性完全合法，无法发现运行时错误。必须做执行级校验——造真实目录结构、调用注入块、断言它真的把端点写进 env；门控也要做同样的事（scripts/check-antigravity-endpoint.mjs 里的「真执行」判据）。旧补丁升级不能只依赖 .anybridge-bak 备份（客户端升级会删），要能就地正则剥离旧注入再重打，且剥离结果要与直接重打等价",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity_patch.rs",
         "must_contain": "__AB_NAMES__"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_injection_actually_works_at_runtime",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_settings.rs::antigravity_injection_actually_works_at_runtime",
       "severity": "critical"
     },
     {
@@ -946,10 +953,10 @@
       "lesson": "VSCode 系 settings.json 是 JSONC：客户端自己按 JSONC 读没问题，AnyBridge 注入块的读取必须容错——先严格 parse（快速路径），失败后剥块注释/行注释（带 [^:\"'] 守卫不误伤 https://）与尾逗号再重试一次。更深的教训是测试覆盖盲区：所有运行时校验都走 ANYBRIDGE_ANTIGRAVITY_SETTINGS 环境变量覆盖 + 严格 JSON 合成 fixture，默认候选扫描路径从未在真实文件形状上验证过——测试全绿不等于真机可用，端点补丁这类跨进程注入必须有「真机形状」（JSONC 文件 + 默认候选路径 + 带引号的 --user-data-dir argv）执行级回归。--user-data-dir 的引号包在 argv 元素内部（Electron 实测形态），候选构建必须剥引号",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity_patch.rs",
         "must_contain": "fn antigravity_settings_read_js"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_injection_reads_jsonc_settings_default_path",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_settings.rs::antigravity_injection_reads_jsonc_settings_default_path",
       "severity": "critical"
     },
     {
@@ -959,11 +966,211 @@
       "lesson": "regex::Regex::replace 的 &str 替换串会展开 $1/${name} 捕获组引用——注入模板只要含 JS 字面量 $（反引引用、替换模式）就被毒化。必须用闭包替换（|caps: &regex::Captures| format!(\"{}{}{}\", &caps[1], 注入, &caps[2])），结构上杜绝展开。第二层教训：版本 marker 是双刃剑——它挡住重复注入的同时也挡住了坏补丁的自愈，模板内容任何变更（含修复重发）必须升 marker 版本；keeper 的定时补打会让坏模板在后台静默落盘，真机 asar 的实际内容要以字节级抽查为准，不能信任「connect 返回 ok」",
       "check": {
         "type": "source_contains",
-        "file": "src-tauri/src/commands/platforms.rs",
+        "file": "src-tauri/src/commands/platforms/antigravity_patch.rs",
         "must_contain": "|caps: &regex::Captures|"
       },
-      "regression_test": "src-tauri/src/commands/platforms.rs::antigravity_hub_patch_supports_ls_defaults_shape",
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_patch.rs::antigravity_hub_patch_supports_ls_defaults_shape",
       "severity": "critical"
+    },
+    {
+      "id": "openai-to-gemini-tool-history-dropped",
+      "title": "OpenAI/Anthropic/Responses 工具调用历史发往 Gemini 原生上游时不得丢弃且必须带 thoughtSignature",
+      "symptom": "CodeBuddy 走 /v1/chat/completions 接入官方 AI Studio（gemini-4-hydrogen）时，每轮都只重复调用相同的只读工具（如 read_file），直到触发 Detected repeated identical tool calls 死循环报错；usage 日志显示连续多次 200",
+      "lesson": "normalizeOpenAI/normalizeAnthropic 把工具历史归一为 tool_use/tool_result，但 geminiPartFromAnthropic 旧实现只认 text/image/gemini_part，遇到 tool_use/tool_result 直接 return null 被丢弃，导致第 2 轮起发往 Gemini 的 contents 只剩最初的用户消息。修复必须成对：①geminiContents/geminiPartsFromInternalPart 把 tool_use→functionCall、tool_result→functionResponse（反查 name、对齐顺序、合并相邻同 role）；②Gemini 3/4 思考模型对缺失 thoughtSignature 的 functionCall 直接报 400，因此在 createChatSSEFromGemini 与 extractToolCalls 消费候选 part 时必须按 callId 缓存原厂 thoughtSignature（及原厂确曾下发的 upstreamId，避免给不认 id 的 Vertex v1 强塞伪造 id），未命中缓存时对 model 回合首条 functionCall 补官方兜底哨兵 skip_thought_signature_validator",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/local-proxy/upstream-payload.js",
+        "must_contain": "geminiPartsFromInternalPart"
+      },
+      "regression_test": "sidecar/local-proxy.test.js::OpenAI Chat 多轮工具调用转 Gemini 上游保留 functionCall/functionResponse 与真实 thoughtSignature",
+      "severity": "high"
+    },
+    {
+      "id": "test-must-not-touch-real-host-state",
+      "title": "测试严禁触及宿主机真实配置、stash 账本、安装目录、注册表或存活进程",
+      "symptom": "2026-11-15/16 多次 pre-push / verify / check-ag-endpoint 运行期间，Rust 单测 antigravity_official_writes_back_user_url 调无参 clear_antigravity_stale_managed_endpoints() 清空真实 Antigravity/IDE settings.json、调用 Self::kill_antigravity_language_server() 强杀用户正在使用的 language_server.exe / agy.exe 触发 Hub 自动整窗重载；34 处测试调无 stash 入口冲掉真实 agent-stash.json；sidecar/antigravity.test.js 读宿主机配置并向真实 ag-handshake.log 写日志",
+      "lesson": "① clear_antigravity_stale_managed_endpoints_in_dirs 提取纯目录参数版供测试注入临时目录；② agent_stash_dir()、clear_antigravity_stale_managed_endpoints()、kill_antigravity_language_server()、patch_antigravity_ide_extension()、antigravity_endpoint_keeper_tick() 入口加 #[cfg(test)] panic 阻断；③ apply_antigravity*_with_stash 的宿主机全局副作用加 !cfg!(test) 守卫；④ mod tests 禁止调用无临时 stash 参数的任何 apply_*/write_*_managed_models 入口；⑤ sidecar 测试必须自设独立临时 BYOK_CONFIG_DIR",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/platforms/antigravity.rs",
+        "must_contain": "clear_antigravity_stale_managed_endpoints_in_dirs"
+      },
+      "regression_test": "src-tauri/src/commands/platforms/tests/antigravity_settings.rs::antigravity_clear_stale_managed_endpoints_only_touches_managed_dirs",
+      "severity": "critical"
+    },
+    {
+      "id": "antigravity-ui-refresh-must-probe-live-state",
+      "title": "Antigravity 控制台刷新状态与切页必须向后端实时探测，禁止仅重绘启动缓存",
+      "symptom": "真机 settings.json 已被清空为官方端点后，AnyBridge 客户端内 Antigravity / IDE 页面仍显示「✓ 已接入」和「停止接入」，点击「刷新状态」和模型列表刷新图标后依旧显示「已接入」无任何变化且无加载反馈",
+      "lesson": "① 「刷新状态」与「刷新模型列表」按钮必须绑定实时探测入口 antigravityRefreshConsoleAction(triggerEl)，以 force: true 强扫后端 detect_platforms 与 loadProviders，并使用 setLoading/clearLoading/spinnerHtml 与失败 toast 反馈；② 切换进入 Antigravity / IDE 页及切换客户端目标时先同步更新 _currentAntigravityTarget 并后台异步调 refreshPlatforms({ silent: true, reloadProviders: true }) 校对真实状态",
+      "check": {
+        "type": "source_contains",
+        "file": "ui-src/partials/pages/platform-antigravity.html",
+        "must_contain": "antigravityRefreshConsoleAction"
+      },
+      "regression_test": "scripts/antigravity-refresh-and-isolation.test.mjs::Antigravity UI 刷新状态按钮必须强制重扫后端、带动态 spinner，并及时纠正假「已接入」状态",
+      "severity": "high"
+    },
+    {
+      "id": "ag-source-provider-snapshot-drift",
+      "title": "Antigravity 关联主供应商时禁止优先采用静态连接快照",
+      "symptom": "antigravityConfigs 中保存历史 apiHost/apiPath/apiKey/apiFormat 快照后，用户修改主供应商密钥、路径或 Vertex/AI Studio 格式（或将老配置标错成 openai）时，Antigravity 运行期仍读取旧快照导致请求发错端点或协议错配",
+      "lesson": "UI 写回 antigravityConfigs 时删除冗余快照键 apiHost/apiPath/apiKey/apiFormat（只保留 sourceProviderId 与显式 apiFormatOverride）；运行时 config-cache 与 resolveAntigravityProxyModel（以及 Rust 侧 AntigravityConfig::resolve_provider）在存在 sourceProviderId 时一律以关联主供应商与端点推断为准，历史快照仅作无 sourceProviderId 的孤立旧条目兼容兜底",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/config-cache.js",
+        "must_contain": "function mergeSourceProviderEntry("
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "sidecar/lib/local-proxy/routes.js",
+        "must_not_match": "customModel\\.config\\.apiFormat\\s*\\|\\|\\s*provider\\.apiFormat"
+      },
+      "regression_test": "sidecar/lib/google-gemini-e2e.test.js::Antigravity sourceProviderId takes precedence over stale antigravityConfigs snapshot",
+      "severity": "high"
+    },
+    {
+      "id": "gemini-to-gemini-lossy-ir-strip",
+      "title": "gemini -> gemini 同源请求禁止经有损 IR 拍扁重拼",
+      "symptom": "客户端发送含 fileData（URI/MIME 视频音频）、executableCode、codeExecutionResult、多 part systemInstruction 或 googleSearch 原生 tools 的 Gemini 请求给本地网关/Antigravity 时，normalizeGeminiPart 丢弃未知 part 并把 systemInstruction 拍成纯文本，:countTokens 也丢字段",
+      "lesson": "upstreamBody 在 ctx.kind === 'gemini' 且 conn.format === 'gemini'（未触发 visionFallbackApplied）时必须走 buildGeminiNativePassthroughPayload 原生透传：克隆原始负载只剥除控制字段、仅对显式改写/前缀追加/thinking_config 自愈的字段做精确增量修补；:countTokens 同样保留原始 contents/systemInstruction/tools 发往上游官方端点",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/local-proxy/upstream-payload.js",
+        "must_contain": "buildGeminiNativePassthroughPayload"
+      },
+      "regression_test": "sidecar/lib/google-gemini-e2e.test.js::gemini -> gemini native passthrough preserves fileData, executableCode, codeExecutionResult, multipart systemInstruction and raw tools",
+      "severity": "high"
+    },
+    {
+      "id": "ui-static-platform-defs-drift",
+      "title": "前端禁止静态重复维护 PLATFORM_DEFS 导致平台元数据与后端失真",
+      "symptom": "ui/assets/scripts/platforms/core.js 独立硬编码 PLATFORM_DEFS 并把 antigravity / antigravity-ide 写成 requiredApiFormat: 'openai'，与后端 agent_spec 及真实 Gemini 原生接入协议漂移",
+      "lesson": "平台名称、厂商、默认配置路径与 api_format 的唯一真源在 src-tauri/src/commands/agent_spec/specs.rs（antigravity 与 antigravity-ide 声明为 gemini）；前端 core.js 只保留纯展示文案 PLATFORM_UI_COPY，运行时通过 detect_platforms 与 get_agent_registry 合并权威元数据",
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/platforms/core.js",
+        "must_contain": "PLATFORM_UI_COPY"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "ui/assets/scripts/platforms/core.js",
+        "must_not_match": "\\bPLATFORM_DEFS\\b"
+      },
+      "regression_test": "src-tauri/src/commands/agent_spec/tests.rs::metadata_snapshot",
+      "severity": "medium"
+    },
+    {
+      "id": "ag-internal-dependency-must-pin-active-route",
+      "title": "Antigravity 内部依赖与禁用供应商不得绕道同名配置或回落 proxy-routes",
+      "symptom": "两个 Antigravity 配置共用同一 upstreamModel（如一个 OpenAI 一个 Vertex Gemini）时，内部依赖 checkpoint/fast-model 不钉住 pinnedRoute 而按 upstreamModel 重搜，错误命中第一个配置；当关联的 sourceProvider 被禁用时返回 null 静默掉入 proxy-routes.json 绕过禁用开关",
+      "lesson": "routes.js 抽离 buildAntigravityRouteFromCustomModel(customModel, requestedModel, providers)：① 命中 customModel 但关联 provider 缺失或禁用时返回显式 error 阻断，不回落 proxy-routes；② handleAntigravityRequest（含 stream/generateContent 与 countTokens）在 isInternalDependency 为 true 时同样依据已选定的 customModel（lastActiveIdentity 或 active identity）钉死 pinnedRoute",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/local-proxy/routes.js",
+        "must_contain": "export function buildAntigravityRouteFromCustomModel("
+      },
+      "regression_test": "sidecar/lib/google-gemini-e2e.test.js::Antigravity internal dependency routes to last-used config even when two configs share the same upstreamModel, and disabled sourceProvider does not fall back to proxyRoutes",
+      "severity": "high"
+    },
+    {
+      "id": "gemini-fetch-models-no-duplicate-host-path",
+      "title": "Gemini 拉取模型列表 URL 必须基于 host origin 拼接，严禁重复内嵌路径",
+      "symptom": "用户把 host 填成 https://generativelanguage.googleapis.com/v1beta 或带反向代理前缀的 https://relay.example.com/custom 时，build_gemini_model_list_paths 已把内嵌路径提取进候选 path，fetch_models 若仍用原始 host 拼接会产出 /v1beta/v1beta/models 或 /custom/custom/v1beta/models 导致 404",
+      "lesson": "probe_conn::build_fetch_model_url 在 fmt == gemini 时统一通过 google_gemini::host_scheme_and_origin(host).0 取纯 origin 作底座拼接模型列表路径，与 resolve_gemini_endpoint 保持单一事实源一致",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/config/probe_conn.rs",
+        "must_contain": "build_fetch_model_url"
+      },
+      "regression_test": "src-tauri/src/commands/config/tests.rs::fetch_models_gemini_url_does_not_duplicate_embedded_host_path",
+      "severity": "high"
+    },
+    {
+      "id": "cross-layer-source-provider-ssot-drift",
+      "title": "跨端绑定 sourceProviderId 必须实时解析并拦截禁用源，禁止吃嵌套静态快照",
+      "symptom": "修改主供应商地址或密钥后，UI 仅更新顶层快照而漏同步 settingsConfig.env/options，再编辑时反咬覆盖；Rust 5 平台忽略 sourceProviderId、Codex 路由丢多密钥池；Sidecar config-cache 仅动态合并 antigravityConfigs 而漏掉 codexConfigs 并将 disabled 源标为可用",
+      "lesson": "主供应商是唯一连接真源（SSOT）：① Rust 各平台 Config 统一走 resolve_provider + validate_active_source（源禁用/缺失显式阻断，Claude/OpenCode 强覆盖 settingsConfig 连接字段，Codex 路由关联主 providerId 并同步刷新）；② Sidecar config-cache 对所有带 sourceProviderId 的配置统一 mergeSourceProviderEntry 并同步 enabled 与 apiKeys 池；③ 前端统一经 state/provider-store.js::resolveBoundProviderView 解析并在保存主供应商时同步嵌套 settingsConfig",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/config/conversions.rs",
+        "must_contain": "fn validate_active_source"
+      },
+      "regression_test": "src-tauri/src/commands/config/tests.rs::resolve_provider_live_inherits_across_all_six_platform_configs",
+      "severity": "high"
+    },
+    {
+      "id": "concurrent-rmw-missing-file-lock-and-asar-raw-write",
+      "title": "核心配置 RMW 必须走跨进程文件锁，大体积 asar 不得裸写且 sidecar 禁回写 providers.json",
+      "symptom": "providers.json / proxy-routes.json 多条 Rust 路径、UI save_providers 与 Sidecar provider-pool 无锁并发读写互相覆盖丢更新；app.asar 裸 fs::write 中断即损坏 IDE 安装；config-cache 读盘碰撞瞬间覆写为空配置毒化 2 秒",
+      "lesson": "① Rust 确立唯一写端：providers.json / proxy-routes.json / codex-proxy-routes.json 全部收口到 store_io（进程内 Mutex + 同目录 .lock 文件锁 + PID/纳秒/原子序号 write_atomic）；② Sidecar provider-pool 严禁回写 providers.json，config-cache 解析失败保留上次健康快照；③ app.asar 与配置文件一律走 write_atomic，禁止裸 fs::write",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/store_io.rs",
+        "must_contain": "pub(crate) fn update_provider_store"
+      },
+      "check_not": {
+        "file": "sidecar/provider-pool.js",
+        "must_not_match": "writeFileSync|writeJsonAtomic"
+      },
+      "regression_test": "src-tauri/src/commands/store_io.rs::concurrent_update_provider_store_preserves_all_updates",
+      "severity": "critical"
+    },
+    {
+      "id": "cross-protocol-stream-slot-deadlock-and-ledger-zero-usage",
+      "title": "跨协议真流式必须经统一编解码管线且在终结时 destroy 上游、按流尾真实 usage 落账",
+      "symptom": "Gemini 流式入口遇 OpenAI 上游跌落空回复并占死 providerInflightGate 槽位 300 秒；Antigravity/Cursor 硬编码 Chat SSE 导致 Responses/Anthropic 上游丢帧；local-proxy 在刚收 HTTP 200 头就提前调 tracker.finish() 致明细账本 usage 恒为 0；流提前 EOF 伪装 ok 或 catch 后仍发 [DONE]/STOP",
+      "lesson": "① 所有非同源流式通过 codec-registry.js（createProtocolStreamTransform + runStreamPipeline）统一解码四类上游；② runStreamPipeline 绑定 res.once('close') 并于 try/finally 100% destroy() 上游流，流异常或缺终止帧禁止补发 STOP/[DONE]；③ tracker.finish() 严格后置至流真正终结时调用（settleStreamTrackerSuccess/Fail），确保 usage-ledger 写入真实 token",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/codec-registry.js",
+        "must_contain": "export async function runStreamPipeline"
+      },
+      "regression_test": "sidecar/lib/codec-registry.test.js::B-P0-1: sendGeminiStream 真流式支持 OpenAI Chat / Responses / Anthropic 转 Gemini SSE（含思考/工具/签名）且 100% destroy 上游",
+      "severity": "critical"
+    },
+    {
+      "id": "ui-ghost-command-and-late-script-split-brain",
+      "title": "前端禁止调用未注册后端命令与后加载脚本覆写裂脑，须走集中事务 Store",
+      "symptom": "antigravityDrop 调用不存在的 write_provider_store 且静默吞 catch 致拖拽模型永久无法持久化；57-pb-models.js 后加载覆盖 managed_models.js 27 个函数造成 5 列错位对 7 列表头、计数失配与搜索瘫痪；12/16 处 persistProviders 失败不回滚内存快照",
+      "lesson": "① 前端状态改动统一经 state/provider-store.js（mutateProviderStore / persistProviders），自带串行锁、虚拟内置供应商过滤与失败 100% 自动回滚，严禁裸写或调用未注册 command；② 同类表格平台收口进单一工厂（managed_models.js + models_table_factory.js），禁止后加载同名前缀脚本覆写覆盖，所有动态 data-action 必须可静态可达、KNOWN_MISSING 保持为 0",
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/state/provider-store.js",
+        "must_contain": "export async function mutateProviderStore"
+      },
+      "check_not": {
+        "file": "ui/assets/scripts/main.js",
+        "must_not_match": "57-pb-models"
+      },
+      "regression_test": "scripts/ui-store-and-pb-regression.test.mjs::B-P0-3: selectAntigravityMode and antigravityDrop use transaction persistence without write_provider_store",
+      "severity": "high"
+    },
+    {
+      "id": "devin-bare-proto-model-rewrite",
+      "title": "Devin 3.14+ 模型目录采用裸 application/proto 响应，解包与重包不得只认 Connect 5 字节帧头",
+      "symptom": "Devin 3.14.30825 拉取 GetUserStatus / GetCliModelConfigs 发送 content-type: application/proto 裸 protobuf（无 Connect 5 字节帧头）+ accept-encoding: gzip；旧实现只认 JSON、整包 gzip 与 0/1 开头的 Connect 信封，遇到裸 protobuf 直接返回 null 导致模型目录改写静默失效",
+      "lesson": "解包收敛到 proto-rewrite.js::unwrapModelPayload 单一入口，统一识别 plain/gzip/connect/裸 proto，extractModelList/renameModels/unlockModels 共用；rewrapUserStatusPayload 对 proto 原样返回裸字节不补 Connect 帧头。同时 MITM 侧通过 tlsSocket.on('secure') 与 isPreHandshakeDisconnect 记录握手前 ECONNRESET/EPIPE 断连，避免证书未信任时静默失败",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/rename/proto-rewrite.js",
+        "must_contain": "export function unwrapModelPayload"
+      },
+      "regression_test": "sidecar/rename-models.test.js::unlockModels rewrites bare application/proto GetCliModelConfigs without Connect envelope",
+      "severity": "high"
+    },
+    {
+      "id": "devin-daemon-proxy-override-and-legacy-backup-strip",
+      "title": "Devin 接管必须配齐 proxySupport=override、in-process 进程模型、daemon 停止超时与无备份升级剥离",
+      "symptom": "Devin 3.14+ 缺 http.proxySupport=override 时易被系统代理抢路，后台独立 devin daemon 也会绕过代理；旧版无 .byok-bak 的已接管 settings.json 升级重打时会把 http://localhost:<port> 误存成原始备份致无法还原；代理不可达时停 daemon 存在卡死风险；devin/config.json 解析失败误报 settings.json",
+      "lesson": "Devin 接入与还原必须成套对称：① settings.json 写 http.proxySupport=override；② devin/config.json 对称维护 process_model=in-process 并经 parse_object_with_label 精准报错文件名；③ 升级检测到已含 AnyBridge 代理值但缺 .byok-bak 时，先经 write_stripped_backup 剥离托管代理键再生成基线备份；④ 重启前通过 run_command_with_timeout（4s 超时 + kill）清理残余 daemon",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/ide_config/mod.rs",
+        "must_contain": "fn write_stripped_backup"
+      },
+      "regression_test": "src-tauri/src/commands/ide_config/tests.rs::devin_upgrade_from_legacy_patch_without_backup_restores_cleanly",
+      "severity": "high"
     }
   ]
 }

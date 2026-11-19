@@ -35,9 +35,9 @@
             </div>
 
             <div class="proxy-console-tabs" role="tablist" aria-label="网关配置">
-              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" data-action="activateProxyPanel" data-arg="overview" onclick="window.activateProxyPanel && window.activateProxyPanel('overview')" aria-selected="true">接入</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" data-action="activateProxyPanel" data-arg="routes" onclick="window.activateProxyPanel && window.activateProxyPanel('routes')" aria-selected="false">路由</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" data-action="activateProxyPanel" data-arg="enhancement" onclick="window.activateProxyPanel && window.activateProxyPanel('enhancement')" aria-selected="false">增强</button>
+              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" data-action="activateProxyPanel" data-arg="overview" aria-selected="true">接入</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" data-action="activateProxyPanel" data-arg="routes" aria-selected="false">路由</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" data-action="activateProxyPanel" data-arg="enhancement" aria-selected="false">增强</button>
             </div>
 
             <div class="proxy-console-section active" data-proxy-section="overview">
@@ -120,7 +120,7 @@
                         <h2>已接入智能体</h2>
                         <p>检测本机客户端与网关分流状态</p>
                       </div>
-                      <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11.5px; height: 26px; padding: 0 8px;">管理智能体 →</button>
+                      <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 12px; height: 28px; padding: 0 10px;">管理智能体 →</button>
                     </div>
 
                     <div class="gateway-takeover-list">
@@ -132,7 +132,7 @@
                             <div class="gateway-ti-detail">已接管 · 流量走本地网关转发与自愈</div>
                           </div>
                         </div>
-                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 12px; height: 26px; padding: 0 10px;">查看配置</button>
                       </div>
 
                       <div class="gateway-takeover-item">
@@ -143,7 +143,7 @@
                             <div class="gateway-ti-detail">独立模型表支持 · 免全局重命名干扰</div>
                           </div>
                         </div>
-                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 12px; height: 26px; padding: 0 10px;">查看配置</button>
                       </div>
 
                       <div class="gateway-takeover-item">
@@ -154,7 +154,7 @@
                             <div class="gateway-ti-detail">填入上述 Base URL 与 Key 即可直接接入</div>
                           </div>
                         </div>
-                        <button type="button" class="btn-ghost" data-action="setProxyPresetTab" data-arg="cursor" style="font-size: 11px; height: 24px; padding: 0 8px;">获取配置</button>
+                        <button type="button" class="btn-ghost" data-action="setProxyPresetTab" data-arg="cursor" style="font-size: 12px; height: 26px; padding: 0 10px;">获取配置</button>
                       </div>
                     </div>
                   </section>
@@ -315,7 +315,7 @@
             <div class="gateway-drawer-head">
               <div>
                 <div style="font-size: 14.5px; font-weight: 700; color: var(--text-primary);">网关诊断与审计</div>
-                <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">实时捕获的请求调用链路与底层运行日志</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">实时捕获的请求调用链路与底层运行日志</div>
               </div>
               <button type="button" class="btn-ghost" data-action="toggleGatewayDrawer" data-args="[false]" style="height: 28px; padding: 0 10px; font-size: 12px;">关闭</button>
             </div>
@@ -331,7 +331,7 @@
               <div class="gateway-tl-entry">
                 <div class="gateway-tl-header">
                   <span class="gateway-tl-title">POST /v1/chat/completions</span>
-                  <span class="proxy-tag-ok" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; font-weight: 600;">200 OK</span>
+                  <span class="proxy-tag-ok" style="font-size: 12px; padding: 2px 7px; border-radius: 4px; font-weight: 600;">200 OK</span>
                 </div>
                 <div class="gateway-tl-sub" id="drawerRecentReqMeta">最近请求分析就绪</div>
                 <div class="gateway-tl-step ok">

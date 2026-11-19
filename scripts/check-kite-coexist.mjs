@@ -36,9 +36,29 @@ const ok = (name, cond, detail = '') => {
 const section = (n) => console.log(`\n■ ${n}`);
 
 const cdp = fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_cdp.rs'), 'utf8');
-const platforms = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
-const system = fs.readFileSync(path.join(root, 'src-tauri/src/commands/system.rs'), 'utf8');
-const appLoc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/app_localization.rs'), 'utf8');
+function readRustTree(dirRel, includeTests) {
+  const out = [];
+  const walk = (d) => {
+    for (const ent of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, ent.name);
+      if (ent.isDirectory()) {
+        if (!includeTests && ent.name === 'tests') continue;
+        walk(p);
+      } else if (ent.name.endsWith('.rs')) {
+        out.push(fs.readFileSync(p, 'utf8'));
+      }
+    }
+  };
+  walk(path.join(root, dirRel));
+  return out.join('\n');
+}
+const platformsBiz = readRustTree('src-tauri/src/commands/platforms', false);
+const platforms = readRustTree('src-tauri/src/commands/platforms', true);
+const antigravityRs = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms/antigravity.rs'), 'utf8');
+const system = readRustTree('src-tauri/src/commands/system', false);
+const appLoc = readRustTree('src-tauri/src/commands/app_localization', false);
+const localProxy = fs.readFileSync(path.join(root, 'sidecar/local-proxy.js'), 'utf8');
+const agHandler = fs.readFileSync(path.join(root, 'sidecar/lib/antigravity-handler.js'), 'utf8');
 
 section('CDP 端口：跟随 Kite 而非硬编码');
 {
@@ -77,10 +97,10 @@ section('settings.json：并发写不覆盖 Kite');
     (platforms.match(/write_settings_endpoint\(/g) || []).length >= 6);
   ok('不再整体重写 Antigravity settings',
     (() => {
-      const start = platforms.indexOf('fn apply_antigravity_ide_with_stash');
-      const end = platforms.indexOf('fn apply_claude(', start);
-      const seg = platforms.slice(start, end);
-      return !seg.includes('to_string_pretty(&Value::Object(obj))');
+      const start = antigravityRs.indexOf('fn apply_antigravity_ide_with_stash');
+      const nextFn = antigravityRs.slice(start + 1).search(/\n    (?:pub[^\n]*\s+)?fn /);
+      const seg = start >= 0 ? antigravityRs.slice(start, nextFn > 0 ? start + 1 + nextFn : antigravityRs.length) : '';
+      return seg.length > 0 && !seg.includes('to_string_pretty(&Value::Object(obj))');
     })());
   ok('Kite 键/注释逐字节保留有单测', platforms.includes('antigravity_settings_write_preserves_kite_keys_and_format'));
 }
@@ -95,8 +115,7 @@ section('资源边界：不碰 Kite 独占资源');
   ok('不写 ~/.gemini 账号凭证文件',
     !joined.includes('oauth_creds.json') && !joined.includes('google_accounts.json'));
   // 只查业务代码段且排除注释行；说明兼容意图的注释与测试里的夹具不算越界。
-  const business = platforms
-    .slice(0, platforms.indexOf('#[cfg(test)]\nmod tests'))
+  const business = platformsBiz
     .split(/\r?\n/)
     .filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l))
     .join('\n');
@@ -117,6 +136,18 @@ section('CDP 注入：全局标记与 target 互不干扰');
     cdp.includes('is_app_target') && cdp.includes('/settings-standalone') && cdp.includes('extensionView=true'));
   ok('keeper 探测失败时静默跳过（不弹错）',
     cdp.includes('probe().is_ok()') && cdp.includes('补注入跳过'));
+}
+
+section('hybrid 模型缓存：必须按请求凭据分桶（防与 Kite 切号串号）');
+{
+  ok('导出账号指纹函数 antigravityAuthScopeKey（sha256 脱敏不存明文）',
+    /export function antigravityAuthScopeKey\s*\(/.test(agHandler) && agHandler.includes("createHash('sha256')"));
+  ok('local-proxy.js hybrid 模型缓存拼入 antigravityAuthScopeKey(req)',
+    /`ag_fetch_models_hybrid:\$\{antigravityAuthScopeKey\(req\)\}`/.test(localProxy)
+    && !/'ag_fetch_models_hybrid'/.test(localProxy));
+  ok('antigravity-handler.js 官方模型缓存拼入 antigravityAuthScopeKey(req)',
+    /`official_models_response:\$\{antigravityAuthScopeKey\(req\)\}`/.test(agHandler)
+    && !/'official_models_response'/.test(agHandler));
 }
 
 section('Rust 单测（共存契约）');

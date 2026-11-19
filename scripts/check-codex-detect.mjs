@@ -14,7 +14,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 
-const RS = 'src-tauri/src/commands/codex_desktop.rs';
+const RS = 'src-tauri/src/commands/codex_desktop/mod.rs';
 
 if (process.platform !== 'win32') {
   console.log('⏭ 非 Windows，跳过 Codex 进程判定矩阵');

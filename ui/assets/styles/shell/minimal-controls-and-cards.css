@@ -1,0 +1,418 @@
+/* 刷新状态按钮：清爽白底深灰字微阴影药丸 */
+
+[data-style="minimal"] .platform-console-actions .platform-refresh-proxy {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .platform-refresh-proxy:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 停止接入：极简浅柔灰底配克制暗红文字，告别刺眼大红大绿 */
+
+[data-style="minimal"] .platform-console-actions .platform-stop-proxy {
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--border) !important;
+  color: #DC2626 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .platform-stop-proxy:hover:not(:disabled) {
+  background: #FEF2F2 !important;
+  border-color: #FECACA !important;
+  color: #B91C1C !important;
+  box-shadow: 0 2px 6px -1px rgba(220, 38, 38, 0.08) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 汉化按钮：极简纯白微药丸 */
+
+[data-style="minimal"] .platform-console-actions .platform-lang-action-btn {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: #059669 !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .platform-lang-action-btn:hover:not(:disabled) {
+  background: #F0FDF4 !important;
+  border-color: #BBF7D0 !important;
+  color: #047857 !important;
+  transform: translateY(-0.5px);
+}
+
+/* 3. 主行动按钮（+ 添加映射）与工具栏按钮 */
+
+[data-style="minimal"] .btn-primary,
+[data-style="minimal"] .model-map-command-btn.btn-primary {
+  border-radius: 8px !important;
+  background: var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  border: 1px solid var(--accent) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.20), 0 1px 2px rgba(15, 23, 42, 0.10) !important;
+}
+
+[data-style="minimal"] .btn-primary:hover:not(:disabled),
+[data-style="minimal"] .model-map-command-btn.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.24), 0 4px 10px -2px rgba(15, 23, 42, 0.16) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .model-map-toolbar-actions .btn-ghost,
+[data-style="minimal"] .model-map-toolbar-actions .platform-model-btn-icon {
+  height: 34px !important;
+  border-radius: 8px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .model-map-toolbar-actions .btn-ghost:hover:not(:disabled),
+[data-style="minimal"] .model-map-toolbar-actions .platform-model-btn-icon:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px);
+}
+
+/* 4. 批量操作按钮条（选择当前 / 启用 / 停用 / 启用第三方图片） */
+
+[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn {
+  height: 32px !important;
+  border-radius: 8px !important;
+  padding: 0 12px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 2px 5px -1px rgba(0, 0, 0, 0.05) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn:disabled {
+  background: var(--bg-input) !important;
+  border-color: transparent !important;
+  color: var(--text-dim) !important;
+  box-shadow: none !important;
+}
+
+/* 5. 表格行内操作、行高亮与极简状态开关 */
+
+[data-style="minimal"] .model-table td {
+  border-bottom: 1px solid var(--border) !important;
+}
+
+[data-style="minimal"] .model-table th {
+  background: var(--bg-primary) !important;
+  color: var(--text-dim) !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+[data-style="minimal"] .model-table tr:hover td {
+  background: var(--bg-primary) !important;
+}
+
+[data-style="minimal"] .model-map-table tr.is-selected td {
+  background: var(--bg-input) !important;
+}
+
+[data-style="minimal"] .toggle-switch input:checked + .toggle-slider {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+[data-style="minimal"] .provider-select-check input:checked + span {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+}
+
+/* 表格状态标签（支持图片理解、流式/视觉/工具等）：精密 6px 微方标签 */
+
+[data-style="minimal"] .tag,
+[data-style="minimal"] .tag-vision-pill,
+[data-style="minimal"] .tag-cap-badge {
+  border-radius: 6px !important;
+  font-weight: 550 !important;
+  letter-spacing: 0;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+[data-style="minimal"] .tag-vision-pill,
+[data-style="minimal"] .tag[title*="图片理解"],
+[data-style="minimal"] .tag[title*="支持图片"] {
+  border-radius: 6px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+  padding: 2px 8px !important;
+}
+
+[data-style="minimal"] .tag-cap-badge,
+[data-style="minimal"] .target-cap-line .tag {
+  border-radius: 5px !important;
+  padding: 1.5px 7px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  background: transparent !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-dim) !important;
+}
+
+[data-style="minimal"] .tag-cap-badge.is-active,
+[data-style="minimal"] .target-cap-line .tag[style*="var(--success)"] {
+  background: var(--bg-input) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+}
+
+/* 6. 一体成型工作台画布与搜索框 */
+
+[data-style="minimal"] .platform-hero-card,
+[data-style="minimal"] .platform-console-head,
+[data-style="minimal"] .glass-card {
+  border-radius: 12px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+[data-style="minimal"] .model-map-control-bar {
+  border-radius: 12px 12px 0 0 !important;
+  margin-bottom: 0 !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .model-map-control-bar + .glass-card {
+  border-radius: 0 0 12px 12px !important;
+  border-top: 1px solid var(--border) !important;
+}
+
+[data-style="minimal"] .model-map-search input {
+  border-radius: 8px !important;
+  border: 1px solid var(--border) !important;
+  background: var(--bg-input) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .model-map-search input:focus {
+  background: var(--bg-card) !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 3px var(--accent-light) !important;
+}
+
+/* 7. Codex / Claude Code 等平台的配置方案卡片与「切换」按钮统一 */
+
+[data-style="minimal"] .codex-config-card {
+  border-radius: 12px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .codex-config-card:hover {
+  background: var(--bg-card) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+}
+
+[data-style="minimal"] .codex-config-card.current,
+[data-style="minimal"] .codex-config-card.official.current {
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-card)) !important;
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border)) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+
+[data-style="minimal"] .codex-config-title strong {
+  color: var(--text-primary) !important;
+}
+
+[data-style="minimal"] .codex-switch-action,
+[data-style="minimal"] .codex-card-action {
+  border-radius: 8px !important;
+  background: var(--bg-input) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: var(--shadow-sm) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .codex-switch-action:hover:not(:disabled),
+[data-style="minimal"] .codex-card-action:hover:not(:disabled) {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.18) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] button.codex-reconfigure-action,
+[data-style="minimal"] .codex-current-action {
+  border-radius: 8px !important;
+  background: var(--bg-card) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border) !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] button.codex-reconfigure-action:hover:not(:disabled) {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .codex-config-badge,
+[data-style="minimal"] .codex-config-badge-success,
+[data-style="minimal"] .codex-config-badge-muted,
+[data-style="minimal"] .codex-config-badge-current {
+  border-radius: 6px !important;
+  font-weight: 600 !important;
+  font-size: 12px !important;
+  letter-spacing: 0;
+  padding: 2px 8px !important;
+}
+
+[data-style="minimal"] .codex-config-badge.official,
+[data-style="minimal"] .codex-config-badge-success {
+  background: #F0FDF4 !important;
+  border: 1px solid #DCFCE7 !important;
+  color: #15803D !important;
+}
+
+[data-style="minimal"] .codex-config-badge.third,
+[data-style="minimal"] .codex-config-badge.info,
+[data-style="minimal"] .codex-config-badge.local,
+[data-style="minimal"] .codex-config-badge-muted {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+[data-style="minimal"] .codex-config-badge-current {
+  background: #ECFDF5 !important;
+  border: 1px solid #A7F3D0 !important;
+  color: #065F46 !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.08) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+}
+
+[data-style="minimal"] .codex-config-badge-current::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #10B981;
+}
+
+/* 8. 版本更新微标签（更新） */
+
+[data-style="minimal"] .platform-version-line .version-update-btn {
+  border-radius: 6px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+}
+
+[data-style="minimal"] .platform-version-line .version-update-btn:hover {
+  background: var(--bg-hover) !important;
+  border-color: var(--border-strong) !important;
+  color: var(--text-primary) !important;
+}
+
+/* 9. ZCode / WorkBuddy 模型列表：上下文与能力微标签统一 */
+
+[data-style="minimal"] .cb-context-pill,
+[data-style="minimal"] .wb-context-pill {
+  border-radius: 6px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+  font-weight: 600 !important;
+}
+
+[data-style="minimal"] .cb-cap-pill,
+[data-style="minimal"] .wb-cap-pill {
+  border-radius: 6px !important;
+  padding: 2px 8px !important;
+  font-size: 12px !important;
+  font-weight: 550 !important;
+}
+
+[data-style="minimal"] .cb-cap-pill.cb-cap-image,
+[data-style="minimal"] .wb-cap-pill.wb-cap-image {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+[data-style="minimal"] .cb-cap-pill.cb-cap-reason,
+[data-style="minimal"] .wb-cap-pill.wb-cap-reason {
+  background: #FFFBEB !important;
+  border: 1px solid #FEF3C7 !important;
+  color: #B45309 !important;
+}
+
+[data-style="minimal"] .cb-cap-pill.cb-cap-tool,
+[data-style="minimal"] .wb-cap-pill.wb-cap-tool {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}
+
+/* 10. API 供应商卡片 */
+
+[data-style="minimal"] .provider-card {
+  border-radius: 12px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: var(--shadow-card) !important;
+}
+

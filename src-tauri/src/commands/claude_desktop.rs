@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use super::config::{configured_proxy_ports, read_config_value};
+use super::config::{configured_proxy_ports, ensure_local_proxy_key};
 use super::platforms::SwitchResult;
 use super::proxy_routes::{find_route_by_uid, read_routes, ClaudeDesktopBindings};
 use super::write_atomic;
@@ -165,12 +165,7 @@ pub fn gateway_base_url() -> String {
 }
 
 pub fn gateway_api_key() -> Result<String, String> {
-    read_config_value("LOCAL_PROXY_KEY")
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
-            "AnyBridge 内置供应商 key 尚未生成，请启动网关服务或在网关页生成 key 后重试。"
-                .to_string()
-        })
+    ensure_local_proxy_key()
 }
 
 fn read_json_or_empty(path: &Path) -> Result<Value, String> {
@@ -453,13 +448,14 @@ pub fn apply_claude_desktop_sync(
     bindings_opt: Option<ClaudeDesktopBindings>,
 ) -> Result<SwitchResult, String> {
     let paths = current_platform_paths()?;
-    let mut routes = read_routes()?;
 
     let bindings = if let Some(b) = bindings_opt {
-        routes.claude_desktop = Some(b.clone());
-        super::proxy_routes::save_proxy_routes(routes)?;
-        b
+        super::store_io::update_proxy_routes(|routes| {
+            routes.claude_desktop = Some(b.clone());
+            Ok((true, b))
+        })?
     } else {
+        let routes = read_routes()?;
         routes
             .claude_desktop
             .clone()

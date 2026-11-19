@@ -1,0 +1,48 @@
+              <!-- 卡片 1：基础连接信息 -->
+              <div class="glass-card" style="padding: 16px 20px;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
+                    <span>基础连接信息</span>
+                  </div>
+                  {{hintHtml}}
+                </div>
+
+                <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
+                    <input id="{{idPrefix}}-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="{{namePlaceholder}}"
+                      data-action="sync{{Pascal}}RawConfigFromFields" data-events="input">
+                  </div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">{{urlLabel}}</label>
+                    <input id="{{idPrefix}}-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="{{urlPlaceholder}}"
+                      data-action="sync{{Pascal}}RawConfigFromFields" data-events="input">
+                  </div>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                  <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
+                    <button type="button" class="btn-ghost" id="{{idPrefix}}-config-sync-token-btn"
+                      data-action="{{syncAction}}" style="padding: 2px 10px; height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                      </svg>
+                      <span>同步来源令牌</span>
+                    </button>
+                  </div>
+                  <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
+                    <input id="{{idPrefix}}-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="{{keyPlaceholder}}" autocomplete="off"
+                      data-action="sync{{Pascal}}RawConfigFromFields" data-events="input">
+                    <button type="button" class="codex-password-toggle-btn" id="{{idPrefix}}-config-api-key-toggle"
+                      data-action="{{toggleAction}}" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+

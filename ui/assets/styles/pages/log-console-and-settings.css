@@ -1,0 +1,448 @@
+/* ═══════ LOG CONSOLE ═══════ */
+.log-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+.log-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 18px; background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+}
+.log-bar-left { display: flex; align-items: center; gap: 10px; }
+.log-bar-title { font-size: 13px; font-weight: 600; }
+.log-count {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+.log-bar-right { display: flex; gap: 6px; }
+.log-btn {
+  padding: 5px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-secondary); cursor: pointer;
+  font-size: 12px; font-family: var(--font-mono);
+  transition: all var(--duration-fast) var(--ease);
+  box-shadow: var(--shadow-sm);
+}
+.log-btn:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-strong); }
+
+/* 筛选条：分段胶囊 */
+.log-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 88%, white), color-mix(in srgb, var(--bg-secondary) 70%, var(--bg-card)));
+  box-shadow: var(--shadow-sm);
+}
+.log-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 6px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease);
+}
+.log-tab:hover {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--bg-card) 80%, transparent);
+  border-color: var(--border);
+}
+.log-tab.active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 4px 10px -6px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.log-tab[data-level="ok"].active {
+  color: var(--success);
+  background: var(--success-dim);
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 4px 10px -6px color-mix(in srgb, var(--success) 40%, transparent);
+}
+.log-tab[data-level="info"].active {
+  color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-secondary) 12%, var(--bg-card));
+  border-color: color-mix(in srgb, var(--accent-secondary) 30%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 4px 10px -6px color-mix(in srgb, var(--accent-secondary) 40%, transparent);
+}
+.log-tab[data-level="warn"].active {
+  color: var(--accent-warm);
+  background: var(--accent-warm-dim);
+  border-color: color-mix(in srgb, var(--accent-warm) 32%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 4px 10px -6px color-mix(in srgb, var(--accent-warm) 40%, transparent);
+}
+.log-tab[data-level="err"].active {
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.65) inset,
+    0 4px 10px -6px color-mix(in srgb, var(--danger) 40%, transparent);
+}
+
+.log-body {
+  height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent) transparent;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-primary) 55%, var(--bg-card)), var(--bg-primary));
+}
+.log-body:empty::before {
+  content: '暂无日志，启动网关后会在这里显示运行事件';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* 日志行：卡片式列表 */
+.log-line {
+  display: grid;
+  grid-template-columns: 72px 52px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  padding: 9px 12px;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-card) 72%, transparent);
+  transition: background var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
+}
+.log-line:last-child {
+  margin-bottom: 0;
+}
+.log-line:hover {
+  background: var(--bg-card);
+  border-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.log-line[data-level="err"] {
+  background: color-mix(in srgb, var(--danger-dim) 45%, var(--bg-card));
+}
+.log-ts {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: auto;
+  padding-top: 2px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+.log-lv {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: auto;
+  min-width: 48px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  border: 1px solid transparent;
+}
+.log-lv.info {
+  color: var(--accent-secondary);
+  background: color-mix(in srgb, var(--accent-secondary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent-secondary) 22%, transparent);
+}
+.log-lv.ok {
+  color: var(--success);
+  background: var(--success-dim);
+  border-color: color-mix(in srgb, var(--success) 22%, transparent);
+}
+.log-lv.warn {
+  color: var(--accent-warm);
+  background: var(--accent-warm-dim);
+  border-color: color-mix(in srgb, var(--accent-warm) 24%, transparent);
+}
+.log-lv.err {
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-color: color-mix(in srgb, var(--danger) 24%, transparent);
+}
+.log-msg {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text-secondary);
+  font-family: 'Inter', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  padding-top: 1px;
+}
+.log-msg .hl { color: var(--accent); }
+.log-msg .dim { color: var(--text-muted); }
+
+[data-scheme="dark"] .log-tabs {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-card) 90%, transparent), color-mix(in srgb, var(--bg-secondary) 80%, var(--bg-card)));
+}
+[data-scheme="dark"] .log-body {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-secondary) 55%, var(--bg-primary)), var(--bg-primary));
+}
+[data-scheme="dark"] .log-line {
+  background: color-mix(in srgb, var(--bg-card) 55%, transparent);
+}
+[data-scheme="dark"] .log-line:hover {
+  background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+}
+[data-scheme="dark"] .log-line[data-level="err"] {
+  background: color-mix(in srgb, var(--danger-dim) 55%, var(--bg-card));
+}
+
+/* ═══════ SETTINGS ═══════ */
+/* 全局 .settings-sidebar / .settings-menu-item 已被 .platform-settings-card .* 覆盖，
+   见下方『平台设置 / 总设置页』区块。 */
+
+/* ═══════ 平台设置 / 总设置页：合成一个玻璃卡片，左侧导航 + 右侧详情 ═══════ */
+
+/* 大卡片：去掉内边距，flex 撑满 */
+.platform-settings-card {
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+
+/* 内部 grid：左侧导航 + 右侧详情 */
+.platform-settings-inner {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+}
+
+/* 左侧导航：覆盖全局 settings-sidebar 的边框/阴影/背景 */
+.platform-settings-card .settings-sidebar {
+  position: static;
+  align-self: stretch;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 0;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 18px 16px;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+/* 左选项：对齐平台侧栏高亮风格（等宽满行 + 淡蓝底 + 主蓝字） */
+.platform-settings-card .settings-menu-item {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease);
+}
+.platform-settings-card .settings-menu-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.platform-settings-card .settings-menu-item.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.18);
+}
+[data-scheme="dark"] .platform-settings-card .settings-menu-item.active {
+  background:
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.18), rgba(var(--accent-secondary-rgb), 0.10)),
+    rgba(255, 255, 255, 0.04);
+  border-color: rgba(var(--accent-rgb), 0.36);
+  color: #9AD8FF;
+  box-shadow: 0 12px 26px -22px rgba(var(--accent-rgb), 0.72), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+}
+
+/* 右侧详情区 */
+.platform-settings-card .settings-detail {
+  padding: 18px 22px;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#page-settings > .platform-settings-card {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 总设置专用：settings-panel 嵌在大卡片内时，无独立玻璃边框，用分隔线分隔 */
+.settings-panel {
+  display: none;
+}
+.settings-panel.active {
+  display: block;
+}
+.settings-panel .card-header {
+  padding: 0 0 14px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.settings-panel + .settings-panel.active {
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  margin-top: 18px;
+}
+
+/* mount 容器：默认隐藏，active 时显示 */
+.platform-settings-card .platform-settings-mount {
+  display: none;
+}
+.platform-settings-card .platform-settings-mount.active {
+  display: block;
+}
+
+/* 克隆内容已由 JS 在 mount 时剥离 glass-card 类和 card-header，
+   这里只需处理 JS 标记的 .platform-inlined 元素（去掉边框/背景/阴影） */
+.platform-settings-card .platform-inlined {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.settings-detail {
+  min-width: 0;
+}
+.settings-detail > .glass-card,
+.settings-detail > .settings-panel {
+  display: none;
+}
+.settings-detail > .glass-card.active,
+.settings-detail > .settings-panel.active {
+  display: block;
+}
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-row-stacked {
+  align-items: stretch;
+  flex-direction: column;
+  gap: 10px;
+}
+.setting-label { font-size: 13px; color: var(--text-secondary); }
+.setting-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.setting-ctrl { display: flex; align-items: center; gap: 8px; }
+.setting-restart-pref-ctrl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.setting-restart-pref-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.setting-restart-pref-ctrl .btn-ghost {
+  white-space: nowrap;
+}
+.setting-path-ctrl {
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
+}
+.setting-path-ctrl .field-input {
+  width: min(420px, 100%);
+  min-width: 220px;
+}
+.setting-path-row .setting-path-ctrl {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 84px 84px;
+  gap: 10px;
+}
+.setting-path-row .setting-path-ctrl .field-input {
+  width: 100%;
+  min-width: 0;
+}
+.setting-path-row .setting-path-ctrl .btn-ghost {
+  min-width: 84px;
+  justify-content: center;
+}
+.setting-route-ctrl {
+  align-items: stretch;
+}
+.route-port-stack {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr);
+  gap: 8px;
+  width: min(240px, 100%);
+}
+.route-port-stack label {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.route-port-stack span {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}

@@ -1,0 +1,79 @@
+/* ═══════ SKELETON LOADERS (加载骨架屏) ═══════ */
+@keyframes health-skeleton-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.health-skeleton-card {
+  pointer-events: none;
+  border: none !important;
+  border-bottom: 1px solid var(--border-subtle, var(--border)) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  min-height: 50px;
+  box-sizing: border-box;
+  padding: 8px 0 !important;
+}
+
+.health-skeleton-icon,
+.health-skeleton-line {
+  display: block;
+  border-radius: var(--radius-sm, 6px);
+  background: linear-gradient(90deg, var(--bg-input) 0%, var(--bg-hover) 50%, var(--bg-input) 100%);
+  background-size: 200% 100%;
+  animation: health-skeleton-shimmer 1.3s ease-in-out infinite;
+  animation-delay: var(--delay, 0ms);
+}
+
+.health-skeleton-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-sm, 6px);
+  flex-shrink: 0;
+}
+
+.health-skeleton-line.title {
+  width: 120px;
+  height: 14px;
+}
+
+.health-skeleton-line.status {
+  width: 60px;
+  height: 14px;
+  margin-left: auto;
+}
+
+.health-skeleton-issue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.health-skeleton-line.tag {
+  width: 32px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.health-skeleton-line.msg {
+  height: 13px;
+  flex: 1 1 auto;
+  max-width: 80%;
+}
+
+.health-skeleton-line.msg.short {
+  max-width: 50%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .health-skeleton-icon,
+  .health-skeleton-line {
+    animation-duration: 2.6s;
+  }
+}

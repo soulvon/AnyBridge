@@ -1,0 +1,483 @@
+.codex-field span,
+.codex-provider-picker label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.codex-current-callout strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.codex-current-callout p {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-field-grid,
+.codex-target-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.codex-field {
+  position: relative;
+  min-width: 0;
+  min-height: 58px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-input) 82%, transparent);
+}
+
+.codex-field strong {
+  display: block;
+  min-width: 0;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-token-toggle {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.codex-token-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.codex-provider-picker {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.codex-official-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 13px 14px;
+  border: 1px solid rgba(16, 185, 129, 0.24);
+  border-radius: 8px;
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.codex-official-option strong {
+  display: block;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.codex-official-option span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.codex-official-btn {
+  min-width: 92px;
+  min-height: 34px;
+  flex: 0 0 auto;
+  border-color: rgba(16, 185, 129, 0.32);
+  color: #047857;
+  font-weight: 850;
+}
+
+.codex-choice-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.codex-choice-divider::before,
+.codex-choice-divider::after {
+  content: "";
+  height: 1px;
+  min-width: 24px;
+  flex: 1 1 auto;
+  background: var(--border);
+}
+
+.codex-provider-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 38px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.codex-target-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.codex-target-empty {
+  padding: 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.codex-target-route {
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 8px;
+  background: rgba(14, 165, 233, 0.08);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.codex-target-route span,
+.codex-target-route strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-target-route i {
+  width: 22px;
+  height: 1px;
+  flex: 0 0 auto;
+  background: var(--accent);
+}
+
+.codex-target-route strong {
+  color: var(--text-primary);
+}
+
+.codex-protocol-note {
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.codex-protocol-note.ok {
+  background: rgba(16, 185, 129, 0.1);
+  color: #047857;
+}
+
+.codex-protocol-note.warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #b45309;
+}
+
+.codex-action-strip {
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.codex-apply-btn,
+.codex-restore-btn {
+  min-height: 38px;
+  border-radius: 8px;
+}
+
+.codex-apply-btn {
+  min-width: 132px;
+}
+
+.codex-safe-note {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.codex-safe-note code {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}
+
+.codex-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+[data-scheme="dark"] .codex-state-pill.ok { color: #34d399; }
+[data-scheme="dark"] .codex-state-pill.info { color: #38bdf8; }
+[data-scheme="dark"] .codex-state-pill.warn { color: #fbbf24; }
+[data-scheme="dark"] .codex-protocol-note.ok { color: #6ee7b7; }
+[data-scheme="dark"] .codex-protocol-note.warn { color: #fcd34d; }
+
+@media (max-width: 900px) {
+  .codex-manager-toolbar,
+  .codex-toolbar-left,
+  .codex-toolbar-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .codex-search,
+  .codex-search input,
+  .codex-toolbar-actions .btn-primary,
+  .codex-toolbar-actions .btn-ghost,
+  .codex-toolbar-actions .codex-repair-sessions-btn {
+    width: 100%;
+  }
+
+  .codex-config-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-config-card-side {
+    grid-column: 1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 1180px) {
+  .platform-console-head {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .platform-console-head {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .platform-placeholder {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .platform-subtab-nav {
+    width: 100%;
+  }
+
+  .platform-subtab {
+    flex-basis: 102px;
+  }
+
+  .platform-console-actions {
+    width: 100%;
+    justify-self: start;
+    justify-content: flex-start;
+  }
+
+  .platform-console-actions .proxy-btn {
+    width: min(100%, 260px);
+  }
+
+  .platform-console-grid,
+  .platform-runtime-bottom,
+  .platform-mounted-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .platform-quick-metrics,
+  .platform-stats-row {
+    grid-template-columns: 1fr;
+  }
+
+  .proxy-analytics-head {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .proxy-analytics-window {
+    white-space: normal;
+  }
+
+  .proxy-kpi-grid,
+  .proxy-analytics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .proxy-model-panel,
+  .proxy-logs-panel {
+    grid-column: auto;
+  }
+
+  .proxy-load-metrics,
+  .proxy-route-stats,
+  .proxy-vision-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .proxy-model-head {
+    display: none;
+  }
+
+  .proxy-model-row {
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+
+  .proxy-model-row > span:not(.proxy-model-name),
+  .proxy-model-bar {
+    grid-column: 1 / -1;
+  }
+
+  .platform-runtime-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .platform-runtime-sub {
+    white-space: normal;
+  }
+
+  .platform-card-top {
+    flex-direction: column;
+  }
+
+  .platform-card-tags {
+    justify-content: flex-start;
+    max-width: none;
+  }
+
+  .codex-switch-hero,
+  .codex-current-callout {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .codex-hero-copy p,
+  .codex-current-callout p {
+    max-width: 100%;
+    text-align: left;
+    white-space: normal;
+  }
+
+  .codex-hero-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .codex-flow,
+  .codex-field-grid,
+  .codex-target-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .codex-config-head,
+  .codex-footer-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .codex-add-config-btn {
+    width: 100%;
+  }
+
+  .codex-config-card,
+  .codex-config-add-card {
+    grid-template-columns: 38px minmax(0, 1fr);
+    padding: 14px;
+  }
+
+  .codex-config-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .codex-config-card-side,
+  .codex-config-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+
+  .codex-card-action,
+  .codex-current-action,
+  button.codex-reconfigure-action {
+    flex: 1 1 0;
+  }
+
+  .codex-icon-action {
+    flex: 0 0 40px;
+    width: 40px;
+    min-width: 40px;
+  }
+
+  .codex-switch-action {
+    flex: 1 1 auto;
+  }
+
+  .codex-config-add-card em {
+    grid-column: 2;
+    white-space: normal;
+  }
+
+  .codex-action-strip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .codex-official-option {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .codex-official-btn {
+    width: 100%;
+  }
+
+  .codex-apply-btn,
+  .codex-restore-btn {
+    width: 100%;
+  }
+
+  .platform-card-row {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .platform-actions .btn-primary,
+  .platform-actions .btn-ghost {
+    flex: 1 1 160px;
+    justify-content: center;
+  }
+}
+

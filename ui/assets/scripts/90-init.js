@@ -65,6 +65,9 @@ async function init() {
     renderEvalCheckPicker();
   }
 
+  if (typeof loadAgentRegistry === 'function') {
+    await loadAgentRegistry().catch(() => {});
+  }
   await loadProviders();
   if (typeof loadProxyRoutes === 'function') {
     await loadProxyRoutes();
@@ -157,6 +160,9 @@ async function init() {
   setInterval(refreshStatus, 3000);
   setInterval(refreshStats, 3000);
   await refreshStats();
+  if (typeof loadStats === 'function') {
+    loadStats({ silent: true }).catch(() => {});
+  }
   addLog('info', 'AnyBridge 就绪');
   if (typeof maybeShowOnboardingGuide === 'function') {
     maybeShowOnboardingGuide();

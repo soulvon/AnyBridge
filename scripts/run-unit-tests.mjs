@@ -32,7 +32,7 @@ if (files.length === 0) {
 console.log(`运行 ${files.length} 个单元测试文件：`);
 for (const file of files) console.log(`  ${file}`);
 
-const result = spawnSync(process.execPath, ['--test', ...files], {
+const result = spawnSync(process.execPath, ['--test', '--test-concurrency=1', ...files], {
   cwd: root,
   stdio: 'inherit',
 });

@@ -37,9 +37,9 @@
                   <span class="slot-editor-card-title">选择 IDE 模型槽位</span>
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span class="brand-tag" id="slotCatalogCount"
-                      style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
+                      style="padding: 2px 8px; font-size: 12px; font-weight:700;">0 可用</span>
                     <button id="btn-refresh-models" class="btn-ghost accent"
-                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
+                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 26px; font-size: 12px; font-weight: 600;"
                       title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动网关后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -52,16 +52,16 @@
                 <div id="slotCatalogScopeTabs"
                   style="display:flex;align-items:center;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                   <button class="slot-scope-tab" data-scope="all"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
                     <span id="slotScopeAllCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="account"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
                     <span id="slotScopeAccountCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="extended"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
                     <span id="slotScopeExtendedCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="bound"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
                     <span id="slotScopeBoundCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
@@ -70,7 +70,7 @@
                   <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名或 modelUid"
                     style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
                   <select id="slotCatalogSort"
-                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
@@ -116,11 +116,11 @@
                         style="padding:0 6px; font-size:12px; border-radius:8px; width:92px; height:32px; text-align:center; flex:0 0 auto;">
                       <div id="slot-context-presets" style="display:flex; gap:4px; align-items:center;">
                         <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
-                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
-                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" title="200,000 tokens">200K</button>
+                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;" title="200,000 tokens">200K</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
-                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" title="1,000,000 tokens">1M</button>
+                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;" title="1,000,000 tokens">1M</button>
                       </div>
                     </div>
                   </div>
@@ -133,7 +133,7 @@
                   <input type="text" id="mappingModelSearch" placeholder="搜索已配置模型或供应商"
                     style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
                   <select id="mappingCatalogSort"
-                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>

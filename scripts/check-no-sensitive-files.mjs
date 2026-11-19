@@ -31,29 +31,44 @@ const git = (args) => {
   catch { return ''; }
 };
 
+const forbiddenName = [
+  /(^|\/)\.env$/i,
+  /(^|\/)\.env\.(?!example|sample|template)/i,
+  /tauri-sign\.key/i,
+  /\.(pem|p12|pfx|key|keystore|jks|crt|cer)$/i,
+  /(^|\/)(credentials|secrets?|tokens?)\.(json|ya?ml|txt|ini|toml)$/i,
+  /private[_-]?key/i,
+  /(^|\/)(src-tauri\/binaries|src-tauri\/target|cursor-core\/target|node_modules|tmp)\//i,
+  /\.(log|exe|msi|dmg|deb|rpm|AppImage|zip|sig|tmp|bak|orig|old)$/i,
+  /capture|decompiled|sniffer/i,
+];
+
 section('已跟踪文件名单');
 {
   const tracked = git(['ls-files']).split(/\r?\n/).filter(Boolean);
   console.log(`  （共 ${tracked.length} 个文件）`);
-  const forbiddenName = [
-    /(^|\/)\.env$/i,
-    /(^|\/)\.env\.(?!example|sample|template)/i,
-    /tauri-sign\.key/i,
-    /\.(pem|p12|pfx|key|keystore|jks|crt|cer)$/i,
-    /(^|\/)(credentials|secrets?|tokens?)\.(json|ya?ml|txt|ini|toml)$/i,
-    /private[_-]?key/i,
-    /(^|\/)(src-tauri\/binaries|src-tauri\/target|cursor-core\/target|node_modules|tmp)\//i,
-    /\.(log|exe|msi|dmg|deb|rpm|AppImage|zip|sig)$/i,
-    /capture|decompiled|sniffer/i,
-  ];
   const bad = tracked.filter(f => forbiddenName.some(re => re.test(f)));
   ok('无私钥/证书/凭据/构建产物/日志被跟踪', bad.length === 0, bad.slice(0, 12).join(', '));
   ok('示例配置保留（.env.example 允许）', true);
 }
 
+const isAllowedUntrackedSource = (f) => {
+  if (forbiddenName.some(re => re.test(f))) return false;
+  if (/^\.tmp_|(^|\/)\.tmp/i.test(f)) return false;
+  return (
+    /^src-tauri\/src\/[A-Za-z0-9._\/-]+\.rs$/.test(f) ||
+    /^src-tauri\/resources\/[A-Za-z0-9._\/-]+\.(js|json)$/.test(f) ||
+    /^cursor-core\/(?:src|tests|crates)\/[A-Za-z0-9._\/-]+\.rs$/.test(f) ||
+    /^sidecar\/[A-Za-z0-9._\/-]+\.(js|mjs|cjs|json)$/.test(f) ||
+    /^ui\/assets\/[A-Za-z0-9._\/-]+\.(js|css|json)$/.test(f) ||
+    /^ui-src\/[A-Za-z0-9._\/-]+\.(html|json|md)$/.test(f) ||
+    /^scripts\/[A-Za-z0-9._\/-]+\.(mjs|py|js)$/.test(f)
+  );
+};
+
 section('待提交内容扫描');
 {
-  // 只看本次改动引入的行：git diff（含 staged 与 unstaged）+ untracked 文件。
+  // 只看本次改动引入的行：git diff（含 staged 与 unstaged）+ 未跟踪正式源码文件。
   let diff = '';
   try {
     diff = execFileSync('git', ['diff', '--no-ext-diff', '--unified=0', 'HEAD'], {
@@ -61,6 +76,17 @@ section('待提交内容扫描');
     });
   } catch { diff = ''; }
   const added = diff.split(/\r?\n/).filter(l => l.startsWith('+') && !l.startsWith('+++'));
+  const untracked = git(['ls-files', '--others', '--exclude-standard']).split(/\r?\n/).filter(Boolean);
+  const allowedUntracked = untracked.filter(isAllowedUntrackedSource);
+  for (const rel of allowedUntracked) {
+    try {
+      const content = fs.readFileSync(path.join(root, rel), 'utf8');
+      // 跳过纯单元测试文件中的合成凭据夹具，正式源码一律全量扫描
+      if (!/(?:^|\/|\\)[^/\\]*\.test\.[a-z]+$/i.test(rel)) {
+        added.push(content);
+      }
+    } catch { }
+  }
   const joined = added.join('\n');
   const findings = [];
   if (/-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY-----/.test(joined)) findings.push('私钥 PEM 头');
@@ -76,14 +102,9 @@ section('待提交内容扫描');
   if (/\/Users\/[A-Za-z0-9._-]+\/(?:Library|Documents|Desktop)\//.test(joined)) findings.push('硬编码 macOS 用户绝对路径');
   ok('新增行无私钥 / token / 凭据 / 本机绝对路径', findings.length === 0, findings.join(', '));
 
-  // 新写的正式脚本允许入库；其它未跟踪文件（日志、导出、探针、备份）一律拦下。
-  // 白名单按「仓库内 scripts/*.mjs 且不含敏感文件名」判定，不靠具体文件名放行。
-  const untracked = git(['ls-files', '--others', '--exclude-standard']).split(/\r?\n/).filter(Boolean);
-  const suspicious = untracked.filter(f => {
-    if (/^scripts\/[A-Za-z0-9._-]+\.mjs$/.test(f)) return false;
-    return true;
-  });
-  ok('未跟踪文件仅含正式 scripts 脚本，无私料/日志/导出', suspicious.length === 0, suspicious.slice(0, 10).join(', '));
+  // 新写的正式源码/脚本允许入库；其它未跟踪文件（日志、导出、探针、备份）一律拦下。
+  const suspicious = untracked.filter(f => !isAllowedUntrackedSource(f));
+  ok('未跟踪文件仅含正式源码/脚本，无私料/日志/导出', suspicious.length === 0, suspicious.slice(0, 10).join(', '));
 }
 
 section('.gitignore 规则');

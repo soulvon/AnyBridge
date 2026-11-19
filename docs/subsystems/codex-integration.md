@@ -7,10 +7,10 @@ OpenAI configuration.
 
 | Part | Responsibility | Source |
 | --- | --- | --- |
-| Apply third-party provider | Edit `~/.codex/config.toml` (or `CODEX_HOME`) in place, preserving unrelated TOML. | `src-tauri/src/commands/platforms.rs` (`Platform::Codex::apply_codex`) |
-| Restore official | Point the managed provider back to OpenAI OAuth without depending on an old backup. | `src-tauri/src/commands/platforms.rs` (`apply_codex_official`) |
-| Managed provider | The runtime provider ID is `codex_local_access`; the legacy ID is `byok`. | `src-tauri/src/commands/platforms.rs` |
-| Codex routes | Third-party proxy mode writes `codex-proxy-routes.json`. | `src-tauri/src/commands/platforms.rs`, `src-tauri/src/commands/proxy_routes.rs` |
+| Apply third-party provider | Edit `~/.codex/config.toml` (or `CODEX_HOME`) in place, preserving unrelated TOML. | `src-tauri/src/commands/platforms/codex.rs` (`apply_codex_with_stash`) |
+| Restore official | Point the managed provider back to OpenAI OAuth without depending on an old backup. | `src-tauri/src/commands/platforms/codex.rs` (`apply_codex_official`) |
+| Managed provider | The runtime provider ID is `codex_local_access`; the legacy ID is `byok`. | `src-tauri/src/commands/platforms/common.rs` |
+| Codex routes | Third-party proxy mode writes `codex-proxy-routes.json`. | `src-tauri/src/commands/platforms/codex.rs`, `src-tauri/src/commands/proxy_routes.rs` |
 | Model catalog | `anybridge-model-catalog.json` lives beside `config.toml` and is removed when no catalog is configured. | `CODEX_MODEL_CATALOG_FILENAME` |
 | Managed agents | Managed agent files live under `anybridge-agents/` with `manifest.json`; user agent roles are preserved. | `apply_codex_agents` |
 

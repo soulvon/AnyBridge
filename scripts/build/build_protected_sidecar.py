@@ -252,19 +252,25 @@ def bytenode_compile(os_name, arch):
     "type":"module" 的 ESM，因此必须先用 esbuild 转 CJS。"""
     assert_bytenode_host_matches_target(os_name, arch)
 
-    # 需要编译的入口和模块文件
+    # 需要编译的入口和模块文件（自动扫描根目录模块，排除入口、测试及测试辅助文件）
     entries = ["hybrid-server.js", "inference-proxy.js", "proxy-entry.js"]
-    modules = [
-        "connect.js", "mitm-logger.js", "port-utils.js",
-        "proto.js", "provider-pool.js", "rename-models.js",
-        "stats.js", "inject-models.js", "load-env.js",
-        "plugin-loader.js", "step-executor.js", "cursor-proxy.js",
-        "local-proxy.js", "system-proxy.js", "config-cache.js",
-        "multimodal-middleware.js", "retry.js", "vision-fallback.js",
-        "windsurf-catalog.js",
+    entry_set = set(entries)
+    excluded_suffixes = (".test.js", "-test-helpers.js")
+    modules = sorted(
+        name for name in os.listdir(JSC_DIR)
+        if os.path.isfile(os.path.join(JSC_DIR, name))
+        and name.endswith(".js")
+        and name not in entry_set
+        and not name.endswith(excluded_suffixes)
+    )
+    handlers = [
+        p for p in glob.glob(os.path.join(JSC_DIR, "handlers", "**", "*.js"), recursive=True)
+        if not p.endswith(excluded_suffixes)
     ]
-    handlers = glob.glob(os.path.join(JSC_DIR, "handlers", "*.js"))
-    lib_files = glob.glob(os.path.join(JSC_DIR, "lib", "*.js"))
+    lib_files = [
+        p for p in glob.glob(os.path.join(JSC_DIR, "lib", "**", "*.js"), recursive=True)
+        if not p.endswith(excluded_suffixes)
+    ]
 
     all_js = []
     for f in entries + modules:
@@ -310,7 +316,7 @@ def transform_remaining_to_cjs():
     """将构建目录里剩下的 .js 源文件（未被 bytenode 编译的、loader、test 之外）经
     esbuild 转成 CJS，让运行时统一为 CJS。"""
     esbuild_bin = local_bin("esbuild")
-    skip_suffixes = (".test.js", ".cjs.tmp.js")
+    skip_suffixes = (".test.js", "-test-helpers.js", ".cjs.tmp.js")
     skip_dirs_prefix = ("node_modules",)
 
     for root, dirs, files in os.walk(JSC_DIR):
@@ -391,7 +397,7 @@ def pkg_bundle(os_name, arch):
         "assets": [
             "**/*.jsc",
             "*.jsc",
-            "handlers/*.jsc",
+            "handlers/**/*.jsc",
             "*.js",
             "lib/**/*.js",
             "**/*.json",

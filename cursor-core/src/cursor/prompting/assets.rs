@@ -184,3 +184,32 @@ pub(super) fn runtime_expression() -> &'static regex::Regex {
         regex::Regex::new(r"\{\{([A-Z_]+)\}\}").expect("valid runtime placeholder expression")
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// agent / debug / plan / subagent 当前共用完全相同的基础 prompt.md 模板；
+    /// 锁定嵌入版与磁盘版之间的一致性，避免后续只修改其中一份造成隐性漂移。
+    #[test]
+    fn shared_mode_base_prompts_stay_identical_between_embedded_and_disk() {
+        let embedded = PromptAssets::embedded().expect("embedded prompt assets should load");
+        let disk_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("prompt/cursor");
+        let loaded = PromptAssets::load(&disk_root).expect("disk prompt assets should load");
+
+        let baseline = &embedded.mode(Mode::Agent).prompt;
+        assert!(!baseline.trim().is_empty());
+        for mode in [Mode::Agent, Mode::Debug, Mode::Plan, Mode::Subagent] {
+            assert_eq!(
+                &embedded.mode(mode).prompt,
+                baseline,
+                "embedded {mode:?}/prompt.md drifted from Agent base prompt"
+            );
+            assert_eq!(
+                &loaded.mode(mode).prompt,
+                baseline,
+                "disk {mode:?}/prompt.md drifted from embedded Agent base prompt"
+            );
+        }
+    }
+}

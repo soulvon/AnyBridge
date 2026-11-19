@@ -118,6 +118,12 @@ impl Stashed {
             crate::commands::jsonc_edit::JsoncValue::Str(s) => Some(Stashed::Str(s.clone())),
             crate::commands::jsonc_edit::JsoncValue::Bool(b) => Some(Stashed::Bool(*b)),
             crate::commands::jsonc_edit::JsoncValue::Num(n) => Some(Stashed::Num(*n)),
+            crate::commands::jsonc_edit::JsoncValue::Object(m) => {
+                Some(Stashed::Json(serde_json::Value::Object(m.clone()).to_string()))
+            }
+            crate::commands::jsonc_edit::JsoncValue::Array(a) => {
+                Some(Stashed::Json(serde_json::Value::Array(a.clone()).to_string()))
+            }
             crate::commands::jsonc_edit::JsoncValue::Raw(_) => None,
         }
     }
@@ -285,15 +291,15 @@ pub fn clear_for(dir: &Path, key: &StashKey) -> Result<(), String> {
     save_in(dir, &file)
 }
 
-/// 门控：字段级还原是否开启。默认关闭——关闭时所有还原路径与
-/// 旧版本行为完全一致（整文件备份覆盖 / 删托管键）。
+/// 门控：字段级还原是否开启。默认开启；仅显式设为 `"0"` / `"false"` / `"off"` / `"no"` 时
+/// 退回整文件备份覆盖 / 删托管键旧语义。
 pub fn field_restore_enabled() -> bool {
     match std::env::var("ANYBRIDGE_FIELD_RESTORE") {
         Ok(v) => {
             let v = v.trim().to_ascii_lowercase();
-            v == "1" || v == "true" || v == "on"
+            !matches!(v.as_str(), "0" | "false" | "off" | "no")
         }
-        Err(_) => false,
+        Err(_) => true,
     }
 }
 

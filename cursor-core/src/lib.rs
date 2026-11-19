@@ -6,6 +6,7 @@ pub mod config;
 pub mod control;
 pub mod cursor;
 pub mod error;
+pub mod fs_atomic;
 pub mod local_app;
 pub mod logging;
 pub mod model;

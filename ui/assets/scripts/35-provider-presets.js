@@ -322,15 +322,20 @@ function rewriteVertexRegion(pathValue, region) {
   return text.replace(/\/locations\/[^/]+\//, `/locations/${region}/`);
 }
 
-/** 当前是否处于 Vertex 场景：模板声明了 regions，或路径/地址本身指向 Vertex。 */
+/** 当前是否处于标准 Vertex AI（带 /projects/.../locations/... 资源路径）场景；Express 模式无地区路径不显示。 */
 function activeVertexRegionPreset() {
   const providers = (globalThis.PROVIDER_PRESET_CATALOG || {}).providers || [];
-  const activeId = String(globalThis.PROVIDER_PRESET_ACTIVE_ID || '');
-  const byActive = providers.find((p) => p.id === activeId);
-  if (byActive && Array.isArray(byActive.regions) && byActive.regions.length) return byActive;
   const pathValue = document.getElementById('pf-path')?.value || '';
   const hostValue = document.getElementById('pf-host')?.value || '';
-  if (/\/publishers\/google\/models/.test(pathValue) || /aiplatform\.googleapis\.com/.test(hostValue)) {
+  const joined = `${hostValue} ${pathValue}`;
+  if (/\/projects\/[^/\s]+\/locations\/[^/\s]+/.test(joined)) {
+    const activeId = String(globalThis.PROVIDER_PRESET_ACTIVE_ID || '');
+    const byActive = providers.find((p) => p.id === activeId);
+    if (byActive && Array.isArray(byActive.regions) && byActive.regions.length) return byActive;
+    return providers.find((p) => p.id === 'vertexai' && Array.isArray(p.regions)) || null;
+  }
+  const activeId = String(globalThis.PROVIDER_PRESET_ACTIVE_ID || '');
+  if (activeId === 'vertexai' && !pathValue && !hostValue) {
     return providers.find((p) => p.id === 'vertexai' && Array.isArray(p.regions)) || null;
   }
   return null;
@@ -369,6 +374,10 @@ globalThis.syncVertexRegionPicker = function () {
     select.addEventListener('change', () => {
       const target = document.getElementById('pf-path');
       if (target) target.value = rewriteVertexRegion(target.value, select.value);
+      const hostInput = document.getElementById('pf-host');
+      if (hostInput && /\/locations\/[^/]+\//.test(hostInput.value)) {
+        hostInput.value = rewriteVertexRegion(hostInput.value, select.value);
+      }
       const resultEl = document.getElementById('pf-vertex-latency-result');
       if (resultEl) resultEl.textContent = '';
     });
@@ -412,34 +421,45 @@ async function probeVertexRegions(preset) {
     : hostValue.replace(/\/v1\/.*$/, ''));
   const model = preset.probeModel || 'gemini-3.5-flash-lite';
   const regions = preset.regions.slice();
-  if (btn) { btn.disabled = true; btn.textContent = '测速中…'; }
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    const busyText = '测速中…';
+    btn.innerHTML = typeof loadingHtml === 'function' ? loadingHtml(busyText, 12) : busyText;
+  }
   setResult(`正在用 ${model} 探测 ${regions.length} 个地区…`);
   const results = [];
-  const queue = regions.slice();
-  const worker = async () => {
-    while (queue.length) {
-      const region = queue.shift();
-      const started = Date.now();
-      try {
-        const r = await call('test_connection', {
-          args: {
-            host: apiHost,
-            api_key: apiKey,
-            path: rewriteVertexRegion(basePath, region.id),
-            api_format: 'gemini',
-            model,
-          },
-        });
-        results.push({ region: region.id, label: region.label || region.id, ms: Number(r && r.latencyMs) || (Date.now() - started) });
-      } catch (err) {
-        results.push({ region: region.id, label: region.label || region.id, ms: Infinity, error: String(err || '') });
+  try {
+    const queue = regions.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const region = queue.shift();
+        const started = Date.now();
+        try {
+          const r = await call('test_connection', {
+            args: {
+              host: apiHost,
+              api_key: apiKey,
+              path: rewriteVertexRegion(basePath, region.id),
+              api_format: 'gemini',
+              model,
+            },
+          });
+          results.push({ region: region.id, label: region.label || region.id, ms: Number(r && r.latencyMs) || (Date.now() - started) });
+        } catch (err) {
+          results.push({ region: region.id, label: region.label || region.id, ms: Infinity, error: String(err || '') });
+        }
       }
+    };
+    await Promise.all([worker(), worker(), worker()]);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml || '测速';
     }
-  };
-  await Promise.all([worker(), worker(), worker()]);
+  }
   const ok = results.filter((r) => Number.isFinite(r.ms)).sort((a, b) => a.ms - b.ms);
   const failed = results.length - ok.length;
-  if (btn) { btn.disabled = false; btn.textContent = '测速'; }
   if (!ok.length) {
     const firstError = (results.find((r) => r.error) || {}).error || '';
     setResult(`所有地区都失败：${firstError.slice(0, 120) || '检查密钥与网络'}`);

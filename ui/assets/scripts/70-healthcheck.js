@@ -23,6 +23,38 @@
     return document.getElementById(id);
   }
 
+  function setHealthBtnBusy(btn, label) {
+    if (!btn) return;
+    if (typeof globalThis.setLoading === 'function') {
+      globalThis.setLoading(btn, label);
+      return;
+    }
+    if (!btn.dataset) btn.dataset = {};
+    if (btn.dataset.prevHtml == null) {
+      btn.dataset.prevHtml = btn.innerHTML !== undefined ? btn.innerHTML : (btn.textContent || '');
+    }
+    btn.disabled = true;
+    const html = typeof globalThis.loadingHtml === 'function' ? globalThis.loadingHtml(label) : label;
+    if ('innerHTML' in btn) btn.innerHTML = html;
+    else btn.textContent = label;
+  }
+
+  function clearHealthBtnBusy(btn, fallbackText) {
+    if (!btn) return;
+    if (typeof globalThis.clearLoading === 'function') {
+      globalThis.clearLoading(btn);
+      return;
+    }
+    btn.disabled = false;
+    if (btn.dataset && btn.dataset.prevHtml != null) {
+      if ('innerHTML' in btn) btn.innerHTML = btn.dataset.prevHtml;
+      else btn.textContent = btn.dataset.prevHtml || fallbackText || '';
+      delete btn.dataset.prevHtml;
+    } else if (fallbackText) {
+      btn.textContent = fallbackText;
+    }
+  }
+
   // ──────────────────────────────────────────────
   // 入口：用户点「一键体检」按钮
   // ──────────────────────────────────────────────
@@ -81,11 +113,7 @@
       }
     }
     const btn = _hEl('health-generate-cert-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.dataset.oldText = btn.textContent;
-      btn.textContent = '生成中...';
-    }
+    setHealthBtnBusy(btn, '生成中…');
     setCertInstallProgress({ message: '正在生成 MITM 证书', percent: 10, level: 'info' });
     addLog && addLog('ok', '正在生成 MITM 证书...');
     try {
@@ -98,10 +126,7 @@
       setCertInstallProgress({ message: '生成失败: ' + errMsg, percent: 100, level: 'err' });
       addLog && addLog('err', '证书生成失败: ' + errMsg);
     } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = btn.dataset.oldText || '生成证书';
-      }
+      clearHealthBtnBusy(btn, '生成证书');
     }
   };
 
@@ -159,11 +184,7 @@
     setCertInstallProgress({ message: '准备清理旧证书并重新安装', percent: 3, level: 'warn' });
     addLog && addLog('warn', '正在按当前平台策略修复 CA 信任（macOS 保留有效证书，不强制轮换）...');
     const btn = _hEl('health-reinstall-cert-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.dataset.oldText = btn.textContent;
-      btn.textContent = '重装中...';
-    }
+    setHealthBtnBusy(btn, '重装中…');
     setInstallCertButtonState('busy');
     try {
       const msg = await invokeCertTask('cert_reinstall_clean');
@@ -184,10 +205,7 @@
       }
     } finally {
       setInstallCertButtonState('idle');
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = btn.dataset.oldText || '清理并重装';
-      }
+      clearHealthBtnBusy(btn, '清理并重装');
     }
   };
 
@@ -240,7 +258,7 @@
       : (typeof getTargetIde === 'function' ? getTargetIde() : 'windsurf');
     const label = typeof ideDisplayLabel === 'function' ? ideDisplayLabel(target) : String(target);
     const btn = _hEl('health-restart-ide-btn');
-    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '重启中...'; }
+    setHealthBtnBusy(btn, '重启中…');
     try {
       const ok = await restartIdeNow(target);
       if (ok) {
@@ -249,7 +267,7 @@
     } catch (e) {
       addLog && addLog('err', `重启 ${label} 失败: ` + e);
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldText || '重启 IDE'; }
+      clearHealthBtnBusy(btn, '重启 IDE');
     }
   };
 
@@ -259,7 +277,7 @@
   window.cleanupLegacyCaFromHealth = async function () {
     if (!invoke) return;
     const btn = _hEl('health-cleanup-legacy-btn');
-    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '清理中...'; }
+    setHealthBtnBusy(btn, '清理中…');
     try {
       const msg = await invokeCertTask('cert_cleanup_legacy');
       addLog && addLog('ok', '老证书清理: ' + msg);
@@ -267,7 +285,7 @@
     } catch (e) {
       addLog && addLog('err', '老证书清理失败: ' + e);
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldText || '清理老证书'; }
+      clearHealthBtnBusy(btn, '清理老证书');
     }
   };
 
@@ -278,7 +296,7 @@
     const md = buildMarkdownReport(_lastReport);
     if (!md) return;
     const btn = _hEl('health-export-md-btn');
-    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.innerHTML = loadingHtml('导出中…'); }
+    setHealthBtnBusy(btn, '导出中…');
     try {
       const ts = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
       const filename = 'byok-healthcheck-' + ts + '.md';
@@ -305,24 +323,38 @@
       downloadTextFile(md, filename);
       addLog && addLog('ok', '体检报告已下载: ' + filename);
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = btn.dataset.oldText || '导出报告'; }
+      clearHealthBtnBusy(btn, '导出报告');
     }
   };
 
+  let _copyResetTimer = null;
   window.copyHealthMarkdown = async function () {
     const md = buildMarkdownReport(_lastReport);
     if (!md) return;
     const btn = _hEl('health-copy-md-btn');
-    if (btn) { btn.disabled = true; btn.dataset.oldText = btn.textContent; btn.textContent = '复制中...'; }
+    if (_copyResetTimer) {
+      clearTimeout(_copyResetTimer);
+      _copyResetTimer = null;
+    }
+    setHealthBtnBusy(btn, '复制中…');
+    let copied = false;
     try {
       await navigator.clipboard.writeText(md);
+      copied = true;
       addLog && addLog('ok', '体检报告已复制到剪贴板');
-      if (btn) { btn.textContent = '✓ 已复制'; }
+      if (btn) btn.textContent = '✓ 已复制';
     } catch (e) {
       addLog && addLog('err', '复制到剪贴板失败: ' + e);
     } finally {
       if (btn) {
-        setTimeout(() => { btn.disabled = false; btn.textContent = btn.dataset.oldText || '复制报告'; }, 800);
+        if (copied) {
+          _copyResetTimer = setTimeout(() => {
+            _copyResetTimer = null;
+            clearHealthBtnBusy(btn, '复制报告');
+          }, 800);
+        } else {
+          clearHealthBtnBusy(btn, '复制报告');
+        }
       }
     }
   };
@@ -507,16 +539,10 @@
     const btn = _hEl('health-install-cert-btn');
     const uninstallBtn = _hEl('health-uninstall-cert-btn');
     if (state === 'busy') {
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = loadingHtml('安装中…');
-      }
+      setHealthBtnBusy(btn, '安装中…');
       if (uninstallBtn) uninstallBtn.disabled = true;
     } else {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = '安装证书';
-      }
+      clearHealthBtnBusy(btn, '安装证书');
       if (uninstallBtn) uninstallBtn.disabled = false;
     }
   }
@@ -524,16 +550,10 @@
     const btn = _hEl('health-uninstall-cert-btn');
     const installBtn = _hEl('health-install-cert-btn');
     if (state === 'busy') {
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = '卸载中...';
-      }
+      setHealthBtnBusy(btn, '卸载中…');
       if (installBtn) installBtn.disabled = true;
     } else {
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = '卸载证书';
-      }
+      clearHealthBtnBusy(btn, '卸载证书');
       if (installBtn) installBtn.disabled = false;
     }
   }

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { resolveTarget } from './provider-pool.js';
+import { getApiKeyCandidates, resolveTarget } from './provider-pool.js';
 
 function providersWithChatWireApiUnlocks() {
   return new Map([[
@@ -251,4 +251,71 @@ test('resolveTarget preserves explicit Vertex model :generateContent path and do
     apiFormat: 'anthropic',
   }, providers);
   assert.equal(claude.format, 'anthropic');
+});
+
+test('resolveTarget does not duplicate host basePath for Gemini reverse proxies and preserves prefix with explicit Vertex apiPath', () => {
+  const providers = new Map([
+    [
+      'gemini-proxy-v1',
+      {
+        id: 'gemini-proxy-v1',
+        name: 'Gemini Reverse Proxy',
+        enabled: true,
+        apiHost: 'https://proxy.example.com/google/v1',
+        apiKey: 'AIza-proxy',
+        defaultModel: 'gemini-2.5-flash',
+      },
+    ],
+    [
+      'vertex-proxy-prefix',
+      {
+        id: 'vertex-proxy-prefix',
+        name: 'Vertex Proxy Prefix',
+        enabled: true,
+        apiHost: 'https://proxy.example.com/prefix',
+        apiKey: 'AQ.proxy',
+        apiPath: '/v1/publishers/google/models',
+        defaultModel: 'gemini-3.8-flash',
+      },
+    ],
+  ]);
+
+  const g = resolveTarget({ providerId: 'gemini-proxy-v1', model: 'gemini-2.5-flash', apiFormat: 'gemini' }, providers);
+  assert.equal(g.error, undefined);
+  assert.equal(g.format, 'gemini');
+  assert.equal(g.apiPath, '/google/v1beta/models/gemini-2.5-flash:generateContent');
+
+  const v = resolveTarget({ providerId: 'vertex-proxy-prefix', model: 'gemini-3.8-flash' }, providers);
+  assert.equal(v.error, undefined);
+  assert.equal(v.format, 'gemini');
+  assert.equal(v.apiPath, '/prefix/v1/publishers/google/models/gemini-3.8-flash:generateContent');
+});
+
+test('resolveTarget infers Gemini from /v1beta on custom proxy host and handles ProviderApiKey object pool', () => {
+  const providers = new Map([[
+    'custom-gem-proxy',
+    {
+      id: 'custom-gem-proxy',
+      name: 'Custom Gemini Relay',
+      enabled: true,
+      apiHost: 'http://127.0.0.1:9999',
+      apiPath: '/v1beta',
+      apiKey: 'AIza-main-1',
+      apiKeys: [
+        { id: 'k-off', label: 'disabled', key: 'AIza-disabled-0', enabled: false },
+        { id: 'k-main', label: 'main', key: 'AIza-main-1', enabled: true },
+        { id: 'k-bak', label: 'bak', key: 'AIza-backup-2', enabled: true },
+      ],
+      defaultModel: 'custom-model',
+    },
+  ]]);
+
+  const candidates = getApiKeyCandidates({ providerId: 'custom-gem-proxy', model: 'custom-model' }, providers);
+  assert.deepEqual(candidates, ['AIza-main-1', 'AIza-backup-2']);
+
+  const conn = resolveTarget({ providerId: 'custom-gem-proxy', model: 'custom-model' }, providers);
+  assert.equal(conn.error, undefined);
+  assert.equal(conn.format, 'gemini');
+  assert.equal(conn.apiPath, '/v1beta/models/custom-model:generateContent');
+  assert.equal(conn.apiKey, 'AIza-main-1');
 });

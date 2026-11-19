@@ -1,0 +1,429 @@
+.platform-config-inline-link:hover svg {
+  opacity: 1;
+  transform: translate(1px, -1px);
+}
+
+
+/* 网关页 · 统计 / 日志 tab 挂载区 */
+.proxy-stats-mount,
+.proxy-logs-mount {
+  min-height: 240px;
+}
+.proxy-stats-mount .proxy-analytics {
+  margin: 0;
+}
+.proxy-logs-mount .proxy-logs-panel {
+  margin: 0;
+}
+.proxy-logs-mount .proxy-logs-box,
+.proxy-logs-mount #fullLog {
+  min-height: 360px;
+  max-height: min(70vh, 720px);
+}
+
+/* ─── Hero 标题行（名字 + 版本 + 更新操作同一行，垂直居中） ─── */
+.platform-title-line {
+  display: flex;
+  /* 大标题与小字版本按基线对齐，层级自然 */
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.platform-title-line h1 {
+  margin: 0;
+  line-height: 1.2;
+}
+
+/* Hero 版本行（借鉴 magpie：版本探测/更新检查/一键更新）
+   设计：收在 Hero 右下角做安静的元信息（品牌名是主角）
+   静默策略：无数据时不占位、不显示「检测中/未知」等噪音 */
+.platform-version-line {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin: 0; font-size: 12px; font-weight: 600; line-height: 1.35;
+  color: var(--text-muted);
+  letter-spacing: 0.2px;
+}
+.platform-version-line:empty {
+  display: none;
+}
+.platform-version-line .version-num {
+  color: var(--text-secondary); font-variant-numeric: tabular-nums;
+}
+.platform-version-line .version-num.latest {
+  color: var(--accent); font-weight: 750;
+}
+.platform-version-line .version-arrow { color: var(--text-muted); }
+.platform-version-line .version-state.ok { color: var(--success, #10b981); font-weight: 650; }
+/* 未安装时的「安装」链接：与版本行同字号，克制不抢眼 */
+.platform-version-line .version-install-btn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.platform-version-line .version-install-btn:hover {
+  color: var(--accent);
+  border-color: rgba(43, 161, 143, 0.45);
+  background: rgba(43, 161, 143, 0.08);
+}
+.platform-version-line .version-state.muted { color: var(--text-muted); }
+.platform-version-line .version-update-btn {
+  display: inline-flex; align-items: center; min-height: 26px; padding: 2px 10px;
+  border: 1px solid rgba(43, 161, 143, 0.35); border-radius: 999px;
+  background: rgba(43, 161, 143, 0.10); color: var(--accent);
+  font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer;
+  transition: all var(--duration-fast, 120ms) ease;
+}
+.platform-version-line .version-update-btn:hover {
+  background: rgba(43, 161, 143, 0.2); border-color: rgba(43, 161, 143, 0.55);
+}
+
+/* 声明式 agent 无图标时的首字母徽标（与既有 rail 图标同尺寸） */
+.platform-rail-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: rgba(43, 161, 143, 0.12);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Pi/Hermes/DeepSeek Harness 添加模型页：供应商与模型勾选 */
+.pb-add-provider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.pb-add-provider:hover { border-color: rgba(43, 161, 143, 0.45); }
+.pb-add-provider.active {
+  border-color: var(--accent);
+  background: rgba(43, 161, 143, 0.08);
+}
+.pb-add-provider small { color: var(--text-muted); }
+.pb-add-model-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* ═══════ 统计页 (EasyUI 现代设计系统 + ECharts 控制舱规范) ═══════ */
+.ez-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 2px 32px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* 顶部控制栏 */
+.ez-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.ez-header-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ez-title-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ez-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.ez-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+.ez-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.ez-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* EasyUI Pill Navigation 胶囊切换器 */
+.ez-pill-nav {
+  display: inline-flex;
+  align-items: center;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 2px;
+  gap: 2px;
+}
+.ez-pill-btn {
+  border: 0;
+  background: transparent;
+  padding: 0 11px;
+  height: 28px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 120ms cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+}
+.ez-pill-btn:hover {
+  color: var(--text-primary);
+}
+.ez-pill-btn.active {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+.ez-pill-sm .ez-pill-btn {
+  height: 26px;
+  font-size: 12px;
+  padding: 0 10px;
+}
+
+/* 操作按钮 */
+.ez-btn-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+  transition: all 120ms ease;
+}
+.ez-btn-action:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong, var(--border));
+}
+.ez-btn-action svg {
+  width: 14px;
+  height: 14px;
+  color: var(--text-muted);
+}
+.ez-btn-action.is-busy svg {
+  animation: ez-spin 800ms linear infinite;
+  color: var(--accent);
+}
+@keyframes ez-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* EasyUI 通用卡片容器 */
+.ez-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm), 0 4px 12px -4px rgba(0, 0, 0, 0.04);
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.ez-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.ez-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+.ez-card-subtitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: block;
+}
+
+/* EasyUI StatGrid: 4联指标卡片 */
+.ez-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.ez-stat-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 128px;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+.ez-stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -6px rgba(0, 0, 0, 0.08);
+}
+.ez-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ez-stat-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.ez-delta-pill {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-weight: 600;
+}
+.ez-delta-pill.is-up {
+  color: #15803d;
+  background: rgba(34, 197, 94, 0.12);
+}
+.ez-delta-pill.is-down {
+  color: #b91c1c;
+  background: rgba(239, 68, 68, 0.12);
+}
+.ez-delta-pill.is-neutral {
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.ez-status-tag {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+.ez-status-tag.is-ok { color: #15803d; background: rgba(34, 197, 94, 0.12); }
+.ez-status-tag.is-warn { color: #b45309; background: rgba(245, 158, 11, 0.12); }
+.ez-status-tag.is-err { color: #b91c1c; background: rgba(239, 68, 68, 0.12); }
+
+.ez-stat-val-group {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  margin-top: 6px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.ez-stat-value {
+  letter-spacing: -0.02em;
+}
+.ez-stat-val-group.is-currency {
+  font-family: 'JetBrains Mono', monospace;
+}
+.ez-stat-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* EasyUI Token 三色比例进度条 */
+.ez-token-track {
+  display: flex;
+  height: 5px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.15);
+  margin-top: 8px;
+  margin-bottom: 2px;
+}
+.ez-token-bar.is-input { background: #3b82f6; }
+.ez-token-bar.is-output { background: #10b981; }
+.ez-token-bar.is-cache { background: #D97706; }
+
+/* KPI 微型 ECharts Sparkline 画布 */
+.ez-sparkline-canvas {
+  width: 100%;
+  height: 26px;
+  margin-top: 6px;
+  margin-bottom: 2px;
+}
+
+.ez-stat-footer {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ECharts 主趋势分析区 */
+.ez-chart-section {
+  padding: 16px 18px 12px;
+}
+.ez-echarts-container {
+  width: 100%;
+  height: 290px;
+  min-height: 290px;
+  position: relative;
+}
+

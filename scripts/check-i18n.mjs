@@ -93,11 +93,19 @@ const ATTRS = ['title', 'placeholder', 'aria-label', 'alt'];
 const htmlFiles = [];
 (function walk(dir) {
   for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.join(dir, ent.name);
-    if (ent.isDirectory()) walk(p);
-    else if (ent.name.endsWith('.html')) htmlFiles.push(p.replace(/\\/g, '/'));
+    const p = path.join(dir, ent.name).replace(/\\/g, '/');
+    if (ent.isDirectory()) {
+      // 参数化组件模板在 ui/index.html 展开后逐条核查，避免 {{var}} 未展开误报
+      if (p === 'ui-src/partials/components') continue;
+      walk(p);
+    } else if (ent.name.endsWith('.html')) {
+      htmlFiles.push(p);
+    }
   }
 })('ui-src');
+if (fs.existsSync('ui/index.html')) {
+  htmlFiles.push('ui/index.html');
+}
 
 /** 等长空白替换：保持行号不变 */
 const blank = (m) => m.replace(/[^\n]/g, ' ');
@@ -236,7 +244,7 @@ if (enNotAllowed.length) {
 // 8) 契约校验：Rust 侧用户可见主句必须收录进字典
 // ═══════════════════════════════════════════════════════════════════
 {
-  const rustFile = 'src-tauri/src/commands/codex_desktop.rs';
+  const rustFile = 'src-tauri/src/commands/codex_desktop/mod.rs';
   if (fs.existsSync(rustFile)) {
     const src = fs.readFileSync(rustFile, 'utf8');
     const re = /const\s+MSG_[A-Z_]+:\s*&str\s*=\s*"([^"]+)"/g;

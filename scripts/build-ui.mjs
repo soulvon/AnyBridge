@@ -18,11 +18,29 @@ const srcRoot = path.join(root, 'ui-src');
 const outFile = path.join(root, 'ui', 'index.html');
 const srcEntry = path.join(srcRoot, 'index.html');
 
-const INCLUDE_RE = /<!--\s*@include\s+([^\s]+)\s*-->/;
+const INCLUDE_RE = /<!--\s*@include\s+([^\s>]+)(?:\s+([\s\S]*?))?\s*-->/;
 // @inline 把文件内容原样嵌入（路径相对仓库根目录）。
 // 用途：纯数据文件（JSON）必须内联，因为 Tauri 的自定义资源协议下
 // fetch('../xxx.json') 取不到同源文件，运行时只会拿到一个空目录。
 const INLINE_RE = /<!--\s*@inline\s+([^\s]+)\s*-->/;
+
+function parseIncludeVars(argsStr) {
+  const vars = {};
+  if (!argsStr) return vars;
+  const attrRe = /([A-Za-z0-9_]+)=(?:"([^"]*)"|'([^']*)'|([^\s]+))/g;
+  let m;
+  while ((m = attrRe.exec(argsStr)) !== null) {
+    vars[m[1]] = m[2] ?? m[3] ?? m[4] ?? '';
+  }
+  return vars;
+}
+
+function applyTemplateVars(line, vars) {
+  if (!vars || !Object.keys(vars).length) return line;
+  return line.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (_, key) => (
+    Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : ''
+  ));
+}
 
 function readText(filePath) {
   return fs.readFileSync(filePath, 'utf8');
@@ -35,7 +53,7 @@ function detectNewline(text) {
 /**
  * Expand includes line-by-line. Include paths are relative to ui-src/.
  */
-function expandFile(filePath, stack = []) {
+function expandFile(filePath, stack = [], vars = null) {
   const resolved = path.resolve(filePath);
   if (stack.includes(resolved)) {
     throw new Error(`Circular @include: ${[...stack, resolved].join(' -> ')}`);
@@ -49,7 +67,8 @@ function expandFile(filePath, stack = []) {
   if (lines.length && lines[lines.length - 1] === '') lines.pop();
 
   const out = [];
-  for (const line of lines) {
+  for (const rawLine of lines) {
+    const line = applyTemplateVars(rawLine, vars);
     const inlineMatch = line.match(INLINE_RE);
     if (inlineMatch) {
       const rel = inlineMatch[1].replace(/\\/g, '/');
@@ -70,8 +89,9 @@ function expandFile(filePath, stack = []) {
       continue;
     }
     const rel = m[1].replace(/\\/g, '/');
+    const incVars = { ...(vars || {}), ...parseIncludeVars(m[2]) };
     const incPath = path.join(srcRoot, rel);
-    const expanded = expandFile(incPath, [...stack, resolved]);
+    const expanded = expandFile(incPath, [...stack, resolved], incVars);
     out.push(...expanded);
   }
   return out;
@@ -83,6 +103,48 @@ function sha256(buf) {
 
 function normalizeForCompare(text) {
   return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
+function syncFileIfChanged(srcRel, dstRel) {
+  const srcPath = path.join(root, srcRel);
+  const dstPath = path.join(root, dstRel);
+  if (!fs.existsSync(srcPath)) {
+    throw new Error(`Shared resource source missing: ${srcRel}`);
+  }
+  const srcBuf = fs.readFileSync(srcPath);
+  if (fs.existsSync(dstPath)) {
+    const dstBuf = fs.readFileSync(dstPath);
+    if (Buffer.compare(srcBuf, dstBuf) === 0) return false;
+  }
+  fs.mkdirSync(path.dirname(dstPath), { recursive: true });
+  fs.writeFileSync(dstPath, srcBuf);
+  return true;
+}
+
+function syncSharedResources({ quiet = false } = {}) {
+  const pairs = [
+    ['sidecar/windsurf-catalog.json', 'src-tauri/resources/sidecar/windsurf-catalog.json'],
+    ['sidecar/prompts/system-prompt.md', 'src-tauri/resources/prompts/system-prompt.md'],
+  ];
+  const uiIconsDir = path.join(root, 'ui', 'assets', 'icons');
+  const docsIconsDir = path.join(root, 'docs', 'assets', 'icons');
+  if (fs.existsSync(uiIconsDir) && fs.existsSync(docsIconsDir)) {
+    for (const ent of fs.readdirSync(uiIconsDir, { withFileTypes: true })) {
+      if (!ent.isFile()) continue;
+      const docRel = `docs/assets/icons/${ent.name}`;
+      if (fs.existsSync(path.join(root, docRel))) {
+        pairs.push([`ui/assets/icons/${ent.name}`, docRel]);
+      }
+    }
+  }
+  const updated = [];
+  for (const [srcRel, dstRel] of pairs) {
+    if (syncFileIfChanged(srcRel, dstRel)) updated.push(dstRel);
+  }
+  if (!quiet && updated.length > 0) {
+    console.log(`Synced ${updated.length} shared resource(s): ${updated.join(', ')}`);
+  }
+  return updated;
 }
 
 function buildOnce({ quiet = false } = {}) {
@@ -97,6 +159,7 @@ function buildOnce({ quiet = false } = {}) {
 
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, output, 'utf8');
+  syncSharedResources({ quiet });
   if (!quiet) {
     console.log(`Built ${path.relative(root, outFile)} (${lines.length} lines)`);
     console.log(`sha256: ${sha256(Buffer.from(output, 'utf8'))}`);

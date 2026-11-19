@@ -14,26 +14,73 @@ const moduleImportOrder = [
   'ui/dom.js',
   'ui/feedback.js',
   'state/logs.js',
+  'state/provider-store.js',
   '05-actions.js',
   '10-shell.js',
   '20-runtime.js',
   '30-providers-eval.js',
+  '33-provider-icons.js',
+  '35-provider-presets.js',
+  '36-provider-keys.js',
+  '37-provider-balance.js',
   '40-model-picker.js',
   '50-model-map.js',
   '52-proxy-routes.js',
+  'model-context-presets.js',
   '55-platforms.js',
   '56-claude-desktop.js',
   '65-extensions.js',
   '66-plugins.js',
+  '67-stats.js',
   '60-updater.js',
   '70-healthcheck.js',
   '90-init.js',
 ];
 
+const platformModuleImportOrder = [
+  'platforms/core_helpers.js',
+  'platforms/core.js',
+  'platforms/shared_config_editor.js',
+  'platforms/real_config.js',
+  'platforms/codex_helpers.js',
+  'platforms/local_proxy_cards.js',
+  'platforms/codex_models.js',
+  'platforms/codex_editor.js',
+  'platforms/antigravity_console.js',
+  'platforms/antigravity_localization.js',
+  'platforms/antigravity_models.js',
+  'platforms/antigravity_modals.js',
+  'platforms/antigravity_add.js',
+  'platforms/claude_code_settings.js',
+  'platforms/claude_code_roles.js',
+  'platforms/claude_code_editor.js',
+  'platforms/opencode_config.js',
+  'platforms/opencode_editor.js',
+  'platforms/grok_helpers.js',
+  'platforms/grok_models.js',
+  'platforms/grok_editor.js',
+  'platforms/cursor_console.js',
+  'platforms/cursor_modals.js',
+  'platforms/cursor_actions.js',
+  'platforms/cursor_add.js',
+  'platforms/switch_flow.js',
+  'platforms/models_table_factory.js',
+  'platforms/model_edit_modal.js',
+  'platforms/model_list_rows.js',
+  'platforms/platform_add_sort.js',
+  'platforms/buddy_model_helpers.js',
+  'platforms/shared_buddy_add.js',
+  'platforms/codebuddy.js',
+  'platforms/workbuddy.js',
+  'platforms/zcode.js',
+  'platforms/managed_models.js',
+  'platforms/hero_and_agents.js',
+];
+
 const moduleFiles = [
   'ui/assets/scripts/main.js',
-  'ui/assets/scripts/00-bridge.js',
   ...moduleImportOrder.map((f) => `ui/assets/scripts/${f}`),
+  ...platformModuleImportOrder.map((f) => `ui/assets/scripts/${f}`),
 ];
 
 const styleFiles = [
@@ -44,6 +91,22 @@ const styleFiles = [
   'ui/assets/styles/40-modals.css',
   'ui/assets/styles/50-platforms.css',
   'ui/assets/styles/60-plugins.css',
+];
+
+const requiredStyleSubmodules = [
+  'ui/assets/styles/foundation/tokens.css',
+  'ui/assets/styles/foundation/skeleton.css',
+];
+
+const requiredHtmlComponents = [
+  'partials/components/cursor-tag-style-modal.html',
+  'partials/components/cursor-edit-model-modal.html',
+  'partials/components/cursor-settings-modal.html',
+  'partials/components/cursor-lang-modal.html',
+  'partials/components/model-slots-failover-modal.html',
+  'partials/components/model-slots-label-settings-modal.html',
+  'partials/components/model-slots-route-rename-modal.html',
+  'partials/components/model-slots-enhancement-modal.html',
 ];
 
 const requiredPageIds = [
@@ -125,12 +188,28 @@ if (!indexHtml.includes('<script type="module" src="./assets/scripts/main.js"></
 if (indexHtml.includes('<script src="./assets/scripts/00-bridge.js"></script>')) {
   fail('index.html still loads classic 00-bridge.js; use main.js module entry only');
 }
+if (existsSync('ui/assets/scripts/00-bridge.js')) {
+  fail('00-bridge.js must remain removed; use api/bridge.js only');
+}
 
 const mainJs = readFileSync('ui/assets/scripts/main.js', 'utf8');
+if (mainJs.includes('00-bridge')) {
+  fail('main.js must not reference removed 00-bridge.js');
+}
+if (existsSync('ui/assets/scripts/57-pb-models.js') || mainJs.includes('57-pb-models')) {
+  fail('57-pb-models.js must remain removed and never imported in main.js');
+}
 assertContainsInOrder(
   mainJs,
   moduleImportOrder.map((f) => `import './${f}';`),
   'main.js import order',
+);
+
+const platformsJs = readFileSync('ui/assets/scripts/55-platforms.js', 'utf8');
+assertContainsInOrder(
+  platformsJs,
+  platformModuleImportOrder.map((f) => `import './${f}';`),
+  '55-platforms.js import order',
 );
 
 for (const id of requiredPageIds) {
@@ -140,6 +219,16 @@ for (const id of requiredPageIds) {
 const appCss = readFileSync('ui/assets/app.css', 'utf8');
 const cssImports = styleFiles.map((file) => `@import url('./styles/${file.split('/').pop()}');`);
 assertContainsInOrder(appCss, cssImports, 'app.css import list');
+for (const file of requiredStyleSubmodules) {
+  if (!existsSync(file)) fail(`missing style submodule ${file}`);
+}
+const foundationCss = readFileSync('ui/assets/styles/00-foundation.css', 'utf8');
+if (!foundationCss.includes("./foundation/tokens.css")) {
+  fail('00-foundation.css missing @import ./foundation/tokens.css');
+}
+if (!foundationCss.includes("./foundation/skeleton.css")) {
+  fail('00-foundation.css missing @import ./foundation/skeleton.css');
+}
 
 const allScriptFiles = new Set(moduleFiles);
 function walkScripts(dir) {
@@ -180,13 +269,32 @@ for (const file of allScriptFiles) {
   }
 }
 
-const shell = readFileSync('ui-src/index.html', 'utf8');
-const includeRe = /<!--\s*@include\s+([^\s]+)\s*-->/g;
-let m;
-while ((m = includeRe.exec(shell)) !== null) {
-  const rel = m[1].replace(/\\/g, '/');
-  const full = path.join('ui-src', rel);
-  if (!existsSync(full)) fail(`@include missing file: ${full}`);
+function walkHtmlFiles(dir, acc = []) {
+  for (const ent of readdirSync(dir, { withFileTypes: true })) {
+    const p = path.join(dir, ent.name);
+    if (ent.isDirectory()) walkHtmlFiles(p, acc);
+    else if (ent.name.endsWith('.html')) acc.push(p);
+  }
+  return acc;
+}
+
+const includeRe = /<!--\s*@include\s+([^\s>]+)(?:\s+[^>]*)?\s*-->/g;
+const includedTargets = new Set();
+for (const htmlFile of walkHtmlFiles('ui-src')) {
+  const content = readFileSync(htmlFile, 'utf8');
+  includeRe.lastIndex = 0;
+  let m;
+  while ((m = includeRe.exec(content)) !== null) {
+    const rel = m[1].replace(/\\/g, '/');
+    const full = path.join('ui-src', rel);
+    if (!existsSync(full)) fail(`@include missing file: ${full} (from ${htmlFile})`);
+    includedTargets.add(rel);
+  }
+}
+for (const comp of requiredHtmlComponents) {
+  const full = path.join('ui-src', comp);
+  if (!existsSync(full)) fail(`missing HTML component: ${full}`);
+  if (!includedTargets.has(comp)) fail(`orphan HTML component not @included anywhere: ${full}`);
 }
 
 console.log(

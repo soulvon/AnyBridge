@@ -1,0 +1,304 @@
+/* 核心双栏分析：两栏等高，右栏卡片自动拉伸填满，避免左侧排行榜长、右侧留大片空白 */
+.ez-grid-duo {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+.ez-grid-duo > .ez-card {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 排行列表 (对标 EasyUI Table + Meter) */
+.ez-rank-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 180px;
+}
+.ez-rank-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) 70px 80px 100px;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px;
+  border-radius: 7px;
+  font-size: 12px;
+  transition: background 100ms ease;
+}
+.ez-rank-item:hover {
+  background: var(--bg-hover);
+}
+.ez-rank-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.ez-rank-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ez-rank-tag {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ez-rank-mono {
+  font-family: 'JetBrains Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-secondary);
+}
+.ez-rank-mono.is-bold {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ez-rank-meter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ez-meter-track {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-hover);
+  overflow: hidden;
+}
+.ez-meter-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+.ez-meter-val {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 34px;
+  text-align: right;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* 数据通道微卡片：随右栏高度自动拉伸，行高均分 */
+.ez-channels-deck {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 8px;
+  min-height: 180px;
+  flex: 1 1 auto;
+  align-content: stretch;
+}
+.ez-channel-card {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-primary);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.ez-ch-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.ez-ch-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.ez-ch-badge {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--bg-hover);
+  color: var(--text-muted);
+}
+.ez-ch-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.ez-ch-row {
+  display: flex;
+  justify-content: space-between;
+}
+.ez-ch-row b {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--text-primary);
+}
+
+/* 实时审计表格 (EasyUI Table) */
+.ez-table-wrap {
+  overflow-x: auto;
+}
+.ez-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.ez-table th {
+  padding: 6px 8px 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  font-size: 12px;
+  user-select: none;
+}
+.ez-table td {
+  padding: 7px 8px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  vertical-align: middle;
+}
+.ez-table tr:hover td {
+  background: var(--bg-hover);
+}
+.ez-cell-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.ez-cell-channel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.ez-cell-route {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ez-cell-route .from { color: var(--text-secondary); }
+.ez-cell-route .arrow { color: var(--accent); font-weight: 600; }
+.ez-cell-route .to { color: var(--text-primary); font-weight: 600; }
+
+.ez-pill-state {
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-block;
+  text-align: center;
+}
+.ez-pill-state.is-ok { color: #15803d; background: rgba(34, 197, 94, 0.12); }
+.ez-pill-state.is-err { color: #b91c1c; background: rgba(239, 68, 68, 0.12); }
+.ez-pill-state.is-warn { color: #b45309; background: rgba(245, 158, 11, 0.12); }
+
+.ez-empty-state {
+  color: var(--text-muted);
+  font-size: 12px;
+  padding: 24px 8px;
+  text-align: center;
+}
+
+.ez-hm-cell {
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.ez-hm-cell:hover {
+  transform: scale(1.32);
+  box-shadow: 0 0 0 1.5px rgba(59, 130, 246, 0.85);
+  z-index: 2;
+  position: relative;
+}
+
+@media (max-width: 1100px) {
+  .ez-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ez-grid-duo { grid-template-columns: 1fr; }
+  .ez-channels-deck { grid-template-columns: 1fr; }
+}
+
+/* ── 统计页骨架屏（沿用 health-skeleton-shimmer，不另造视觉语言）── */
+.ez-skel-bone,
+#page-stats.stats-loading .ez-stat-value,
+#page-stats.stats-loading .ez-stat-footer,
+#page-stats.stats-loading .ez-stat-unit,
+#page-stats.stats-loading .ez-delta-pill {
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-input) 0%, var(--bg-hover) 50%, var(--bg-input) 100%);
+  background-size: 200% 100%;
+  animation: health-skeleton-shimmer 1.3s ease-in-out infinite;
+}
+#page-stats.stats-loading .ez-stat-value,
+#page-stats.stats-loading .ez-stat-footer,
+#page-stats.stats-loading .ez-stat-unit,
+#page-stats.stats-loading .ez-delta-pill {
+  color: transparent;
+  display: inline-block;
+  min-width: 64px;
+}
+
+/* 图表骨架：一排高度渐次的骨条，示意正在取数 */
+.ez-skel-chart { display: flex; align-items: flex-end; gap: 10px; height: 100%; padding: 34px 4px 18px; box-sizing: border-box; }
+.ez-skel-chart i { flex: 1; border-radius: 4px 4px 0 0; }
+
+/* 排行骨架 */
+.ez-skel-rank { display: flex; flex-direction: column; gap: 12px; padding: 6px 0; }
+.ez-skel-rank-row { display: grid; grid-template-columns: minmax(0, 1.4fr) 70px 80px 100px; gap: 10px; align-items: center; }
+.ez-skel-rank-row span { height: 12px; }
+
+/* 数据源骨架 */
+.ez-skel-sources { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.ez-skel-sources span { height: 62px; border-radius: 9px; }
+
+/* 明细表骨架 */
+.ez-skel-table { display: flex; flex-direction: column; gap: 14px; padding: 8px 0; }
+.ez-skel-table span { height: 12px; }
+
+/* ── 统计页采集设置浮层 ── */
+.ez-dashboard { position: relative; }
+.ez-btn-action.ez-btn-icon { padding: 0; width: 32px; justify-content: center; }
+
+.ez-popover {
+  position: absolute;
+  top: 54px;
+  right: 0;
+  z-index: 40;
+  width: 320px;
+  border: 1px solid var(--border-strong, var(--border));
+  border-radius: 10px;
+  /* 弹层压在折线图上：--bg-card 只有 0.94 不透明度，直接用它会让下方的线透出来。
+     先用不透明的 --bg-primary 打底，再叠一层卡片色，得到与卡片一致且完全不透的表面。 */
+  background-color: var(--bg-primary);
+  background-image: linear-gradient(var(--bg-card), var(--bg-card));
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.22);
+  overflow: hidden;
+}
+.ez-popover[hidden] { display: none; }
+.ez-popover-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.ez-popover-title { font-size: 12.5px; font-weight: 600; color: var(--text-primary); }
+.ez-popover-close { min-width: 32px; min-height: 32px; width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; border-radius: 6px; }
+.ez-popover-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ez-popover-close svg { width: 14px; height: 14px; }
+.ez-popover-body { padding: 4px 12px 0; }
+.ez-popover-foot { padding: 9px 12px 11px; font-size: 12px; color: var(--text-muted); line-height: 1.5; border-top: 1px solid var(--border); margin-top: 6px; }
+
+.ez-setting-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.ez-setting-row:last-child { border-bottom: 0; }
+.ez-setting-name { font-size: 12.5px; color: var(--text-primary); }
+.ez-setting-hint { font-size: 12px; color: var(--text-muted); }
+.ez-setting-empty { padding: 14px 0 16px; font-size: 12px; color: var(--text-muted); text-align: center; }
+
+/* Token 构成图例：三段颜色 + 数值 + 占比 */
+.ez-token-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; color: var(--text-muted); }
+.ez-token-legend-item { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.ez-token-legend-item b { font-weight: 600; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.ez-token-legend-item em { font-style: normal; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ez-token-dot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.ez-token-dot.is-input { background: #3b82f6; }
+.ez-token-dot.is-output { background: #10b981; }
+.ez-token-dot.is-cache { background: #D97706; }
+
+/* 通道卡片里「已去重」这类说明行：弱化，不抢主数据 */
+.ez-ch-row.is-muted b { font-weight: 500; color: var(--text-muted); }
+

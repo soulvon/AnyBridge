@@ -1,0 +1,81 @@
+        <!-- 内置模型列表 - 批量重命名弹窗 -->
+        <div id="proxyRouteRenameModal" class="editor-overlay"
+          style="position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,0.45);align-items:center;justify-content:center;">
+          <div class="glass-card"
+            style="width:720px;max-width:95vw;display:flex;flex-direction:column;max-height:90vh;">
+            <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+              <div>
+                <div class="card-title"><span class="dot"></span> 模型命名</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
+                  保存命名规则,客户端看到的 model ID 会实时套用规则(不改原始 ID,不会叠加)。旧 ID 请求也仍然可用。
+                </div>
+                <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;user-select:none;">
+                  <input type="checkbox" id="proxyRouteRenameEnabled" checked data-action="onProxyRouteRenameEnabledChange" data-events="change">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);">重写模型 ID(启用规则)</span>
+                </label>
+              </div>
+              <button class="btn-ghost"
+ style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;" data-action="closeProxyRouteRenameModal">×</button>
+            </div>
+            <div class="card-body"
+              style="padding:16px 20px;display:flex;flex-direction:column;gap:14px;flex:1;overflow-y:auto;">
+              <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
+                <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">前缀</span>
+                  <input type="text" id="proxyRouteRenamePrefix" placeholder="例如 OpenCode-"
+ 
+ style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);" data-action="onProxyRouteRenameInput" data-events="input">
+                </label>
+                <label style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+                  <span style="font-size:12px;font-weight:700;color:var(--text-primary);white-space:nowrap;">后缀</span>
+                  <input type="text" id="proxyRouteRenameSuffix" placeholder="例如 (OpenCode) 或 ({provider})"
+ 
+ style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);" data-action="onProxyRouteRenameInput" data-events="input">
+                </label>
+              </div>
+                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">
+                  保存规则后立即生效:客户端请求里的 model 字段将看到改名后的 ID,旧 ID 也仍然可用。改规则不会叠加——规则是全局模板,改一次就替换前一次。
+              </div>
+
+              <details id="proxyRouteRenameAdvanced" ontoggle="onProxyRouteRenameAdvancedToggle()"
+                style="border:1px solid var(--border);border-radius:9px;background:var(--bg-input);padding:10px 12px;">
+                <summary style="cursor:pointer;font-size:12px;font-weight:700;color:var(--text-secondary);">高级: 自定义完整模板</summary>
+                <div style="margin-top:10px;display:flex;flex-direction:column;gap:7px;">
+                  <input type="text" id="proxyRouteRenameTemplate" placeholder="{prefix}{provider}-{model}{suffix}"
+ style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);"
+ data-action="onProxyRouteRenameTemplateInput" data-events="input">
+                  <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">
+                    展开高级模式后,前缀/后缀 input 失效,新 ID 完全由模板决定。可用字段: {prefix} {model} {provider} {suffix}。
+                  </div>
+                </div>
+              </details>
+
+              <div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                  <div style="font-size:12px;font-weight:700;color:var(--text-primary);">实际效果</div>
+                  <div id="proxyRouteRenameStats" style="font-size:12px;color:var(--text-muted);"></div>
+                </div>
+                <div id="proxyRouteRenamePreview"
+                  style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;background:var(--bg-input);border:1px dashed var(--border);border-radius:8px;font-size:12px;max-height:260px;overflow-y:auto;">
+                </div>
+                <div id="proxyRouteRenameError" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(220,80,80,0.12);color:#c44;font-size:12px;line-height:1.5;">
+                </div>
+              </div>
+            </div>
+            <div class="provider-footer"
+              style="display:flex;justify-content:flex-end;gap:12px;padding:12px 20px;border-top:1px solid var(--border);">
+              <button class="btn-ghost secondary"
+ style="padding:10px 20px;border-radius:10px;font-size:12px;font-weight:600;" data-action="closeProxyRouteRenameModal">取消</button>
+              <button class="btn-primary" id="proxyRouteRenameSaveBtn"
+ style="padding:10px 24px;border-radius:10px;font-size:12px;font-weight:700;display:inline-flex;align-items:center;gap:6px;" data-action="saveProxyRouteRenameFromModal">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                  stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                  <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                  <polyline points="7 3 7 8 15 8"></polyline>
+                </svg>
+                <span>保存</span>
+              </button>
+            </div>
+          </div>
+        </div>

@@ -1,0 +1,454 @@
+/* 编辑器结果展示条（R19/T2 测试、R22/T4 拉取共用）：空态 hidden 不占位，成功/失败两态 */
+.provider-editor-test-result[hidden],
+.provider-editor-op-result[hidden] {
+  display: none;
+}
+/* 模型面板内的结果条不贴边，水平与工具栏内边距(16px)对齐 */
+#page-provider-editor .model-panel > .provider-editor-op-result {
+  margin: 10px 16px 0;
+}
+.provider-editor-test-result,
+.provider-editor-op-result {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+.provider-editor-test-result .result-icon,
+.provider-editor-op-result .result-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  margin-top: 1px;
+}
+.provider-editor-test-result .result-text,
+.provider-editor-op-result .result-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.provider-editor-test-result.is-success,
+.provider-editor-op-result.is-success {
+  border-color: var(--success);
+  background: var(--success-dim);
+  color: var(--success);
+}
+.provider-editor-test-result.is-error,
+.provider-editor-op-result.is-error {
+  border-color: var(--danger);
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+.model-slots-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px 16px;
+  border-radius: 14px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* ═══════ 添加映射工作区（左右双卡片独立平铺，彻底移除外层套娃大边框） ═══════ */
+.slot-editor-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+  gap: 16px;
+  align-items: stretch;
+  padding: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  .slot-editor-workspace {
+    grid-template-columns: 1fr !important;
+    overflow-y: auto;
+  }
+}
+
+.slot-editor-col {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+.slot-editor-card-head {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 auto;
+}
+
+.slot-editor-card-title {
+  font-size: 14px;
+  font-weight: 750;
+  color: var(--text-primary);
+}
+
+/* 新增/编辑供应商工作区：保持单列，由内部 provider-editor-layout 自行分栏 */
+.provider-editor-workspace {
+  padding: 14px 16px !important;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.62), rgba(255,255,255,.26)),
+    var(--bg-card) !important;
+}
+
+#page-provider-editor .model-slots-head {
+  padding: 14px 18px !important;
+  border-color: rgba(148, 163, 184, .24);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.76), rgba(248,250,252,.5)),
+    var(--bg-card);
+}
+
+#page-provider-editor .model-slots-title h2 {
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+/* ═══════ 显示名设置模态框专属现代样式 ═══════ */
+.model-map-settings-card {
+  width: 680px;
+  max-width: 95vw;
+  display: flex;
+  flex-direction: column;
+  max-height: 90vh;
+  border-radius: 14px !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 24px 64px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+  overflow: hidden;
+}
+.model-map-settings-card .card-header {
+  padding: 18px 24px !important;
+  border-bottom: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+}
+.model-map-settings-card .card-body {
+  padding: 20px 24px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 16px !important;
+  background: var(--bg-card);
+}
+.model-map-settings-card .provider-footer {
+  padding: 14px 24px !important;
+  border-top: 1px solid var(--border) !important;
+  background: var(--bg-card) !important;
+}
+
+/* 选项卡片容器 */
+.settings-section-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-input);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.settings-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-section-title span:first-child {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+.settings-section-title span:last-child {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* 可选开关卡片行 */
+.settings-option-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 9px;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  transition: all 0.15s ease;
+}
+.settings-option-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong, var(--border));
+}
+.settings-option-item.active {
+  background: rgba(var(--accent-rgb), 0.08) !important;
+  border-color: var(--accent) !important;
+}
+.settings-option-item input[type="checkbox"] {
+  margin-top: 3px;
+  accent-color: var(--accent);
+  cursor: pointer;
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+}
+
+/* 弹窗内高亮代码块统一样式：告别刺眼白底，使用柔和精致的品牌微蓝底色 */
+.model-map-settings-card code {
+  background: rgba(var(--accent-rgb), 0.08) !important;
+  color: var(--accent) !important;
+  border: 1px solid rgba(var(--accent-rgb), 0.22) !important;
+  padding: 1.5px 6px !important;
+  border-radius: 4px !important;
+  font-family: var(--font-mono) !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+}
+
+/* 胶囊标签按钮群 */
+.chip-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  line-height: 1.4;
+}
+.chip-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-light);
+  transform: translateY(-1px);
+}
+.chip-btn:active {
+  transform: translateY(0);
+}
+
+/* ═══════ 故障转移管线链模态框专属样式 (Pipeline Architecture) ═══════ */
+.failover-modal-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 1000 !important;
+  background: rgba(15, 23, 42, 0.42) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.failover-modal-card {
+  width: 800px !important;
+  max-width: 95vw !important;
+  height: min(650px, 86vh) !important;
+  min-height: 480px !important;
+  max-height: 86vh !important;
+  display: flex !important;
+  flex-direction: column !important;
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 24px 64px -12px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+  overflow: hidden !important;
+}
+
+[data-scheme="dark"] .failover-modal-card,
+html[data-scheme="dark"] .failover-modal-card {
+  background: #18222c !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 24px 64px -12px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.05) inset !important;
+}
+
+.failover-modal-header {
+  padding: 18px 24px !important;
+  border-bottom: 1px solid var(--border) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  background: #ffffff !important;
+  flex-shrink: 0 !important;
+}
+
+[data-scheme="dark"] .failover-modal-header {
+  background: #18222c !important;
+}
+
+.failover-header-text .card-title {
+  font-size: 15px !important;
+  font-weight: 750 !important;
+  color: var(--text-primary) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.failover-header-text .card-subtitle {
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+  margin-top: 4px !important;
+}
+
+.failover-close-btn {
+  min-width: 32px !important;
+  min-height: 32px !important;
+  border: none !important;
+  background: transparent !important;
+  cursor: pointer !important;
+  color: var(--text-muted) !important;
+  padding: 6px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+.failover-close-btn:hover {
+  background: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+
+.failover-modal-body {
+  padding: 20px 24px 30px 24px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+  overflow-y: auto !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+  background: #f8fafc !important;
+}
+
+[data-scheme="dark"] .failover-modal-body {
+  background: #121921 !important;
+}
+
+/* 列表容器 */
+.failover-pipeline-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 0 !important;
+}
+
+/* 节点卡片整体 */
+.failover-pipeline-node {
+  position: relative !important;
+  background: #ffffff !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  padding: 12px 16px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04) !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-scheme="dark"] .failover-pipeline-node {
+  background: #1a2430 !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
+}
+
+.failover-pipeline-node:hover {
+  border-color: var(--border-strong) !important;
+}
+
+/* 首选主节点高亮 */
+.failover-pipeline-node.is-primary {
+  border-color: rgba(17, 135, 93, 0.35) !important;
+  background: #ffffff !important;
+}
+
+[data-scheme="dark"] .failover-pipeline-node.is-primary {
+  border-color: rgba(72, 199, 142, 0.35) !important;
+  background: #1a2430 !important;
+}
+
+/* 节点顶部状态条 */
+.failover-node-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 12px !important;
+}
+
+.failover-node-tag-group {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.failover-node-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  padding: 3px 8px !important;
+  border-radius: 6px !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  user-select: none !important;
+  line-height: 1.4 !important;
+}
+
+.failover-node-badge.is-primary {
+  background: rgba(17, 135, 93, 0.1) !important;
+  color: #0e704e !important;
+  border: 1px solid rgba(17, 135, 93, 0.22) !important;
+}
+
+[data-scheme="dark"] .failover-node-badge.is-primary {
+  background: rgba(72, 199, 142, 0.15) !important;
+  color: #48c78e !important;
+  border-color: rgba(72, 199, 142, 0.3) !important;
+}
+
+.failover-node-badge.is-backup {
+  background: var(--accent-light) !important;
+  color: var(--accent) !important;
+  border: 1px solid rgba(var(--accent-rgb), 0.2) !important;
+}
+
+[data-scheme="dark"] .failover-node-badge.is-backup {
+  border-color: rgba(var(--accent-rgb), 0.3) !important;
+}
+
+.failover-node-hint {
+  font-size: 12px !important;
+  color: var(--text-muted) !important;
+}
+

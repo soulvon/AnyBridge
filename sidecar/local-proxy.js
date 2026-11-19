@@ -1,2182 +1,103 @@
-// local-proxy.js - OpenAI/Anthropic compatible local reverse proxy.
-// Reuses AnyBridge model slots, provider routing, retry config and vision fallback.
+// local-proxy.js - OpenAI / Anthropic / Gemini / Antigravity compatible local reverse proxy.
+// Core execution loop & HTTP route dispatcher; protocol normalization, payload building,
+// transport/retry and SSE emitters live in ./lib/local-proxy/*.js.
 
-import crypto from 'node:crypto';
-import fs from 'node:fs';
-import http from 'node:http';
-import https from 'node:https';
-import path from 'node:path';
-import { configDir } from './lib/config-dir.js';
-import { cleanupExpiredLogs } from './lib/log-cleanup.js';
-import {
-  applyCodexUnlockRequiredFields,
-  buildClaudeCodeUnlockPayload,
-  claudeCodeUnlockForTarget,
-  claudeCodeUnlockHeaders,
-  codexUnlockForTarget,
-  codexUnlockHeaders,
-} from './lib/codex-unlock.js';
-import { getCodexProxyRoutes, getProxyRoutes } from './config-cache.js';
-import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
-import { preprocessImagesWithThirdPartyVision } from './vision-fallback.js';
-import { httpsAgentFor } from './system-proxy.js';
-import { recordError, recordLatency, recordRecentOutcome, recordUsage } from './stats.js';
-import { createTracker } from './request-tracker.js';
-import {
-  responsesToChatCompletions,
-  chatCompletionToResponse,
-  chatErrorToResponseError,
-  createResponsesSSEFromChat,
-} from './lib/responses-chat-transform.js';
-import {
-  applyThinkingToPayload,
-  clampEffortLevel,
-  effortFromAnthropicBudget,
-  effortVocabForConn,
-} from './lib/thinking-effort.js';
-import {
-  createChatSSEConverter,
-} from './lib/chat-sse-transform.js';
-import { DEFAULT_SELF_HEAL_CONFIG, tryHeal } from './lib/self-heal.js';
-import { cleanGeminiToolParameters } from './lib/gemini-schema.js';
-import {
-  attachUpstreamWatchdog,
-  providerGateKey,
-  providerInflightGate,
-  startSseKeepalive,
-  ttfbMsFromEnhancement,
-} from './lib/upstream-watchdog.js';
-import {
-  cooldownPolicyFromEnhancement,
-  filterTargets,
-  markFailure,
-  markSuccess,
-  targetKey,
-} from './lib/provider-cooldown.js';
 import { executeSearchWithFailover } from './handlers/search-sources.js';
-import { codexAuthJsonPath } from './lib/codex-home.js';
 import {
-  isAntigravityPath,
-  getAntigravityMethod,
-  mergeAntigravityModelsResponse,
-  fetchOfficialAntigravityModels,
-  forwardToOfficialAntigravity,
-  resolveAntigravityCustomModel,
-  mockAntigravityLoadCodeAssist,
-  mockAntigravityUserQuotaSummary,
-  mockAntigravityUserInfo,
-  mockAntigravityAdminControls,
-  mockAntigravityUserSettings,
-  isAntigravityBypassMetricsPath,
-  singleflight,
-  fetchOfficialAntigravityJson,
-  fetchOfficialAntigravityRaw,
-  ensureAntigravityTier,
+  antigravityAuthScopeKey,
   ensureAntigravityAdminControls,
+  ensureAntigravityTier,
+  fetchOfficialAntigravityModels,
+  fetchOfficialAntigravityRaw,
+  forwardToOfficialAntigravity,
+  getAntigravityMethod,
+  isAntigravityBypassMetricsPath,
+  isAntigravityPath,
+  mergeAntigravityModelsResponse,
+  mockAntigravityAdminControls,
+  mockAntigravityLoadCodeAssist,
+  mockAntigravityUserInfo,
+  mockAntigravityUserQuotaSummary,
+  mockAntigravityUserSettings,
+  resolveAntigravityCustomModel,
+  singleflight,
 } from './lib/antigravity-handler.js';
-
-const AGENT = new https.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
-const HTTP_AGENT = new http.Agent({ keepAlive: true, maxSockets: 64, maxFreeSockets: 16 });
-// 520~524 是 Cloudflare 系上游瞬断（AnyRouter 偶发 520 的错误率可达 30%），
-// 必须纳入自动重试，否则用户侧表现为无法恢复的 503。
-const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524, 529]);
-const RETRYABLE_CODES = new Set(['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED', 'EPIPE', 'EHOSTUNREACH', 'ENETUNREACH']);
-
-function readLocalConfig() {
-  try {
-    const file = path.join(configDir(), 'byok-config.json');
-    if (!fs.existsSync(file)) return {};
-    const json = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return json && json.values && typeof json.values === 'object' ? json.values : {};
-  } catch (e) {
-    console.warn(`[local-proxy] failed to read config: ${e.message}`);
-    return {};
-  }
-}
-
-function readProvidersJson() {
-  try {
-    const file = path.join(configDir(), 'providers.json');
-    if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (_) {}
-  return {};
-}
-
-function resolveDefaultAntigravityModel(providersJson = readProvidersJson()) {
-  const state = providersJson.platforms?.['antigravity-ide'] || providersJson.platforms?.antigravity;
-  if (state?.providerId) {
-    const cfg = (providersJson.antigravityConfigs || []).find(c => c.id === state.providerId);
-    if (cfg?.defaultModel) return cfg.defaultModel;
-    const p = (providersJson.providers || []).find(p => p.id === state.providerId);
-    if (p?.defaultModel) return p.defaultModel;
-  }
-  const firstAg = (providersJson.antigravityConfigs || [])[0];
-  if (firstAg?.defaultModel) return firstAg.defaultModel;
-  return 'gemini-3-pro';
-}
-
-function pathnameOf(req) {
-  try {
-    let p = new URL(req.url, 'http://127.0.0.1').pathname;
-    // 容错：去除末尾斜杠（除根路径外），避免 /v1beta/models/ 等请求 404
-    if (p.length > 1 && p.endsWith('/')) p = p.replace(/\/+$/, '');
-    // 容错：兼容各类客户端/中转（如 cc-switch 的 /gemini/v1beta/* 或 /claude/v1/*）
-    if (p.startsWith('/gemini/v1beta/')) p = p.slice(7);
-    else if (p === '/gemini/v1beta') p = '/v1beta';
-    else if (p.startsWith('/gemini/v1/')) p = '/v1' + p.slice(10);
-    else if (p.startsWith('/claude/v1/')) p = '/v1' + p.slice(10);
-    // 容错：去除重复的 /v1/v1/... 或 /v1/v1beta/... 嵌套拼接（客户端 Base URL 填带 /v1 时的常见场景）
-    p = p.replace(/^\/(?:v1\/)+(v1beta\/)/, '/$1');
-    p = p.replace(/^\/(?:v1\/)+/, '/v1/');
-    p = p.replace(/^\/(?:v1beta\/)+/, '/v1beta/');
-    return p;
-  }
-  catch { return req.url || '/'; }
-}
-
-function geminiGenerateContentMatch(pathname) {
-  // 兼容 SDK 的 resource-name 形式：/v1beta/models/models/gemini-xxx:generateContent，
-  // 兼容 /v1beta/... 和 /v1/... 两种版本前缀（部分中转与客户端习惯传 /v1），
-  // 以及嵌套模型 id（如 tuned models 的 gemini-x/tunedModels/abc），用贪婪匹配到 method 为止。
-  return String(pathname || '').match(/^\/(?:v1beta|v1)\/models\/(?:models\/)?(.+):(generateContent|streamGenerateContent|countTokens)$/);
-}
-
-function isGeminiGenerateContentPath(pathname) {
-  return !!geminiGenerateContentMatch(pathname);
-}
-
-function geminiModelFromPath(pathname) {
-  const m = geminiGenerateContentMatch(pathname);
-  return m ? decodeURIComponent(m[1]) : '';
-}
-
-function geminiMethodFromPath(pathname) {
-  const m = geminiGenerateContentMatch(pathname);
-  return m ? m[2] : '';
-}
-
-export function isLocalProxyRequest(req) {
-  const p = pathnameOf(req);
-  return p === '/'
-    || p === '/health'
-    || p === '/status'
-    || p === '/v1'
-    || p === '/v1/models'
-    || p === '/models'
-    || p === '/v1/chat/completions'
-    || p === '/chat/completions'
-    || p === '/v1/responses'
-    || p === '/responses'
-    || p === '/v1/messages'
-    || p === '/messages'
-    || p === '/v1beta/models'
-    || isGeminiGenerateContentPath(p)
-    || (req.method === 'GET' && /^\/(?:v1beta|v1)\/models\/(?:models\/)?[^/:]+$/.test(p))
-    || p === '/codex/v1/models'
-    || p === '/codex/v1/chat/completions'
-    || p === '/codex/v1/responses'
-    || p === '/anthropic/v1/models'
-    || p === '/__byok/web-search/test'
-    || p === '/anthropic/v1/messages'
-    || p === '/anthropic/messages'
-    || p === '/claude-desktop/v1/models'
-    || p === '/claude-desktop/models'
-    || p === '/claude-desktop/v1/messages'
-    || p === '/claude-desktop/messages'
-    || p.startsWith('/claude-desktop/')
-    || p.endsWith('/messages/count_tokens')
-    || isAntigravityPath(p);
-}
-
-function proxyScopeForPath(pathname) {
-  const p = String(pathname || '');
-  if (p.startsWith('/codex/')) return 'codex';
-  if (p.startsWith('/claude-desktop')) return 'claude-desktop';
-  if (isAntigravityPath(p)) return 'antigravity';
-  return 'default';
-}
-
-function isCodexProxyScope(scope) {
-  return scope === 'codex';
-}
-
-function isClaudeDesktopProxyScope(scope) {
-  return scope === 'claude-desktop';
-}
-
-function cors(extra = {}) {
-  return {
-    'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'authorization,content-type,x-api-key,x-goog-api-key,anthropic-version,anthropic-beta',
-    'access-control-allow-methods': 'GET,POST,OPTIONS',
-    ...extra,
-  };
-}
-
-function sendJson(res, status, body, headers = {}) {
-  const text = JSON.stringify(body);
-  res.writeHead(status, cors({ 'content-type': 'application/json; charset=utf-8', 'content-length': Buffer.byteLength(text), ...headers }));
-  res.end(text);
-}
-
-// hybrid 握手类端点的统一处理：官方响应优先，按 content-type 分流
-// （JSON → 注入增强后返回；非 JSON → 原样透传），官方不可达才回落 mock。
-async function handleHybridHandshake(res, req, body, pathname, ensureFn, mockFn) {
-  const raw = await fetchOfficialAntigravityRaw(req, body, pathname);
-  if (raw && raw.contentType && raw.contentType.toLowerCase().includes('json')) {
-    try {
-      const parsed = JSON.parse(raw.body.toString('utf8'));
-      if (parsed && typeof parsed === 'object') {
-        sendJson(res, 200, ensureFn(parsed));
-        return;
-      }
-    } catch {}
-  }
-  if (raw) {
-    // 官方可达但响应非 JSON（proto 等）：原样透传，绝不能让 mock 覆盖官方完整结构
-    res.writeHead(raw.statusCode, cors({ 'content-type': raw.contentType || 'application/octet-stream', 'content-length': raw.body.length }));
-    res.end(raw.body);
-    return;
-  }
-  sendJson(res, 200, mockFn());
-}
-
-function sendRaw(res, status, body, headers = {}) {
-  const text = typeof body === 'string' ? body : String(body || '');
-  const contentType = headers['content-type'] || headers['Content-Type'] || 'application/json; charset=utf-8';
-  res.writeHead(status, cors({ 'content-type': contentType, 'content-length': Buffer.byteLength(text) }));
-  res.end(text);
-}
-
-function sendError(res, status, message, type = 'invalid_request_error') {
-  sendJson(res, status, { error: { message, type, code: type, status } });
-}
-
-function sendAnthropicError(res, status, message, type = 'api_error') {
-  sendJson(res, status, { type: 'error', error: { type, message } });
-}
-
-function sendGeminiError(res, status, message, type = 'INVALID_ARGUMENT') {
-  sendJson(res, status, { error: { code: status, message, status: type } });
-}
-
-class LocalProxyUpstreamError extends Error {
-  constructor(message, { status = 502, type = 'upstream_error', upstreamResponse = null } = {}) {
-    super(message);
-    this.name = 'LocalProxyUpstreamError';
-    this.status = status;
-    this.type = type;
-    this.upstreamResponse = upstreamResponse;
-  }
-}
-
-function authToken(req) {
-  const auth = String(req.headers.authorization || '').trim();
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  if (m) return m[1].trim();
-  // Gemini Native 协议标准鉴权之一：?key= 查询参数
-  try {
-    const keyParam = new URL(req.url, 'http://localhost').searchParams.get('key');
-    if (keyParam) return keyParam.trim();
-  } catch (_) { /* req.url 非法时退回 header 鉴权 */ }
-  return String(req.headers['x-api-key'] || req.headers['x-goog-api-key'] || req.headers['api-key'] || '').trim();
-}
-
-
-let _cachedCodexToken = null;
-let _cachedCodexTokenMtime = 0;
-
-function readCodexOAuthToken() {
-  try {
-    const authPath = codexAuthJsonPath();
-    if (!fs.existsSync(authPath)) return null;
-    const stat = fs.statSync(authPath);
-    const mtime = stat.mtimeMs;
-    if (_cachedCodexToken && mtime === _cachedCodexTokenMtime) return _cachedCodexToken;
-    const raw = fs.readFileSync(authPath, 'utf8');
-    const json = JSON.parse(raw);
-    // Codex auth.json stores token as "Bearer xxx" in OPENAI_API_KEY or as access_token
-    const token = (json.OPENAI_API_KEY || json.access_token || '').replace(/^Bearer\s+/i, '').trim();
-    _cachedCodexToken = token || null;
-    _cachedCodexTokenMtime = mtime;
-    return _cachedCodexToken;
-  } catch {
-    return null;
-  }
-}
-
-function validateAuth(req) {
-  const expected = String(readLocalConfig().LOCAL_PROXY_KEY || '').trim();
-  if (!expected) return { ok: false, status: 503, message: 'AnyBridge 内置供应商 key 尚未生成，请在网关页生成 key。' };
-  const token = authToken(req);
-  if (token === expected) return { ok: true };
-  // Codex 保留官方登录模式：Codex 发送 OAuth token 而非 LOCAL_PROXY_KEY
-  // 对 /codex/ 路径的请求，接受 auth.json 中的 OAuth token
-  const p = pathnameOf(req);
-  if (isAntigravityPath(p)) return { ok: true };
-  if (String(p).startsWith('/codex/')) {
-    const oauthToken = readCodexOAuthToken();
-    if (oauthToken && token === oauthToken) return { ok: true };
-  }
-  return { ok: false, status: 401, message: 'AnyBridge 内置供应商 key 无效。' };
-}
-
-// ─── 内置模型 ID 命名规则(跟 Devin 显示名设置一样:只存规则,运行时套用,不硬写 route.id)───
-const RENAME_TEMPLATE_VARS = ['prefix', 'model', 'provider', 'suffix'];
-
-function renderProxyRouteIdTemplate(tpl, vars) {
-  // 多次扫描直到稳定,支持"占位符的值里再嵌占位符"(例如后缀 ({provider}))
-  let out = String(tpl || '');
-  const MAX = 8;
-  for (let pass = 0; pass < MAX; pass++) {
-    let prev = out;
-    for (const k of RENAME_TEMPLATE_VARS) {
-      out = out.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k] == null ? '' : String(vars[k]));
-    }
-    if (out === prev) break;
-  }
-  return out.trim();
-}
-
-/** 获取命名规则(从 model-map.json 的 proxyRouteRenameRule 字段)。*/
-function proxyRouteRenameRule() {
-  const map = loadModelMapConfig();
-  const rule = map && map.proxyRouteRenameRule;
-  if (!rule || typeof rule !== 'object') return null;
-  // 规则被禁用 → 不改名
-  if (rule.enabled === false) return null;
-  const prefix = String(rule.prefix || '');
-  const suffix = String(rule.suffix || '');
-  const template = String(rule.template || '');
-  // 空规则 = 不改名
-  if (!prefix && !suffix && !template) return null;
-  const mode = String(rule.mode || 'simple');
-  const tpl = mode === 'custom' && template ? template : '{prefix}{model}{suffix}';
-  return { mode, prefix, suffix, template, tpl };
-}
-
-/** 获取供应商名(从 providers.json 的 id→name 映射)。*/
-function providerNameById(providerId) {
-  const providers = loadProviders();
-  const p = providers instanceof Map
-    ? providers.get(providerId)
-    : (Array.isArray(providers) ? providers.find(p => p.id === providerId) : null);
-  return p ? (p.name || p.id || '') : '';
-}
-
-/** 把 route.id 按命名规则渲染成"对外暴露的新 ID"。规则为空时返回原始 id。*/
-function renderedProxyRouteId(route, options = {}) {
-  if (options.applyRename === false) return route.id;
-  if (route?.idFromRenameRule === true || route?.id_from_rename_rule === true) return route.id;
-  const rule = proxyRouteRenameRule();
-  if (!rule) return route.id;
-  const firstTarget = Array.isArray(route.targets) && route.targets.length > 0 ? route.targets[0] : null;
-  const providerName = firstTarget ? providerNameById(firstTarget.providerId) : '';
-  const newId = renderProxyRouteIdTemplate(rule.tpl, {
-    prefix: rule.prefix,
-    model: route.id,
-    provider: providerName,
-    suffix: rule.suffix,
-  });
-  return newId || route.id;
-}
-
-function routeExposedFormats(route) {
-  const formats = Array.isArray(route?.exposedFormats) ? route.exposedFormats : [];
-  const normalized = formats.map(fmt => String(fmt || '').trim().toLowerCase()).filter(Boolean);
-  return normalized.length ? normalized : ['openai', 'anthropic', 'gemini'];
-}
-
-function localProxyKind(kind) {
-  if (kind === 'anthropic') return 'anthropic';
-  if (kind === 'gemini') return 'gemini';
-  return 'openai';
-}
-
-function routeSupportsKind(route, kind) {
-  return routeExposedFormats(route).includes(localProxyKind(kind));
-}
-
-function routeAliases(route, options = {}) {
-  const aliases = [String(route.id || '').trim()].filter(Boolean);
-  const exposed = renderedProxyRouteId(route, options);
-  if (exposed && exposed !== route.id) aliases.push(exposed);
-  return aliases;
-}
-
-/** 构建"对外暴露 ID → 原始 route"查找表,供 resolveProxyModel 做反向解析。
- * 两段式构建:字面 ID 是路由的权威身份,优先登记;命名规则渲染出的别名是二级别名,
- * 与已有条目冲突时让位并告警。禁止因单一别名冲突抛错——查找表是全路由共享的,
- * 抛错会把一条路由的配置打架放大成所有模型的请求全部失败。 */
-function buildExposedIdLookup(routes, options = {}) {
-  const lookup = new Map();
-  // 第一遍:字面 ID。两条路由的字面 ID 相同是真重复,必须报错。
-  for (const route of routes) {
-    const literal = String(route.id || '').trim();
-    if (!literal) continue;
-    const previous = lookup.get(literal);
-    if (previous && previous !== route) {
-      throw new Error(`本地内置模型 ID 冲突: ${literal} 同时是 ${previous.id} 和 ${route.id} 两条路由的字面 ID。请调整模型 ID 或命名规则。`);
-    }
-    lookup.set(literal, route);
-  }
-  // 第二遍:渲染别名。冲突时跳过(字面 ID 已被其他路由占用),显式告警不静默。
-  for (const route of routes) {
-    const exposed = renderedProxyRouteId(route, options);
-    if (!exposed || exposed === route.id) continue;
-    const owner = lookup.get(exposed);
-    if (owner && owner !== route) {
-      console.warn(`[local-proxy] 暴露别名冲突已跳过: "${exposed}" 归属于路由 ${owner.id},路由 ${route.id} 的命名规则别名不生效。请调整模型 ID 或命名规则。`);
-      continue;
-    }
-    lookup.set(exposed, route);
-  }
-  return lookup;
-}
-
-function proxyRouteStore(scope) {
-  return isCodexProxyScope(scope) ? getCodexProxyRoutes() : getProxyRoutes();
-}
-
-function proxyRouteStoreMissingMessage(scope) {
-  return isCodexProxyScope(scope)
-    ? 'Codex 专用内置模型列表为空。请在「更多平台 > Codex」重新切换第三方配置。'
-    : '内置模型列表为空。请在「网关 > 模型列表」添加模型。';
-}
-
-function proxyRouteStoreReadErrorPrefix(scope) {
-  return isCodexProxyScope(scope) ? 'Codex 专用内置模型列表读取失败' : '内置模型列表读取失败';
-}
-
-function proxyRouteRows(kind, options = {}) {
-  const store = proxyRouteStore(options.scope);
-  if (store.loadError) throw new Error(`${proxyRouteStoreReadErrorPrefix(options.scope)}: ${store.loadError}`);
-  if (!store.fileExists) return [];
-  const lookupOptions = { applyRename: options.applyRename !== false };
-  const candidates = (store.routes || [])
-    .filter(route => route.enabled !== false)
-    .filter(route => Array.isArray(route.targets) && route.targets.length > 0)
-    .filter(route => routeSupportsKind(route, kind));
-  buildExposedIdLookup(candidates, lookupOptions);
-  return candidates
-    .map(route => {
-      const exposedId = renderedProxyRouteId(route, lookupOptions);
-      return { id: exposedId, name: exposedId };
-    })
-    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-}
-
-function stripOneMContextMarker(model) {
-  let m = String(model || '').trim();
-  if (m.toLowerCase().endsWith('[1m]')) {
-    m = m.slice(0, -4).trim();
-  }
-  return m;
-}
-
-function resolveClaudeDesktopRole(model) {
-  const m = stripOneMContextMarker(model).toLowerCase();
-  if (m.includes('opus')) return 'opus';
-  if (m.includes('haiku')) return 'haiku';
-  if (m.includes('fable')) return 'fable';
-  if (m.includes('sonnet')) return 'sonnet';
-  return null;
-}
-
-function mapClaudeDesktopModel(requestedModel) {
-  const rawModel = stripOneMContextMarker(requestedModel);
-  const role = resolveClaudeDesktopRole(rawModel);
-  const store = getProxyRoutes();
-  const bindings = store?.claudeDesktop || {};
-  let targetRef = '';
-  if (role === 'sonnet') targetRef = bindings.sonnet;
-  else if (role === 'opus') targetRef = bindings.opus;
-  else if (role === 'haiku') targetRef = bindings.haiku;
-  else if (role === 'fable') targetRef = bindings.fable || bindings.opus;
-
-  if (targetRef) {
-    const cleanTarget = stripOneMContextMarker(targetRef);
-    const route = (store?.routes || []).find(r => r.uid === cleanTarget || r.id === cleanTarget);
-    if (route) {
-      if (!route.enabled) {
-        return { error: `Claude Desktop 绑定的内置模型已禁用: ${route.id}` };
-      }
-      return { model: route.id, original: requestedModel, route };
-    }
-
-    // 支持直接绑定具体供应商的模型：按当前配置的源供应商精确解析。
-    // 禁止按模型名猜测供应商（同名模型在多家供应商存在时会静默错配），
-    // 源供应商缺失时让失败明确暴露。
-    const providers = loadProviders();
-    const storeJson = readProvidersJson();
-    const currentId = storeJson?.platforms?.['claude-desktop']?.providerId;
-    const currentCfg = (storeJson?.claudeDesktopConfigs || []).find(c => c.id === currentId);
-    const sourceProvider = currentCfg?.sourceProviderId ? providers.get(currentCfg.sourceProviderId) : null;
-    if (!sourceProvider || sourceProvider.enabled === false) {
-      return { error: `Claude Desktop 绑定的模型 [${cleanTarget}] 无法解析：当前配置未关联有效的源供应商。` };
-    }
-    const dynamicRoute = {
-      id: cleanTarget,
-      enabled: true,
-      targets: [{
-        providerId: sourceProvider.id,
-        model: cleanTarget,
-      }],
-    };
-    return { model: cleanTarget, original: requestedModel, route: dynamicRoute };
-  }
-
-  // 直连回退：尝试直接匹配同名已配置路由
-  const directRoute = (store?.routes || []).find(r => r.id === rawModel || r.uid === rawModel);
-  if (directRoute) {
-    if (!directRoute.enabled) {
-      return { error: `请求的内置模型已禁用: ${directRoute.id}` };
-    }
-    return { model: directRoute.id, original: requestedModel, route: directRoute };
-  }
-
-  return {
-    error: `Claude Desktop 请求模型 [${requestedModel}] 对应的角色 [${role || '未知'}] 尚未在 AnyBridge 平台设置中绑定有效的内置模型。`,
-  };
-}
-
-function handleClaudeDesktopModels(res) {
-  const store = getProxyRoutes();
-  const bindings = store?.claudeDesktop || {};
-
-  const isOneMCandidate = (routeRef) => {
-    if (!routeRef) return false;
-    const clean = String(routeRef).trim();
-    const r = (store?.routes || []).find(x => x.uid === clean || x.id === clean);
-    if (r) {
-      const self1m = /\[1m\]|1m/i.test(r.id || '') || /\[1m\]|1m/i.test(r.displayName || '');
-      const target1m = Array.isArray(r.targets) && r.targets.some(t => /\[1m\]|1m/i.test(t.model || ''));
-      if (self1m || target1m) return true;
-    }
-    return /\[1m\]|1m/i.test(clean);
-  };
-
-  const models = [
-    { id: 'claude-sonnet-5', type: 'model', display_name: bindings.sonnetName || 'Claude Sonnet 5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.sonnet) },
-    { id: 'claude-opus-5', type: 'model', display_name: bindings.opusName || 'Claude Opus 5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.opus) },
-    { id: 'claude-haiku-4-5', type: 'model', display_name: bindings.haikuName || 'Claude Haiku 4.5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.haiku) },
-  ];
-  if (bindings.fable && String(bindings.fable).trim()) {
-    models.push({ id: 'claude-fable-5', type: 'model', display_name: bindings.fableName || 'Claude Fable 5', created_at: '2024-01-01T00:00:00Z', supports1m: isOneMCandidate(bindings.fable) });
-  }
-  sendJson(res, 200, {
-    data: models,
-    has_more: false,
-    first_id: models[0]?.id || null,
-    last_id: models[models.length - 1]?.id || null,
-  });
-}
-
-function handleModels(req, res) {
-  const pathname = pathnameOf(req);
-  if (pathname.startsWith('/claude-desktop')) {
-    handleClaudeDesktopModels(res);
-    return;
-  }
-  const anthropic = pathname.startsWith('/anthropic/') || !!req.headers['anthropic-version'];
-  const gemini = pathname === '/v1beta/models' || (pathname === '/v1/models' && (!!req.headers['x-goog-api-key'] || (req.url && req.url.includes('key='))));
-  const scope = proxyScopeForPath(pathname);
-  let rows;
-  try {
-    rows = proxyRouteRows(gemini ? 'gemini' : (anthropic ? 'anthropic' : 'openai'), {
-      scope,
-      applyRename: !isCodexProxyScope(scope),
-    });
-  } catch (e) {
-    sendError(res, 500, e.message || String(e), 'configuration_error');
-    return;
-  }
-  if (anthropic) {
-    sendJson(res, 200, { data: rows.map(m => ({ id: m.id, type: 'model', display_name: m.name, created_at: '2026-01-01T00:00:00Z' })), has_more: false, first_id: rows[0]?.id || null, last_id: rows[rows.length - 1]?.id || null });
-    return;
-  }
-  if (gemini) {
-    sendJson(res, 200, {
-      models: rows.map(m => ({
-        name: `models/${m.id}`,
-        displayName: m.name,
-        supportedGenerationMethods: ['generateContent', 'countTokens'],
-      })),
-    });
-    return;
-  }
-  sendJson(res, 200, { object: 'list', data: rows.map(m => ({ id: m.id, object: 'model', created: 0, owned_by: 'anybridge' })) });
-}
-
-// GET /v1beta/models/{id} — Gemini SDK/CLI 的单模型只读查询端点
-function handleGeminiModelInfo(modelId, res, scope) {
-  const resolved = resolveProxyModel(modelId, 'gemini', { scope, applyRename: !isCodexProxyScope(scope) });
-  if (resolved.error) {
-    sendGeminiError(res, 404, `模型不存在: ${modelId}`, 'NOT_FOUND');
-    return;
-  }
-  const exposedId = renderedProxyRouteId(resolved.route, { applyRename: !isCodexProxyScope(scope) });
-  sendJson(res, 200, {
-    name: `models/${exposedId}`,
-    displayName: exposedId,
-    supportedGenerationMethods: ['generateContent', 'countTokens'],
-  });
-}
-
-function textPart(value) {
-  const text = String(value || '');
-  return text ? { type: 'text', text } : null;
-}
-
-function dataUrlToImage(url) {
-  const m = String(url || '').trim().match(/^data:([^;,]+);base64,(.+)$/i);
-  if (!m) return null;
-  return { type: 'image', source: { type: 'base64', media_type: m[1] || 'image/png', data: m[2] || '' } };
-}
-
-function anthropicPartFromOpenAI(part) {
-  if (!part || typeof part !== 'object') return null;
-  if (part.type === 'text' || part.type === 'input_text') return textPart(part.text);
-  if (part.type === 'image_url' || part.type === 'input_image') {
-    const imageUrl = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
-    return dataUrlToImage(imageUrl || part.image_url);
-  }
-  return null;
-}
-
-function openAIPartFromAnthropic(part, mode = 'chat') {
-  if (!part || typeof part !== 'object') return null;
-  if (part.type === 'text') return { type: mode === 'responses' ? 'input_text' : 'text', text: String(part.text || '') };
-  if (part.type === 'image' && part.source?.data) {
-    const url = `data:${part.source.media_type || 'image/png'};base64,${part.source.data}`;
-    return mode === 'responses' ? { type: 'input_image', image_url: url } : { type: 'image_url', image_url: { url } };
-  }
-  return null;
-}
-
-// 工具结果内容归一为字符串：OpenAI tool 消息与 Responses function_call_output
-// 的 output 都是字符串；数组形式（部分客户端）按 text 片段拼接。
-function toolResultOutputText(raw) {
-  if (typeof raw === 'string') return raw;
-  if (Array.isArray(raw)) return raw.map(p => (typeof p === 'string' ? p : (p?.text || ''))).join('\n');
-  if (raw == null) return '';
-  return JSON.stringify(raw);
-}
-
-// 连续的工具调用 / 工具结果合并进同一条消息，避免上游收到无法交替的相邻同 role 消息。
-function appendToolUseBlock(messages, block) {
-  const last = messages[messages.length - 1];
-  if (last && last.role === 'assistant' && last.content.some(p => p.type === 'tool_use')) {
-    last.content.push(block);
-    return;
-  }
-  messages.push({ role: 'assistant', content: [block] });
-}
-
-function appendToolResultBlock(messages, block) {
-  const last = messages[messages.length - 1];
-  if (last && last.role === 'user' && last.content.some(p => p.type === 'tool_result')) {
-    last.content.push(block);
-    return;
-  }
-  messages.push({ role: 'user', content: [block] });
-}
-
-function normalizeOpenAI(body) {
-  const messages = [];
-  let system = String(body.instructions || '').trim();
-  const input = Array.isArray(body.messages) ? body.messages : body.input;
-  const rows = typeof input === 'string' ? [{ role: 'user', content: input }] : (Array.isArray(input) ? input : []);
-  for (const msg of rows) {
-    if (!msg || typeof msg !== 'object') continue;
-    // Responses 入站：历史中的 function_call / function_call_output 项
-    if (msg.type === 'function_call') {
-      appendToolUseBlock(messages, {
-        type: 'tool_use',
-        id: String(msg.call_id || msg.id || ''),
-        name: String(msg.name || ''),
-        input: parseJsonObject(msg.arguments || '{}'),
-      });
-      continue;
-    }
-    if (msg.type === 'function_call_output') {
-      appendToolResultBlock(messages, {
-        type: 'tool_result',
-        tool_use_id: String(msg.call_id || msg.id || ''),
-        content: toolResultOutputText(msg.output),
-      });
-      continue;
-    }
-    const role = msg.role === 'assistant' ? 'assistant' : (msg.role === 'system' ? 'system' : 'user');
-    const raw = msg.content ?? msg.text ?? '';
-    if (role === 'system') {
-      const text = typeof raw === 'string' ? raw : (Array.isArray(raw) ? raw.map(p => p?.text || '').join('\n') : '');
-      system = [system, text].filter(Boolean).join('\n');
-      continue;
-    }
-    // Chat 入站：工具结果消息（role: tool）
-    if (msg.role === 'tool' || msg.tool_call_id) {
-      appendToolResultBlock(messages, {
-        type: 'tool_result',
-        tool_use_id: String(msg.tool_call_id || ''),
-        content: toolResultOutputText(raw),
-      });
-      continue;
-    }
-    const content = typeof raw === 'string' ? [textPart(raw)].filter(Boolean) : (Array.isArray(raw) ? raw.map(anthropicPartFromOpenAI).filter(Boolean) : []);
-    // Chat 入站：助手历史里的工具调用
-    for (const call of (Array.isArray(msg.tool_calls) ? msg.tool_calls : [])) {
-      if (!call?.function?.name) continue;
-      content.push({
-        type: 'tool_use',
-        id: String(call.id || ''),
-        name: String(call.function.name),
-        input: parseJsonObject(call.function.arguments || '{}'),
-      });
-    }
-    messages.push({ role, content });
-  }
-  return { system, messages };
-}
-
-function normalizeAnthropicContent(content) {
-  if (typeof content === 'string') return [textPart(content)].filter(Boolean);
-  if (!Array.isArray(content)) return [];
-  return content.map(p => {
-    if (!p || typeof p !== 'object') return null;
-    if (p.type === 'text') return textPart(p.text);
-    if (p.type === 'image') return p;
-    if (p.type === 'tool_use') return { type: 'tool_use', id: String(p.id || ''), name: String(p.name || ''), input: p.input || {} };
-    if (p.type === 'tool_result') return { type: 'tool_result', tool_use_id: String(p.tool_use_id || ''), content: p.content, is_error: p.is_error === true };
-    if (p.type === 'thinking') return { type: 'thinking', thinking: String(p.thinking || ''), signature: p.signature };
-    if (p.type === 'redacted_thinking') return { type: 'redacted_thinking', data: p.data };
-    return null;
-  }).filter(Boolean);
-}
-
-function normalizeAnthropic(body) {
-  const system = typeof body.system === 'string' ? body.system : (Array.isArray(body.system) ? body.system.map(p => p?.text || '').filter(Boolean).join('\n') : '');
-  const messages = (Array.isArray(body.messages) ? body.messages : [])
-    .map(m => ({ role: m?.role === 'assistant' ? 'assistant' : 'user', content: normalizeAnthropicContent(m?.content) }))
-    .filter(m => m.content.length > 0);
-  return { system, messages };
-}
-
-function geminiTextFromParts(parts) {
-  return (Array.isArray(parts) ? parts : [])
-    .map(part => part?.text || '')
-    .filter(Boolean)
-    .join('\n');
-}
-
-function normalizeGeminiPart(part) {
-  if (!part || typeof part !== 'object') return null;
-  const signature = String(part.thoughtSignature || part.thought_signature || '');
-  // text part 保留 thoughtSignature 在内部 text part 上（Gemini 3 建议回传，不强制）。
-  // 跨协议上游会自然丢弃该字段；Gemini 上游由 geminiPartFromAnthropic 原样带回。
-  if (part.text !== undefined) {
-    const t = textPart(part.text);
-    if (!t) return null;
-    return signature ? { type: 'text', text: t.text, thoughtSignature: signature } : t;
-  }
-  const inline = part.inlineData || part.inline_data;
-  if (inline?.data) {
-    const mime = String(inline.mimeType || inline.mime_type || 'image/png');
-    if (!mime.startsWith('image/')) {
-      return {
-        type: 'gemini_part',
-        part: withThoughtSignature({ inlineData: { mimeType: mime, data: String(inline.data || '') } }, signature),
-      };
-    }
-    return { type: 'image', source: { type: 'base64', media_type: mime, data: String(inline.data || '') } };
-  }
-  if (part.functionResponse) return { type: 'gemini_part', part: withThoughtSignature({ functionResponse: part.functionResponse }, signature) };
-  if (part.function_response) return { type: 'gemini_part', part: withThoughtSignature({ function_response: part.function_response }, signature) };
-  if (part.functionCall) return { type: 'gemini_part', part: withThoughtSignature({ functionCall: part.functionCall }, signature) };
-  if (part.function_call) return { type: 'gemini_part', part: withThoughtSignature({ function_call: part.function_call }, signature) };
-  return null;
-}
-
-function withThoughtSignature(part, signature) {
-  return signature ? { ...part, thoughtSignature: signature } : part;
-}
-
-function normalizeGeminiTools(tools) {
-  const out = [];
-  for (const group of (Array.isArray(tools) ? tools : [])) {
-    const declarations = group?.functionDeclarations || group?.function_declarations || [];
-    for (const fn of declarations) {
-      const name = String(fn?.name || '').trim();
-      if (!name) continue;
-      out.push({
-        type: 'function',
-        function: {
-          name,
-          description: String(fn.description || ''),
-          parameters: fn.parameters || { type: 'object', properties: {} },
-        },
-      });
-    }
-  }
-  return out;
-}
-
-function normalizeGeminiToolChoice(body) {
-  const cfg = body?.toolConfig?.functionCallingConfig || body?.tool_config?.function_calling_config;
-  if (!cfg || typeof cfg !== 'object') return null;
-  const mode = String(cfg.mode || '').trim().toUpperCase();
-  if (!mode || mode === 'MODE_UNSPECIFIED' || mode === 'AUTO') return 'auto';
-  if (mode === 'NONE') return 'none';
-  const allowed = cfg.allowedFunctionNames || cfg.allowed_function_names || [];
-  if (mode === 'ANY' && Array.isArray(allowed) && allowed.length === 1) {
-    return { type: 'function', function: { name: String(allowed[0]) } };
-  }
-  if (mode === 'ANY') return 'required';
-  return null;
-}
-
-function normalizeGemini(body) {
-  const systemParts = body?.systemInstruction?.parts || body?.system_instruction?.parts || [];
-  const system = geminiTextFromParts(systemParts);
-  const messages = [];
-  for (const content of (Array.isArray(body.contents) ? body.contents : [])) {
-    const role = content?.role === 'model' ? 'assistant' : 'user';
-    const parts = (Array.isArray(content?.parts) ? content.parts : [])
-      .map(normalizeGeminiPart)
-      .filter(Boolean);
-    if (parts.length) messages.push({ role, content: parts });
-  }
-  return { system, messages };
-}
-
-function normalizeRequest(kind, body) {
-  const base = kind === 'anthropic'
-    ? normalizeAnthropic(body)
-    : (kind === 'gemini' ? normalizeGemini(body) : normalizeOpenAI(body));
-  const generationConfig = kind === 'gemini' && body?.generationConfig && typeof body.generationConfig === 'object'
-    ? body.generationConfig
-    : {};
-  return {
-    kind,
-    model: String(body.model || '').trim(),
-    system: base.system,
-    messages: base.messages,
-    tools: kind === 'gemini' ? normalizeGeminiTools(body.tools) : (Array.isArray(body.tools) ? body.tools : []),
-    toolChoice: kind === 'gemini' ? normalizeGeminiToolChoice(body) : (body.tool_choice || body.toolChoice || null),
-    stream: body.stream === true,
-    maxTokens: Number(body.max_tokens || body.max_output_tokens || body.max_completion_tokens || generationConfig.maxOutputTokens || generationConfig.max_output_tokens) || 4096,
-    temperature: Number.isFinite(Number(body.temperature ?? generationConfig.temperature)) ? Number(body.temperature ?? generationConfig.temperature) : undefined,
-    extraParams: passthroughParams(kind, body),
-    rawBody: body,
-  };
-}
-
-function isPlainObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value);
-}
-
-function passthroughParams(kind, body = {}) {
-  if (!body || typeof body !== 'object') return {};
-  const blocked = new Set([
-    'model',
-    'messages',
-    'input',
-    'instructions',
-    'system',
-    'stream',
-    'max_tokens',
-    'max_output_tokens',
-    'max_completion_tokens',
-    'temperature',
-    'tools',
-    'tool_choice',
-    'toolChoice',
-    'extra_body',
-    // thinking/reasoning 由 sidecar 根据上游格式重新构建，不能透传
-    // Codex Desktop 发 thinking.type: "enabled"，但 MiniMax 只接受 "adaptive"/"disabled"
-    'thinking',
-    'reasoning',
-  ]);
-  if (kind === 'gemini') {
-    for (const key of [
-      'contents',
-      'systemInstruction',
-      'system_instruction',
-      'generationConfig',
-      'generation_config',
-      'toolConfig',
-      'tool_config',
-      'safetySettings',
-      'safety_settings',
-      'cachedContent',
-      'cached_content',
-    ]) blocked.add(key);
-  }
-  const out = isPlainObject(body.extra_body) ? { ...body.extra_body } : {};
-  for (const [key, value] of Object.entries(body)) {
-    if (blocked.has(key)) continue;
-    out[key] = value;
-  }
-  return out;
-}
-
-function cleanBody(body) {
-  Object.keys(body).forEach(key => body[key] === undefined && delete body[key]);
-  return body;
-}
-
-function estimateTokens(messages, system = '') {
-  const text = [system, ...messages.flatMap(m => (m.content || []).map(p => p.type === 'text' ? p.text : '[image]'))].join('\n');
-  return Math.max(1, Math.ceil(text.length / 4));
-}
-
-function routeAsSlot(route) {
-  return {
-    modelUid: route.id,
-    displayName: route.id,
-    supportsImages: route.capabilities?.vision === true,
-    useThirdPartyVision: route.enhancement?.thirdPartyVision === true,
-    targets: Array.isArray(route.targets) ? route.targets : [],
-  };
-}
-
-/** 目标是否指向AnyBridge 内置供应商自身（自环）。这类目标若直接发起请求会打到网关自己。 */
-function isLocalProxySelfTarget(target) {
-  const id = String(target?.providerId || '').trim().toLowerCase();
-  return id === 'anybridge-local-proxy' || id === 'anybridge';
-}
-
-/** 两条路由是否同一条：优先比 uid，退化为比 id。 */
-function sameRoute(a, b) {
-  if (!a || !b) return false;
-  if (a.uid && b.uid) return a.uid === b.uid;
-  return a.id === b.id;
-}
-
-function resolveAntigravityProxyModel(model, providers = loadProviders(), providersJson = readProvidersJson()) {
-  const requested = String(model || '').trim();
-  const customModel = resolveAntigravityCustomModel(requested, providersJson);
-  const provider = (customModel?.config?.sourceProviderId ? providers.get(customModel.config.sourceProviderId) : null)
-    || (customModel?.config?.id ? providers.get(customModel.config.id) : null);
-  if (!customModel || !provider || provider.enabled === false) return null;
-  const dynamicRoute = {
-    id: requested,
-    enabled: true,
-    enhancement: {
-      thirdPartyVision: customModel.config.useThirdPartyVision === true,
-    },
-    targets: [{
-      providerId: provider.id,
-      model: customModel.upstreamModel,
-      apiFormat: customModel.config.apiFormat || null,
-      apiPath: customModel.config.apiPath || null,
-    }],
-  };
-  return { slot: routeAsSlot(dynamicRoute), route: dynamicRoute };
-}
-
-function resolveProxyModel(model, kind, options = {}) {
-  const scope = options.scope || 'default';
-  if (scope === 'antigravity') {
-    const antigravityResolved = resolveAntigravityProxyModel(model);
-    if (antigravityResolved) return antigravityResolved;
-  }
-  const store = proxyRouteStore(scope);
-  if (store.loadError) return { error: `${proxyRouteStoreReadErrorPrefix(scope)}: ${store.loadError}` };
-  if (!store.fileExists) return { error: proxyRouteStoreMissingMessage(scope) };
-
-  const requested = String(model || '').trim();
-  if (!requested) return { error: '请求缺少 model，无法匹配内置模型列表。' };
-
-  // 反向解析:先在"对外暴露 ID → 原始 route"查找表里找
-  // (支持命名规则渲染后的新 ID,也兼容原始 ID)
-  const routes = store.routes || [];
-  const candidates = routes.filter(route => routeSupportsKind(route, kind));
-  let lookup;
-  const lookupOptions = { applyRename: options.applyRename !== false };
-  try {
-    lookup = buildExposedIdLookup(candidates, lookupOptions);
-  } catch (e) {
-    return { error: e.message || String(e) };
-  }
-  const route = lookup.get(requested);
-  if (!route) {
-    // 不做供应商猜测兜底：模型不在内置模型路由列表中就让失败明确暴露。
-    // 供应商+模型的精确解析只允许发生在入口（如 mapClaudeDesktopModel），
-    // 并通过 ctx.pinnedRoute 显式透传，禁止在此按名字静默猜供应商。
-    const routeWithOtherFormat = routes.find(route => routeAliases(route, lookupOptions).includes(requested));
-    if (routeWithOtherFormat) {
-      return { error: `模型 ${requested} 未暴露为 ${localProxyKind(kind)} 兼容入口。` };
-    }
-    return { error: `模型不在内置模型列表中: ${requested}` };
-  }
-  if (route.enabled === false) return { error: `内置模型已禁用: ${requested}` };
-  if (!Array.isArray(route.targets) || route.targets.length === 0) {
-    return { error: `内置模型没有可用上游目标: ${requested}` };
-  }
-  return { slot: routeAsSlot(route), route };
-}
-
-export const __localProxyTest = {
-  RETRYABLE_STATUS,
-  buildExposedIdLookup,
-  renderedProxyRouteId,
-  responseObject,
-  isLocalProxySelfTarget,
-  sameRoute,
-  routeSupportsKind,
-  normalizeRequest,
-  normalizeOpenAI,
-  openAIResponsesInput,
-  extractText,
-  upstreamReasoningText,
-  responseReasoningItems,
-  execute,
-  sendOpenAIChat,
-  sendOpenAIResponses,
-  applyParamOverrides,
-  applyToolEnhancement,
-  upstreamBody,
-  openAITools,
-  anthropicTools,
-  responsesToolChoice,
-  normalizeToolParameters,
-  geminiTools,
-  geminiGenerationConfig,
-  geminiStreamApiPath,
-  antigravityErrorSnapshot,
-  writeAntigravityStreamError,
-  upstreamErrorText,
-  readableErrorText,
-  failureMessage,
-  classifyFailures,
-  createGeminiStreamFromOpenAIChat,
+import { createTargetAttemptRunner } from './lib/attempt-runner.js';
+import { redactGeminiCredential } from './lib/google-gemini.js';
+import { executeGeminiCountTokens } from './lib/local-proxy/count-tokens.js';
+import {
+  buildAntigravityNormalizedCtx,
+  expandResolvedTargets,
+  throwAggregatedUpstreamFailure,
+  trySelfHealUpstreamPayload,
+} from './lib/local-proxy/execute-helpers.js';
+import { estimateTokens, normalizeRequest } from './lib/local-proxy/normalize.js';
+import {
+  antigravityEnvelope,
+  geminiResponsePayload,
+  handleCountTokens,
+  sendAnthropic,
+  sendAntigravityStream,
   sendGemini,
   sendGeminiStream,
+  sendOpenAIChat,
+  sendOpenAIChatStream,
+  sendOpenAIResponses,
+  sse,
+  writeAntigravityStreamError,
+} from './lib/local-proxy/response-emitters.js';
+import {
+  LocalProxyUpstreamError,
+  buildAntigravityRouteFromCustomModel,
+  cors,
+  geminiMethodFromPath,
   geminiModelFromPath,
-  stripOneMContextMarker,
-  resolveClaudeDesktopRole,
+  handleGeminiModelInfo,
+  handleHybridHandshake,
+  handleModels,
+  isCodexProxyScope,
+  isGeminiGenerateContentPath,
+  isLocalProxyRequest,
   mapClaudeDesktopModel,
-  resolveProxyModelForTest(model, kind, scope, providers, providersJson) {
-    if (scope === 'antigravity') {
-      return resolveAntigravityProxyModel(model, providers, providersJson);
-    }
-    return resolveProxyModel(model, kind, { scope });
-  },
-};
-
-function hasImage(messages) {
-  return messages.some(m => Array.isArray(m.content) && m.content.some(p => p.type === 'image'));
-}
-
-function positiveInt(value, fallback, min = 0) {
-  const n = parseInt(value, 10);
-  return Number.isFinite(n) && n >= min ? n : fallback;
-}
-
-function retryPolicy(enhancement = {}) {
-  return { enabled: enhancement.retry !== false, maxRetries: positiveInt(enhancement.retryMaxRetries, 5, 0), baseMs: positiveInt(enhancement.retryBaseMs, 600, 1), capMs: positiveInt(enhancement.retryCapMs, 8000, 1), totalMs: positiveInt(enhancement.retryTotalSeconds, 60, 1) * 1000 };
-}
-
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
-// Retry-After 解析（秒数或 HTTP-date），毫秒；无头/非法值返回 0（T6 决策三）
-function retryAfterMs(headers) {
-  const raw = headers?.['retry-after'];
-  if (!raw) return 0;
-  const val = Array.isArray(raw) ? raw[0] : raw;
-  const seconds = parseInt(val, 10);
-  if (Number.isFinite(seconds)) return Math.max(seconds, 0) * 1000;
-  const at = Date.parse(val);
-  if (!Number.isNaN(at)) return Math.max(at - Date.now(), 0);
-  return 0;
-}
-// 重试退避：full jitter 与 Retry-After 取大；并 clamp 到剩余墙钟预算，
-// 修正「最后一次 sleep 排程后总耗时超出预算」的溢出（T6 决策二/三）。
-// 在途请求本身不受预算掐断——预算约束的是重试决策与退避等待。
-function retryDelay(attempt, policy, headers, elapsedMs) {
-  const exp = Math.min(policy.capMs, policy.baseMs * Math.pow(2, Math.max(0, attempt - 1)));
-  const ra = Math.min(retryAfterMs(headers), policy.capMs);
-  const remaining = Math.max(0, policy.totalMs - Math.max(0, elapsedMs || 0));
-  return Math.round(Math.min(Math.max(Math.random() * exp, ra), remaining));
-}
-function retryable(status, code) { return status ? RETRYABLE_STATUS.has(status) : RETRYABLE_CODES.has(code); }
-
-function openAIChatMessages(system, messages) {
-  const out = [];
-  if (system) out.push({ role: 'system', content: system });
-  for (const m of messages) {
-    const rawParts = Array.isArray(m.content) ? m.content : (m.content ? [textPart(m.content)].filter(Boolean) : []);
-    const textParts = [];
-    const toolCalls = [];
-    for (const p of rawParts) {
-      if (p.type === 'tool_use') {
-        toolCalls.push({
-          id: p.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
-          type: 'function',
-          function: {
-            name: p.name,
-            arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}),
-          },
-        });
-      } else if (p.type === 'tool_result') {
-        const contentStr = typeof p.content === 'string'
-          ? p.content
-          : (Array.isArray(p.content) ? p.content.map(c => c?.text || '').join('\n') : JSON.stringify(p.content || ''));
-        out.push({
-          role: 'tool',
-          tool_call_id: p.tool_use_id || '',
-          content: contentStr,
-        });
-      } else {
-        const converted = openAIPartFromAnthropic(p, 'chat');
-        if (converted) textParts.push(converted);
-      }
-    }
-    if (m.role === 'assistant') {
-      const assistantMsg = { role: 'assistant' };
-      const content = textParts.length === 1 && textParts[0].type === 'text' ? textParts[0].text : (textParts.length > 0 ? textParts : null);
-      if (content !== null) assistantMsg.content = content;
-      if (toolCalls.length > 0) assistantMsg.tool_calls = toolCalls;
-      if (assistantMsg.content != null || assistantMsg.tool_calls) {
-        out.push(assistantMsg);
-      }
-    } else if (m.role === 'user' && textParts.length > 0) {
-      const content = textParts.length === 1 && textParts[0].type === 'text' ? textParts[0].text : textParts;
-      out.push({ role: 'user', content });
-    }
-  }
-  return out;
-}
-
-// Chat 风格 tool_choice {type:'function', function:{name}} → Responses 扁平 {type:'function', name}
-function responsesToolChoice(choice) {
-  if (!choice || typeof choice !== 'object') return choice;
-  if (choice.type === 'function' && choice.function?.name) {
-    return { type: 'function', name: choice.function.name };
-  }
-  return choice;
-}
-
-// Responses input 是 item 数组：普通消息保留 {role, content}，
-// 工具调用 / 工具结果必须输出为 function_call / function_call_output 项，
-// 否则上游看不到工具历史（角色退化、结构丢失）。
-function openAIResponsesInput(messages) {
-  const out = [];
-  for (const m of messages) {
-    const role = m.role === 'assistant' ? 'assistant' : 'user';
-    let content = [];
-    const flush = () => {
-      if (content.length > 0) {
-        out.push({ role, content });
-        content = [];
-      }
-    };
-    for (const p of (m.content || [])) {
-      if (p?.type === 'tool_use') {
-        flush();
-        out.push({
-          type: 'function_call',
-          call_id: String(p.id || ''),
-          name: String(p.name || ''),
-          arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}),
-        });
-      } else if (p?.type === 'tool_result') {
-        flush();
-        out.push({
-          type: 'function_call_output',
-          call_id: String(p.tool_use_id || ''),
-          output: toolResultOutputText(p.content),
-        });
-      } else {
-        const converted = openAIPartFromAnthropic(p, 'responses');
-        if (converted) {
-          // Responses 规范：assistant 的输出历史必须用 output_text，
-          // 用 input_text 会被上游判非法（AnyRouter 实测返回 520）。
-          if (role === 'assistant' && converted.type === 'input_text') {
-            converted.type = 'output_text';
-          }
-          content.push(converted);
-        }
-      }
-    }
-    flush();
-  }
-  return out;
-}
-
-// Google 的 protobuf Schema.Type 是 UPPERCASE 枚举（STRING/OBJECT/...），
-// OpenAI / Anthropic 只接受小写 JSON Schema 类型（string/object/...）。
-// 只在“输出到非 Gemini 上游”时转换；Gemini 上游仍保留 Google 风格大写枚举。
-const GOOGLE_SCHEMA_TYPE_BY_INDEX = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
-const GOOGLE_SCHEMA_TYPE_BY_NAME = {
-  STRING: 'string',
-  NUMBER: 'number',
-  INTEGER: 'integer',
-  BOOLEAN: 'boolean',
-  ARRAY: 'array',
-  OBJECT: 'object',
-};
-
-function normalizeSchemaTypeValue(type) {
-  if (typeof type === 'number' && Number.isInteger(type) && type >= 1 && type <= 6) {
-    return GOOGLE_SCHEMA_TYPE_BY_INDEX[type - 1];
-  }
-  if (typeof type === 'string') {
-    return GOOGLE_SCHEMA_TYPE_BY_NAME[type.toUpperCase()] || type;
-  }
-  return type;
-}
-
-function normalizeToolParameters(schema) {
-  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
-  const out = { ...schema };
-  if (out.type !== undefined) out.type = normalizeSchemaTypeValue(out.type);
-  if (out.properties && typeof out.properties === 'object') {
-    const props = {};
-    for (const [key, value] of Object.entries(out.properties)) {
-      props[key] = normalizeToolParameters(value);
-    }
-    out.properties = props;
-  }
-  if (out.items) out.items = normalizeToolParameters(out.items);
-  for (const key of ['anyOf', 'oneOf', 'allOf']) {
-    if (Array.isArray(out[key])) out[key] = out[key].map(normalizeToolParameters);
-  }
-  return out;
-}
-
-// 客户端工具形态有三种：Chat 嵌套 {type,function:{...}}、Responses 扁平 {type,name,...}、
-// Anthropic 原生 {name,input_schema}。Codex CLI / 桌面版与 Responses 兼容客户端发的是扁平格式，
-// 任一形态漏都会让工具被静默丢弃（模型侧看不到工具，工具回合直接断）。
-function toolDescriptor(tool) {
-  if (tool?.type === 'function' && tool.function?.name) {
-    return { name: tool.function.name, description: tool.function.description || '', schema: tool.function.parameters };
-  }
-  if (tool?.type === 'function' && tool?.name) {
-    return { name: tool.name, description: tool.description || '', schema: tool.parameters };
-  }
-  if (tool?.name && tool.input_schema) {
-    return { name: tool.name, description: tool.description || '', schema: tool.input_schema };
-  }
-  return null;
-}
-
-// OpenAI tool_choice（字符串或 {type:'function',function:{name}}）→ Anthropic {type:'auto'|'any'|'tool'}。
-// Anthropic 不认识字符串形式，也不支持 none，透传会直接 400。
-function anthropicToolChoice(choice) {
-  if (!choice) return undefined;
-  if (typeof choice === 'string') {
-    const lower = choice.toLowerCase();
-    if (lower === 'auto') return { type: 'auto' };
-    if (lower === 'required' || lower === 'any') return { type: 'any' };
-    return undefined;
-  }
-  if (typeof choice === 'object') {
-    if (choice.type === 'auto' || choice.type === 'any' || choice.type === 'tool') return choice;
-    const name = choice.name || choice.function?.name;
-    if (name) return { type: 'tool', name };
-  }
-  return undefined;
-}
-
-function anthropicTools(tools) {
-  const out = [];
-  for (const tool of tools || []) {
-    const descriptor = toolDescriptor(tool);
-    if (!descriptor) continue;
-    out.push({
-      name: descriptor.name,
-      description: descriptor.description,
-      input_schema: normalizeToolParameters(descriptor.schema) || { type: 'object', properties: {} },
-    });
-  }
-  return out.length ? out : undefined;
-}
-
-// chatCompletions=true → Chat Completions 嵌套格式 {type, function:{name,...}}；
-// chatCompletions=false → Responses 扁平格式 {type, name, description, parameters}。
-// Responses 端点收到嵌套格式会被 AnyRouter 判为非法请求返回 520。
-function openAITools(tools, { chatCompletions = true } = {}) {
-  const out = [];
-  for (const tool of tools || []) {
-    const descriptor = toolDescriptor(tool);
-    if (!descriptor) continue;
-    const parameters = normalizeToolParameters(descriptor.schema) || { type: 'object', properties: {} };
-    if (chatCompletions) {
-      out.push({ type: 'function', function: { name: descriptor.name, description: descriptor.description, parameters } });
-    } else {
-      out.push({ type: 'function', name: descriptor.name, description: descriptor.description, parameters });
-    }
-  }
-  return out.length ? out : undefined;
-}
-
-function geminiPartFromAnthropic(part) {
-  if (!part || typeof part !== 'object') return null;
-  if (part.type === 'text') {
-    const out = { text: String(part.text || '') };
-    // 回传客户端上一轮带来的思维签名（Gemini 3 工具调用必须，否则 400）
-    if (part.thoughtSignature) out.thoughtSignature = part.thoughtSignature;
-    return out;
-  }
-  if (part.type === 'image' && part.source?.data) {
-    return { inlineData: { mimeType: part.source.media_type || 'image/png', data: part.source.data } };
-  }
-  if (part.type === 'gemini_part' && part.part) return part.part;
-  return null;
-}
-
-function hasGeminiNativeOnlyParts(messages) {
-  return (messages || []).some(message =>
-    (message.content || []).some(part => part?.type === 'gemini_part')
-  );
-}
-
-// Gemini Native 的 functionCall / functionResponse 与非图片 inlineData 在内部
-// 表示成 gemini_part，只有 Gemini 上游能原样透传。以前遇到其它协议上游直接
-// 抛 400，导致任何带工具调用历史的会话在 BYOK（OpenAI/Anthropic）上游上必炸。
-//
-// 实际上它们都有通用等价物：functionCall→tool_use、functionResponse→tool_result；
-// 非图片二进制附件无通用表达，降级成带 MIME 说明的文本占位（保留上下文、
-// 不悄悄丢弃，也不把 base64 硬塞进 text 让上游困惑）。
-function geminiCallId(call) {
-  const name = String(call?.name || '').trim();
-  return String(call?.id || '') || (name ? `call_${name}` : '');
-}
-
-function crossProtocolGeminiPart(part, resolveResponseId) {
-  if (!part || part.type !== 'gemini_part' || !part.part) return null;
-  const native = part.part;
-  const call = native.functionCall || native.function_call;
-  if (call) {
-    const name = String(call.name || '').trim();
-    if (!name) return null;
-    const args = call.args ?? call.arguments ?? call.input ?? {};
-    return {
-      type: 'tool_use',
-      id: geminiCallId(call),
-      name,
-      input: typeof args === 'string' ? parseJsonObject(args) : (args && typeof args === 'object' ? args : {}),
-    };
-  }
-  const response = native.functionResponse || native.function_response;
-  if (response) {
-    const raw = response.response ?? response.result ?? response.content ?? response.output ?? '';
-    return {
-      type: 'tool_result',
-      tool_use_id: resolveResponseId(response),
-      content: toolResultOutputText(raw),
-    };
-  }
-  const inline = native.inlineData || native.inline_data;
-  if (inline) {
-    const mime = String(inline.mimeType || inline.mime_type || 'application/octet-stream');
-    return textPart(`[Gemini Native 附件 ${mime}：跨协议上游不支持该媒体类型，内容已省略]`);
-  }
-  return null;
-}
-
-// 把消息里的 gemini_part 转成通用 part；返回新数组，不改入参 ctx.messages
-// （execute 会拿同一 ctx 重试多个上游，原地改会污染 Gemini 目标）。
-//
-// 工具结果的 tool_use_id 必须与调用侧 id 配对，否则 OpenAI 上游会 400。
-// Gemini 两侧都可能只带 name / 只带 id / 都不带，因此先收集全部调用 id，
-// 再按 name 队列（同名多次调用按出现顺序）解析，最后退回按调用顺序。
-function messagesForNonGeminiUpstream(messages) {
-  if (!hasGeminiNativeOnlyParts(messages)) return messages;
-  const callIds = [];
-  const idsByName = new Map();
-  for (const message of messages || []) {
-    for (const part of message.content || []) {
-      if (part?.type !== 'gemini_part') continue;
-      const call = part.part?.functionCall || part.part?.function_call;
-      if (!call) continue;
-      const id = geminiCallId(call);
-      if (!id) continue;
-      callIds.push(id);
-      const name = String(call.name || '').trim();
-      if (name) {
-        const queue = idsByName.get(name) || [];
-        queue.push(id);
-        idsByName.set(name, queue);
-      }
-    }
-  }
-  let sequential = 0;
-  const resolveResponseId = (response) => {
-    const explicit = String(response?.id || '');
-    if (explicit && (!callIds.length || callIds.includes(explicit))) return explicit;
-    const name = String(response?.name || '').trim();
-    const queue = name ? idsByName.get(name) : null;
-    if (queue?.length) return queue.shift();
-    if (callIds.length) return callIds[Math.min(sequential++, callIds.length - 1)];
-    return explicit || (name ? `call_${name}` : '');
-  };
-  return (messages || []).map(message => ({
-    ...message,
-    content: (message.content || []).map(part => {
-      if (part?.type !== 'gemini_part') return part;
-      const converted = crossProtocolGeminiPart(part, resolveResponseId);
-      return converted || textPart('[Gemini Native 内容：跨协议上游不支持该结构，已省略]');
-    }).filter(Boolean),
-  }));
-}
-
-function geminiContents(system, messages) {
-  const out = [];
-  for (const m of messages || []) {
-    const parts = (m.content || []).map(geminiPartFromAnthropic).filter(Boolean);
-    if (!parts.length) continue;
-    out.push({ role: m.role === 'assistant' ? 'model' : 'user', parts });
-  }
-  if (!out.length && system) out.push({ role: 'user', parts: [{ text: system }] });
-  return out;
-}
-
-function geminiTools(tools) {
-  const declarations = [];
-  for (const tool of tools || []) {
-    const fn = tool?.type === 'function' ? tool.function : tool;
-    const name = String(fn?.name || '').trim();
-    if (!name) continue;
-    declarations.push({
-      name,
-      description: String(fn.description || ''),
-      // 上游是 Gemini 原生：parameters 必须清洗成 OpenAPI Schema 子集，
-      // 否则客户端带来的 $schema / additionalProperties 会让 Vertex 400（Invalid JSON payload）。
-      parameters: cleanGeminiToolParameters(fn.parameters || fn.input_schema),
-    });
-  }
-  return declarations.length ? [{ functionDeclarations: declarations }] : undefined;
-}
-
-function geminiToolConfig(toolChoice) {
-  if (!toolChoice) return undefined;
-  if (toolChoice === 'none') return { functionCallingConfig: { mode: 'NONE' } };
-  if (toolChoice === 'required') return { functionCallingConfig: { mode: 'ANY' } };
-  if (toolChoice === 'auto') return { functionCallingConfig: { mode: 'AUTO' } };
-  const name = toolChoice?.function?.name || toolChoice?.name;
-  if (name) return { functionCallingConfig: { mode: 'ANY', allowedFunctionNames: [String(name)] } };
-  return undefined;
-}
-
-function geminiGenerationConfig(ctx) {
-  const raw = ctx.rawBody?.generationConfig || ctx.rawBody?.generation_config || {};
-  const config = isPlainObject(raw) ? { ...raw } : {};
-  delete config.max_output_tokens;
-  // 输出上限只在客户端显式给出时下发：Gemini 不传 maxOutputTokens 时按模型自身上限生成。
-  // 之前无条件写 ctx.maxTokens（默认 4096），长文件/长回答会被静默截断。
-  const explicitMax = raw.maxOutputTokens ?? raw.max_output_tokens
-    ?? ctx.rawBody?.max_output_tokens ?? ctx.rawBody?.max_tokens ?? ctx.rawBody?.max_completion_tokens;
-  if (explicitMax === undefined || explicitMax === null || explicitMax === '') delete config.maxOutputTokens;
-  else config.maxOutputTokens = ctx.maxTokens;
-  if (ctx.temperature !== undefined) config.temperature = ctx.temperature;
-  return config;
-}
-
-// Gemini 原生的两种方法只差路径后缀：generateContent ↔ streamGenerateContent。
-// 流式必须带 alt=sse（否则返回 JSON 数组流，无法逐事件解析）。
-function geminiStreamApiPath(conn) {
-  const apiPath = String(conn?.apiPath || '');
-  if (!apiPath) return apiPath;
-  if (/:streamGenerateContent/i.test(apiPath)) {
-    return /[?&]alt=sse/i.test(apiPath) ? apiPath : `${apiPath}${apiPath.includes('?') ? '&' : '?'}alt=sse`;
-  }
-  const withMethod = apiPath.replace(/:generateContent$/i, ':streamGenerateContent');
-  if (withMethod === apiPath) return apiPath;
-  return `${withMethod}${withMethod.includes('?') ? '&' : '?'}alt=sse`;
-}
-
-// Anthropic 上游不认识 thoughtSignature（Gemini 内部透传字段），发送前剥离，避免严格网关 400
-function anthropicMessagesWithoutSignature(messages) {
-  return (messages || []).map(m => ({
-    ...m,
-    content: (m.content || []).map(({ thoughtSignature, ...rest }) => rest),
-  }));
-}
-
-// 客户端（Cursor/Codex）在 Responses 请求里显式下发的思考档位。
-// 这类请求的 modelUid 不带档位后缀（那是 Devin/Windsurf 的编码方式），
-// passthroughParams 丢弃 reasoning 后没有任何重建来源，上游会一律按模型
-// 默认档推理（issue #40：Cursor 界面设置的思考等级不生效）。
-// 这里按目标模型族词表钳制后返回；不支持/未设置返回 null（不注入）。
-function clientReasoningEffort(conn, ctx) {
-  if (ctx?.kind !== 'responses') return null;
-  const raw = String(ctx.rawBody?.reasoning?.effort || '').trim().toLowerCase();
-  if (!raw || raw === 'none' || raw === 'unset') return null;
-  return clampEffortLevel(raw, effortVocabForConn(conn));
-}
-
-// chat 客户端的 reasoning_effort 同为协议标准字段，不能被当「额外参数」丢弃
-// （preserveExtraParams 默认关闭）。none 保留关闭语义，其余按目标族词表钳制。
-function clientChatReasoningEffort(conn, ctx) {
-  if (ctx?.kind !== 'openai') return null;
-  const raw = String(ctx.rawBody?.reasoning_effort || '').trim().toLowerCase();
-  if (!raw) return null;
-  if (raw === 'none') return 'none';
-  return clampEffortLevel(raw, effortVocabForConn(conn));
-}
-
-// anthropic 客户端（Claude Desktop / Claude Code 等）用 thinking 表达思考深度：
-// type=enabled 带 budget_tokens 按预算量级映射；type=adaptive 是官方新档位语义
-// （不带宽预算，等同高档），路由到 OpenAI 上游时统一转 effort。
-function clientAnthropicEffort(conn, ctx) {
-  if (ctx?.kind !== 'anthropic') return null;
-  const thinking = ctx.rawBody?.thinking;
-  if (!thinking || typeof thinking !== 'object') return null;
-  if (thinking.type === 'disabled' || thinking.type === 'off') return null;
-  const level = thinking.type === 'adaptive'
-    ? 'high'
-    : effortFromAnthropicBudget(thinking.budget_tokens);
-  return level ? clampEffortLevel(level, effortVocabForConn(conn)) : null;
-}
-
-// Responses 请求 → Anthropic 上游：客户端显式 effort 跨协议映射为
-// thinking:{type:'adaptive'} + output_config.effort（复用 thinking-effort.js）。
-// anthropic 客户端直发的 thinking 已在上一步透传，优先保留不被覆盖。
-function finishAnthropicBody(conn, ctx, body) {
-  if (!body.thinking) {
-    const clientEffort = clientReasoningEffort(conn, ctx) || clientChatReasoningEffort(conn, ctx);
-    // anthropic 没有 none 档位：客户端的「关闭思考」要转成 thinking.disabled
-    if (clientEffort === 'none') applyThinkingToPayload(body, conn, { mode: 'off' });
-    else if (clientEffort) applyThinkingToPayload(body, conn, { mode: 'level', level: clientEffort });
-  }
-  return body;
-}
-
-function upstreamBody(conn, ctx) {
-  const extras = {
-    ...(ctx.preserveExtraParams === true ? (ctx.extraParams || {}) : {}),
-    ...(ctx.paramOverrideExtras || {}),
-  };
-  // Gemini 客户端的工具调用历史在内部是 gemini_part；非 Gemini 上游要先转成
-  // 通用 tool_use/tool_result，否则任何 BYOK 会话都会在带工具历史后 400 中断。
-  const messages = conn.format === 'gemini'
-    ? ctx.messages
-    : messagesForNonGeminiUpstream(ctx.messages);
-  if (conn.format === 'anthropic') {
-    const anthropicMessages = anthropicMessagesWithoutSignature(messages);
-    const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
-    if (claudeCodeUnlock) {
-      return buildClaudeCodeUnlockPayload({
-        model: conn.model,
-        // 客户端 system 必须保留（工具的 agent 提示词都在里面）；
-        // buildClaudeCodeUnlockPayload 会在缺少标识时前置 Claude Code 指纹 block，校验仍通过。
-        system: ctx.system,
-        messages: anthropicMessages,
-        maxTokens: ctx.maxTokens,
-        stream: false,
-        // 客户端 tools 去重追加在 21 个原生指纹 tools 之后，否则上游模型看不到客户端工具
-        tools: anthropicTools(ctx.tools),
-        toolChoice: anthropicToolChoice(ctx.toolChoice),
-      });
-    }
-    return finishAnthropicBody(conn, ctx, cleanBody({ ...extras, model: conn.model, system: ctx.system || undefined, messages: anthropicMessages, max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, thinking: ctx.rawBody?.thinking || undefined, tools: anthropicTools(ctx.tools), tool_choice: anthropicToolChoice(ctx.toolChoice) }));
-  }
-  if (conn.format === 'gemini') {
-    const body = cleanBody({
-      ...extras,
-      contents: geminiContents(ctx.system, ctx.messages),
-      systemInstruction: ctx.system ? { parts: [{ text: ctx.system }] } : undefined,
-      generationConfig: geminiGenerationConfig(ctx),
-      tools: geminiTools(ctx.tools),
-      toolConfig: geminiToolConfig(ctx.toolChoice),
-      safetySettings: ctx.rawBody?.safetySettings || ctx.rawBody?.safety_settings || undefined,
-      cachedContent: ctx.rawBody?.cachedContent || ctx.rawBody?.cached_content || undefined,
-    });
-    // 客户端的思考档位（chat/responses 的 reasoning_effort、anthropic 的 thinking.budget）
-    // 映射成 Gemini 的 generationConfig.thinkingConfig；Gemini 客户端自带的配置原样保留。
-    const geminiEffort = clientReasoningEffort(conn, ctx)
-      || clientChatReasoningEffort(conn, ctx)
-      || clientAnthropicEffort(conn, ctx);
-    if (geminiEffort === 'none') applyThinkingToPayload(body, conn, { mode: 'off' });
-    else if (geminiEffort) applyThinkingToPayload(body, conn, { mode: 'level', level: geminiEffort });
-    return body;
-  }
-  const codexUnlock = codexUnlockForTarget(conn);
-  // wireApi=chat: 仅当客户端发来 Responses API 请求时，才做 Responses→Chat 转换
-  if (!codexUnlock && conn.wireApi === 'chat' && ctx.kind === 'responses' && ctx.rawBody) {
-    const chatBody = responsesToChatCompletions(ctx.rawBody, conn.codexChatReasoning);
-    chatBody.model = conn.model;
-    return cleanBody({ ...extras, ...chatBody });
-  }
-  const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
-  if (useResponses) {
-    // 原生 Responses 客户端的 input 是 item 数组，其中含 reasoning items
-    // （带 encrypted_content 的思考历史）。从 messages 重建会把这些项丢掉，
-    // 上游每轮都从零推理，表现为「多轮对话变笨」。只有非 Responses 客户端
-    // （chat/anthropic/gemini 转过来）才需要从 messages 重建。
-    const rawInput = ctx.kind === 'responses' ? ctx.rawBody?.input : undefined;
-    const input = Array.isArray(rawInput) && rawInput.length > 0
-      ? rawInput
-      : openAIResponsesInput(messages);
-    const body = {
-      ...extras,
-      model: conn.model,
-      input,
-      instructions: ctx.system || undefined,
-      max_output_tokens: codexUnlock ? undefined : ctx.maxTokens,
-      temperature: ctx.temperature,
-      stream: false,
-      // Responses 端点要求扁平 tools；嵌套格式（Chat 风格）会被 AnyRouter 判为非法请求返回 520
-      tools: openAITools(ctx.tools, { chatCompletions: false }),
-      tool_choice: responsesToolChoice(ctx.toolChoice) || undefined,
-    };
-    // Proxy never retrieves stored responses; always disable server-side store
-    // so client/preserveExtraParams cannot re-enable upstream disk persistence.
-    body.store = false;
-    // 四个来源对称：responses 客户端、chat 客户端转 responses 上游、anthropic 客户端
-    const clientEffort = clientReasoningEffort(conn, ctx)
-      || clientChatReasoningEffort(conn, ctx)
-      || clientAnthropicEffort(conn, ctx);
-    if (clientEffort) body.reasoning = { effort: clientEffort };
-    if (codexUnlock) {
-      applyCodexUnlockRequiredFields(body, codexUnlock);
-    }
-    return cleanBody(body);
-  }
-  const chatBody = { ...extras, model: conn.model, messages: openAIChatMessages(ctx.system, messages), max_tokens: ctx.maxTokens, temperature: ctx.temperature, stream: false, tools: openAITools(ctx.tools), tool_choice: ctx.toolChoice || undefined };
-  // responses 客户端落到 chat 上游（供应商手填 chat 端点但未配 wireApi）时同样要保档位
-  if (chatBody.reasoning_effort === undefined) {
-    const chatEffort = clientReasoningEffort(conn, ctx)
-      || clientChatReasoningEffort(conn, ctx)
-      || clientAnthropicEffort(conn, ctx);
-    if (chatEffort) chatBody.reasoning_effort = chatEffort;
-  }
-  return cleanBody(chatBody);
-}
-
-function authHeaders(conn, sessionId) {
-  if (conn.format === 'gemini') return { 'x-goog-api-key': conn.apiKey };
-  if (conn.format === 'openai' && conn.unlockKind === 'codex') return codexUnlockHeaders(conn, sessionId);
-  if (conn.format === 'openai') return { authorization: `Bearer ${conn.apiKey}` };
-  if (conn.format === 'anthropic' && conn.unlockKind === 'claudeCode') return claudeCodeUnlockHeaders(conn);
-  const h = { 'anthropic-version': '2023-06-01' };
-  if (conn.authScheme === 'bearer') h.authorization = `Bearer ${conn.apiKey}`;
-  else h['x-api-key'] = conn.apiKey;
-  return h;
-}
-
-function upstreamRequestOptions(conn, headers) {
-  const protocol = conn.protocol === 'http' ? 'http' : 'https';
-  const defaultPort = protocol === 'http' ? 80 : 443;
-  return {
-    module: protocol === 'http' ? http : https,
-    options: {
-      agent: protocol === 'http' ? HTTP_AGENT : httpsAgentFor(AGENT),
-      hostname: conn.hostname || conn.host,
-      port: Number(conn.port || defaultPort),
-      path: conn.apiPath,
-      method: 'POST',
-      headers,
-    },
-  };
-}
-
-function requestUpstream(conn, payload, enhancement = {}) {
-  const label = `${conn.providerName || 'provider'}/${conn.model || 'model'} local-proxy`;
-  return providerInflightGate.run(providerGateKey(conn), () => new Promise((resolve, reject) => {
-    const body = Buffer.from(JSON.stringify(payload));
-    const started = Date.now();
-    const extraHeaders = {};
-    if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.customHeaders)) {
-      for (const h of enhancement.customHeaders) {
-        if (h && h.key) extraHeaders[h.key] = h.value;
-      }
-    }
-    const requestConfig = upstreamRequestOptions(conn, { 'content-type': 'application/json', 'content-length': body.length, ...authHeaders(conn, payload?.prompt_cache_key), ...extraHeaders });
-    const req = requestConfig.module.request(requestConfig.options, apiRes => {
-      const chunks = [];
-      apiRes.on('data', c => chunks.push(c));
-      apiRes.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        let json = null;
-        try { json = text ? JSON.parse(text) : null; } catch {}
-        resolve({ statusCode: apiRes.statusCode || 0, headers: apiRes.headers || {}, text, json, durationMs: Date.now() - started });
-      });
-      apiRes.on('error', reject);
-    });
-    const watchdog = attachUpstreamWatchdog(req, { label, ttfbMs: ttfbMsFromEnhancement(enhancement) });
-    req.on('error', (err) => {
-      watchdog.clear();
-      reject(err);
-    });
-    req.end(body);
-  }));
-}
-
-// ── 流式请求：返回 response stream 供调用方逐块消费 ──
-// 并发闸门保持到响应体结束（而非仅 headers），避免长流并发打爆上游。
-async function requestUpstreamStream(conn, payload, enhancement = {}) {
-  const label = `${conn.providerName || 'provider'}/${conn.model || 'model'} local-proxy-stream`;
-  const gateKey = providerGateKey(conn);
-  const freeSlot = await providerInflightGate.acquire(gateKey);
-
-  return new Promise((resolve, reject) => {
-    const body = Buffer.from(JSON.stringify(payload));
-    const started = Date.now();
-    const extraHeaders = {};
-    if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.customHeaders)) {
-      for (const h of enhancement.customHeaders) {
-        if (h && h.key) extraHeaders[h.key] = h.value;
-      }
-    }
-    const requestConfig = upstreamRequestOptions(conn, {
-      'content-type': 'application/json',
-      'content-length': body.length,
-      ...authHeaders(conn, payload?.prompt_cache_key),
-      ...extraHeaders,
-    });
-
-    let headerSettled = false;
-    let slotFreed = false;
-    const freeOnce = () => {
-      if (slotFreed) return;
-      slotFreed = true;
-      freeSlot();
-    };
-
-    const settleHeader = (fn, value) => {
-      if (headerSettled) return;
-      headerSettled = true;
-      fn(value);
-    };
-
-    let watchdog;
-    const req = requestConfig.module.request(requestConfig.options, (apiRes) => {
-      apiRes.on('end', freeOnce);
-      apiRes.on('close', freeOnce);
-      apiRes.on('error', freeOnce);
-      settleHeader(resolve, {
-        statusCode: apiRes.statusCode || 0,
-        headers: apiRes.headers || {},
-        response: apiRes,
-        durationMs: Date.now() - started,
-        watchdog,
-      });
-    });
-    watchdog = attachUpstreamWatchdog(req, { label, ttfbMs: ttfbMsFromEnhancement(enhancement) });
-    req.on('error', (err) => {
-      watchdog.clear();
-      freeOnce();
-      settleHeader(reject, err);
-    });
-    req.end(body);
-  });
-}
-
-// 读取完整 error response body（非 2xx 时收集错误信息）
-async function collectStreamBody(response) {
-  const chunks = [];
-  for await (const chunk of response) chunks.push(chunk);
-  return Buffer.concat(chunks).toString('utf8');
-}
-
-// 解析上游 SSE 流，逐块 yield JSON 对象；可选 touch 重置 idle 计时
-async function* parseSSEStream(response, { onChunk } = {}) {
-  let buffer = '';
-  for await (const chunk of response) {
-    if (typeof onChunk === 'function') {
-      try { onChunk(chunk); } catch { /* ignore */ }
-    }
-    buffer += chunk.toString('utf8');
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith('data: ')) continue;
-      const data = trimmed.slice(6);
-      if (data === '[DONE]') return;
-      try { yield JSON.parse(data); } catch {}
-    }
-  }
-  const trimmed = buffer.trim();
-  if (trimmed.startsWith('data: ')) {
-    const data = trimmed.slice(6);
-    if (data !== '[DONE]') { try { yield JSON.parse(data); } catch {} }
-  }
-}
-
-function extractText(conn, json) {
-  if (!json) return '';
-  if (conn.format === 'anthropic') return (json.content || []).map(p => p?.text || '').filter(Boolean).join('');
-  // Gemini 的思考片段是 thought:true 的 part，混进正文会让客户端把推理当回答显示
-  if (conn.format === 'gemini') return (json.candidates?.[0]?.content?.parts || []).filter(p => p?.thought !== true).map(p => p?.text || '').filter(Boolean).join('');
-  if (typeof json.output_text === 'string') return json.output_text;
-  const chatText = json.choices?.[0]?.message?.content;
-  if (typeof chatText === 'string') return chatText;
-  if (Array.isArray(chatText)) return chatText.map(p => p?.text || '').join('');
-  // Responses 上游：只取 message 的输出文本。reasoning item 的 content/summary
-  // 是思考内容，拼进正文会让客户端把推理当回答显示出来。
-  if (Array.isArray(json.output)) {
-    return json.output
-      .filter(item => item?.type === 'message')
-      .flatMap(item => item?.content || [])
-      .map(part => (typeof part?.text === 'string' ? part.text : ''))
-      .filter(Boolean)
-      .join('');
-  }
-  return '';
-}
-
-function usageFrom(conn, json, fallbackIn, fallbackOut) {
-  const u = json?.usage || {};
-  if (conn.format === 'anthropic') return { inputTokens: Number(u.input_tokens) || fallbackIn, outputTokens: Number(u.output_tokens) || fallbackOut, cachedTokens: Number(u.cache_read_input_tokens) || 0 };
-  if (conn.format === 'gemini') {
-    const gm = json?.usageMetadata || json?.usage_metadata || {};
-    return {
-      inputTokens: Number(gm.promptTokenCount || gm.prompt_token_count) || fallbackIn,
-      outputTokens: Number(gm.candidatesTokenCount || gm.candidates_token_count) || fallbackOut,
-      cachedTokens: Number(gm.cachedContentTokenCount || gm.cached_content_token_count) || 0,
-    };
-  }
-  return { inputTokens: Number(u.input_tokens || u.prompt_tokens) || fallbackIn, outputTokens: Number(u.output_tokens || u.completion_tokens) || fallbackOut, cachedTokens: Number(u.input_tokens_details?.cached_tokens || u.prompt_tokens_details?.cached_tokens) || 0 };
-}
-
-function parseJsonObject(text) {
-  if (!text) return {};
-  try {
-    const value = JSON.parse(text);
-    return isPlainObject(value) ? value : {};
-  } catch {
-    return {};
-  }
-}
-
-function extractToolCalls(conn, json) {
-  if (!json) return [];
-  if (conn.format === 'anthropic') {
-    return (json.content || [])
-      .filter(part => part?.type === 'tool_use' && part.name)
-      .map(part => ({ id: part.id || '', name: part.name, arguments: part.input || {} }));
-  }
-  if (conn.format === 'gemini') {
-    return (json.candidates?.[0]?.content?.parts || [])
-      .map(part => part?.functionCall || part?.function_call)
-      .filter(call => call?.name)
-      // 保留上游返回的 id（部分兼容网关会带 id），重建响应时原样回传给客户端
-      .map(call => ({ id: String(call.id || ''), name: call.name, arguments: call.args || {} }));
-  }
-  const message = json.choices?.[0]?.message || {};
-  const chatCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-  const responseCalls = Array.isArray(json.output) ? json.output.filter(item => item?.type === 'function_call') : [];
-  return [
-    ...chatCalls.map(call => ({
-      id: call.id || '',
-      name: call.function?.name || '',
-      arguments: parseJsonObject(call.function?.arguments || '{}'),
-    })),
-    ...responseCalls.map(call => ({
-      id: call.call_id || call.id || '',
-      name: call.name || '',
-      arguments: parseJsonObject(call.arguments || '{}'),
-    })),
-  ].filter(call => call.name);
-}
-
-// 上游响应里的思考文本（anthropic thinking block / gemini thought part / responses reasoning item）。
-// 跨协议出口需要它来还原思考过程；正文提取（extractText）刻意排除这些片段。
-function upstreamReasoningText(conn, json) {
-  if (!isPlainObject(json)) return '';
-  if (conn?.format === 'anthropic') {
-    return (json.content || []).filter(p => p?.type === 'thinking').map(p => String(p.thinking || '')).join('');
-  }
-  if (conn?.format === 'gemini') {
-    return (json.candidates?.[0]?.content?.parts || []).filter(p => p?.thought === true).map(p => String(p.text || '')).join('');
-  }
-  if (Array.isArray(json.output)) {
-    return json.output
-      .filter(item => item?.type === 'reasoning')
-      .map(item => {
-        const summary = Array.isArray(item.summary) ? item.summary.map(s => s?.text || '').join('') : '';
-        const content = Array.isArray(item.content) ? item.content.map(c => c?.text || '').join('') : '';
-        return summary || content;
-      })
-      .join('');
-  }
-  return '';
-}
-
-// Responses 出口要回传的 reasoning items。
-// 上游给了 encrypted_content 就原样回传（客户端下一轮可安全回放）；
-// 只有可读文本时构造不带 id 的摘要项，避免客户端带着查不到的 id 回放触发 upstream item not found。
-function responseReasoningItems(conn, json) {
-  if (conn?.format === 'openai' && Array.isArray(json?.output)) {
-    const replayable = json.output.filter(item => item?.type === 'reasoning'
-      && typeof item.encrypted_content === 'string' && item.encrypted_content);
-    if (replayable.length) return replayable;
-  }
-  const text = upstreamReasoningText(conn, json);
-  if (!text) return [];
-  return [{
-    type: 'reasoning',
-    summary: [{ type: 'summary_text', text }],
-    content: [{ type: 'reasoning_text', text }],
-  }];
-}
-
-function upstreamMessage(r) { return r.json?.error?.message || r.json?.message || r.json?.detail || r.text || `HTTP ${r.statusCode}`; }
-
-function compactText(value, max = 500) {
-  const text = String(value || '').replace(/\s+/g, ' ').trim();
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
-}
-
-function safeParse(text) {
-  try { return JSON.parse(text); } catch { return { error: { message: String(text || '') } }; }
-}
-
-function isRateLimitOrHighLoad(failure = {}) {
-  const status = Number(failure.statusCode) || 0;
-  const text = `${failure.reason || ''} ${failure.message || ''}`;
-  if (status === 429 || status === 529) return true;
-  if (status === 503 && /service unavailable|overloaded|temporarily|rate limit|too many requests/i.test(text)) return true;
-  return /负载.*上限|达到上限|get_channel_failed|rate limit|too many requests|限流|频率|overloaded/i.test(text);
-}
-
-function classifyFailures(failures = []) {
-  const text = failures.map(f => `${f.reason || ''} ${f.message || ''}`).join(' ');
-  if (failures.some(f => f.statusCode === 401) || /unauthorized|invalid api key|api key|认证|鉴权/i.test(text)) {
-    return { status: 401, type: 'authentication_error' };
-  }
-  if (failures.some(f => f.statusCode === 403) || /permission|forbidden|无权限|未开通/i.test(text)) {
-    return { status: 403, type: 'permission_error' };
-  }
-  if (failures.some(isRateLimitOrHighLoad)) {
-    return { status: 429, type: 'rate_limit_error' };
-  }
-  if (failures.some(f => f.statusCode === 400)) return { status: 400, type: 'invalid_request_error' };
-  if (failures.some(f => f.statusCode === 404)) return { status: 404, type: 'not_found_error' };
-  if (failures.some(f => f.statusCode >= 500)) return { status: 503, type: 'api_error' };
-  return { status: 502, type: 'upstream_error' };
-}
-
-/** 上游错误响应体里能读给用户听的文本；空响应 / 拦截页 / 无可读字段一律返回空串。*/
-function upstreamErrorText(body) {
-  const text = String(body == null ? '' : body).trim();
-  if (!text) return '';
-  // WAF/网关拦截页（HTML/XML）原样透传只会变成一堆标签，交给聚合错误统一描述
-  if (text.startsWith('<')) return '';
-  try {
-    const json = JSON.parse(text);
-    const message = json?.error?.message || json?.error?.type || json?.message || json?.detail;
-    if (typeof message === 'string' && message.trim()) return message.trim();
-    if (typeof json?.error === 'string' && json.error.trim()) return json.error.trim();
-    return '';
-  } catch {
-    return text;
-  }
-}
-
-/** 把上游错误文案裁成能读的形式；HTML/XML 拦截页、"HTTP 403" 这类占位一律当没信息。*/
-function readableErrorText(value) {
-  const text = String(value == null ? '' : value).trim();
-  if (!text || text.startsWith('<')) return '';
-  if (/^HTTP \d{3}$/i.test(text)) return '';
-  return text;
-}
-
-function failureMessage(failure = {}) {
-  if (typeof failure === 'string') return failure;
-  const status = failure.statusCode ? `HTTP ${failure.statusCode}` : (failure.code || '失败');
-  const raw = readableErrorText(failure.message)
-    || (failure.body != null ? upstreamErrorText(failure.body) : '');
-  const detail = raw ? `：${raw}` : (failure.statusCode ? '（上游返回空响应）' : '');
-  return `${failure.providerName || 'provider'} ${status}${detail}`;
-}
-
-async function maybeVisionFallback(ctx, slot, providers, mapConfig) {
-  if (!hasImage(ctx.messages) || slot.useThirdPartyVision !== true || mapConfig?.enhancement?.imageFallback === false) return ctx;
-  const visionModels = mapConfig?.visionModels?.imageModels || [];
-  if (!visionModels.length) throw new Error(`模型「${slot.displayName || slot.modelUid || ctx.model}」启用了第三方图片理解，但网关增强里没有配置图片理解模型。`);
-  const visionOptions = {
-    maxTokens: mapConfig?.enhancement?.visionMaxTokens,
-    contextMode: mapConfig?.enhancement?.visionContextMode,
-    contextMaxChars: mapConfig?.enhancement?.visionContextMaxChars,
-    multiImageMode: mapConfig?.enhancement?.visionMultiImageMode,
-    batchSize: mapConfig?.enhancement?.visionBatchSize,
-  };
-  const fbCtx = { requestId: crypto.randomUUID(), requestedModel: ctx.model, slotModelUid: slot.modelUid || ctx.model, slotDisplayName: slot.displayName || ctx.model, visionOptions };
-  const result = await preprocessImagesWithThirdPartyVision(ctx.messages, visionModels, providers, fbCtx);
-
-  // 同步降级原始请求体：Responses→Chat 旁路会直接用 ctx.rawBody 重建上游请求
-  // (responsesToChatCompletions(ctx.rawBody))，若不降级 rawBody，图片会被绕过。
-  // 这里复用 preprocessImagesWithThirdPartyVision 的图片缓存，不重复调用第三方图片理解 API。
-  let rawBody = ctx.rawBody;
-  if (rawBody) {
-    if (ctx.kind === 'responses' && Array.isArray(rawBody.input)) {
-      rawBody = { ...rawBody, input: await fallbackResponsesInput(rawBody.input, visionModels, providers, fbCtx) };
-    } else if (ctx.kind === 'openai' && Array.isArray(rawBody.messages)) {
-      const r = await preprocessImagesWithThirdPartyVision(rawBody.messages, visionModels, providers, fbCtx);
-      rawBody = { ...rawBody, messages: r.messages };
-    }
-  }
-  return { ...ctx, messages: result.messages, rawBody };
-}
-
-// 降级 Responses API 的 input 数组。
-// input 的 item 有两种形态：
-//   1) message item: { type:'message', role:'user', content:[input_text/input_image] }
-//      ——结构兼容 {role, content}，直接复用 preprocessImagesWithThirdPartyVision；
-//   2) loose input part: { type:'input_image', image_url } / { type:'input_text', text }
-//      ——聚合成临时 user message 降级后再按原序回填（每个 block 1:1 替换，数量不变）。
-async function fallbackResponsesInput(input, visionModels, providers, fbCtx) {
-  const out = input.slice();
-  const messageItemIndices = [];
-  const looseIndices = [];
-  input.forEach((item, i) => {
-    if (item && item.type === 'message' && Array.isArray(item.content)) {
-      messageItemIndices.push(i);
-    } else if (item && item.type === 'input_image') {
-      looseIndices.push(i);
-    }
-  });
-
-  if (messageItemIndices.length) {
-    const msgs = messageItemIndices.map(i => input[i]);
-    const r = await preprocessImagesWithThirdPartyVision(msgs, visionModels, providers, fbCtx);
-    r.messages.forEach((m, k) => { out[messageItemIndices[k]] = m; });
-  }
-
-  if (looseIndices.length) {
-    const looseMsg = { role: 'user', content: looseIndices.map(i => input[i]) };
-    const r = await preprocessImagesWithThirdPartyVision([looseMsg], visionModels, providers, fbCtx);
-    const newContent = r.messages[0]?.content || looseMsg.content;
-    looseIndices.forEach((idx, k) => { out[idx] = newContent[k] ?? input[idx]; });
-  }
-
-  return out;
-}
-
-// ── 速率限制 ──
-const rateLimitBuckets = new Map();
-function checkRateLimit(model, rpm) {
-  const now = Date.now();
-  const windowMs = 60000;
-  const bucket = rateLimitBuckets.get(model);
-  if (!bucket || now > bucket.resetAt) {
-    rateLimitBuckets.set(model, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (bucket.count >= rpm) return false;
-  bucket.count++;
-  return true;
-}
-
-function toolName(tool) {
-  return String(tool?.name || tool?.function?.name || '').trim();
-}
-
-function toolChoiceName(choice) {
-  if (!choice || typeof choice !== 'object') return '';
-  if (choice.type === 'tool') return String(choice.name || '').trim();
-  if (choice.type === 'function') return String(choice.function?.name || choice.name || '').trim();
-  return '';
-}
-
-function applyToolEnhancement(effective, enhancement = {}) {
-  if (enhancement.toolFilterEnabled !== true) return;
-
-  if (enhancement.toolFilterMode && Array.isArray(effective.tools) && effective.tools.length) {
-    const filterSet = new Set((enhancement.toolFilterList || []).map(n => String(n || '').trim()).filter(Boolean));
-    if (filterSet.size) {
-      effective.tools = effective.tools.filter(tool => {
-        const name = toolName(tool);
-        if (enhancement.toolFilterMode === 'allow') return filterSet.has(name);
-        if (enhancement.toolFilterMode === 'deny') return !filterSet.has(name);
-        return true;
-      });
-    }
-  }
-
-  if (enhancement.forceToolChoice) {
-    effective.toolChoice = enhancement.forceToolChoice;
-  }
-
-  const chosenTool = toolChoiceName(effective.toolChoice);
-  if (chosenTool) {
-    const available = new Set((effective.tools || []).map(toolName).filter(Boolean));
-    if (!available.has(chosenTool)) {
-      throw new LocalProxyUpstreamError(`工具过滤后 tool_choice 指向不可用工具: ${chosenTool}`, {
-        status: 400,
-        type: 'invalid_request_error',
-      });
-    }
-  }
-}
-
-function assignPositiveInteger(target, key, value, label) {
-  const n = Number(value);
-  if (!Number.isInteger(n) || n < 1) {
-    throw new LocalProxyUpstreamError(`${label} 必须是大于 0 的整数`, {
-      status: 400,
-      type: 'invalid_request_error',
-    });
-  }
-  target[key] = n;
-}
-
-function applyParamOverrides(effective, enhancement = {}) {
-  if (enhancement.paramOverridesEnabled !== true) return;
-  const overrides = enhancement.paramOverrides;
-  if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) return;
-
-  const extras = { ...(effective.paramOverrideExtras || {}) };
-  for (const [key, value] of Object.entries(overrides)) {
-    if (['max_tokens', 'max_output_tokens', 'max_completion_tokens', 'maxTokens'].includes(key)) {
-      assignPositiveInteger(effective, 'maxTokens', value, key);
-    } else if (key === 'temperature') {
-      const n = Number(value);
-      if (!Number.isFinite(n)) {
-        throw new LocalProxyUpstreamError('temperature 必须是数字', {
-          status: 400,
-          type: 'invalid_request_error',
-        });
-      }
-      effective.temperature = n;
-    } else if (key === 'tool_choice' || key === 'toolChoice') {
-      effective.toolChoice = value;
-    } else if (key === 'system' || key === 'instructions') {
-      effective.system = String(value || '');
-    } else if (key === 'tools') {
-      if (!Array.isArray(value)) {
-        throw new LocalProxyUpstreamError('tools 覆盖值必须是数组', {
-          status: 400,
-          type: 'invalid_request_error',
-        });
-      }
-      effective.tools = value;
-    } else if (['model', 'messages', 'input', 'stream'].includes(key)) {
-      throw new LocalProxyUpstreamError(`请求参数覆盖不支持修改 ${key}`, {
-        status: 400,
-        type: 'invalid_request_error',
-      });
-    } else {
-      extras[key] = value;
-    }
-  }
-  effective.paramOverrideExtras = extras;
-}
-
-// ── 请求日志 ──
-function logRequest(ctx, phase) {
-  try {
-    const dir = path.join(configDir(), 'proxy-logs');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cleanupExpiredLogs();
-    const date = new Date().toISOString().slice(0, 10);
-    const file = path.join(dir, `proxy-${date}.jsonl`);
-    const entry = JSON.stringify({
-      ts: new Date().toISOString(),
-      phase,
-      model: ctx.model,
-      kind: ctx.kind,
-      ...(phase === 'request' ? { system: ctx.system?.slice(0, 200), messageCount: ctx.messages?.length } : {}),
-      ...(ctx._response ? { statusCode: ctx._response.statusCode, textPreview: ctx._response.text?.slice(0, 500) } : {}),
-    });
-    fs.appendFileSync(file, entry + '\n');
-  } catch {}
-}
+  pathnameOf,
+  proxyScopeForPath,
+  readProvidersJson,
+  resolveProxyModel,
+  routeAsSlot,
+  sendAnthropicError,
+  sendError,
+  sendGeminiError,
+  sendJson,
+  sendRaw,
+  validateAuth,
+} from './lib/local-proxy/routes.js';
+import { finalizeNonStreamResult, selectStreamingAttempt } from './lib/local-proxy/stream-attempt.js';
+import { buildLocalProxyTestExports } from './lib/local-proxy/test-bridge.js';
+import {
+  applyParamOverrides,
+  applyToolEnhancement,
+  checkRateLimit,
+  collectStreamBody,
+  compactText,
+  extractExtraRespHeaders,
+  logRequest,
+  maybeVisionFallback,
+  requestUpstream,
+  requestUpstreamStream,
+  retryPolicy,
+  safeParse,
+  sleep,
+  upstreamMessage,
+} from './lib/local-proxy/transport.js';
+import { upstreamBody } from './lib/local-proxy/upstream-payload.js';
+import { cooldownPolicyFromEnhancement, filterTargets, markFailure, markSuccess, targetKey } from './lib/provider-cooldown.js';
+import { DEFAULT_SELF_HEAL_CONFIG } from './lib/self-heal.js';
+import { loadModelMapConfig, loadProviders, resolveTarget } from './provider-pool.js';
+import { createTracker } from './request-tracker.js';
+
+export { isLocalProxyRequest };
+
+export const __localProxyTest = buildLocalProxyTestExports(execute);
 
 export async function execute(ctx) {
   const tracker = ctx.__tracker || createTracker({ client: ctx.client || null, route: 'local-proxy', requestedModel: ctx.model });
@@ -2184,10 +105,7 @@ export async function execute(ctx) {
   const scope = ctx.proxyRouteScope || 'default';
   const resolved = ctx.pinnedRoute
     ? { slot: routeAsSlot(ctx.pinnedRoute), route: ctx.pinnedRoute }
-    : resolveProxyModel(ctx.model, ctx.kind, {
-      scope,
-      applyRename: !isCodexProxyScope(scope),
-    });
+    : resolveProxyModel(ctx.model, ctx.kind, { scope, applyRename: !isCodexProxyScope(scope) });
   if (resolved.error) {
     tracker.fail('route-unresolved', resolved.error);
     tracker.finish();
@@ -2202,136 +120,100 @@ export async function execute(ctx) {
   }
   const preserveExtraParams = resolved.route?.enhancement?.preserveExtraParams === true;
   const rawProviderErrors = resolved.route?.enhancement?.rawProviderErrors !== false;
-  // 智能重试配置：默认全开，可通过 model-map.json enhancement.selfHeal 覆盖
   const selfHealCfg = { ...DEFAULT_SELF_HEAL_CONFIG, ...(enhancement.selfHeal || {}) };
   const effective = await maybeVisionFallback(ctx, resolved.slot, providers, mapConfig);
   effective.preserveExtraParams = preserveExtraParams;
-  // 审计表要区分流式/非流式：流式的真实 tokens 在出口收尾时按 requestId 回补
   tracker.streamMode = effective.stream === true;
 
-  // ── 系统提示词注入 ──
   if (enhancement.systemPromptPrefixEnabled === true && enhancement.systemPromptPrefix) {
     effective.system = [enhancement.systemPromptPrefix, effective.system].filter(Boolean).join('\n\n') || undefined;
+    effective.systemPromptPrefixApplied = enhancement.systemPromptPrefix;
   }
-
-  // ── 请求参数覆盖 ──
   applyParamOverrides(effective, enhancement);
-
-  // ── 工具过滤 / 强制 tool_choice ──
   applyToolEnhancement(effective, enhancement);
 
-  // ── 速率限制 ──
-  if (enhancement.rateLimitEnabled === true && enhancement.rateLimitRpm > 0) {
-    const allowed = checkRateLimit(ctx.model, enhancement.rateLimitRpm);
-    if (!allowed) {
-      throw new LocalProxyUpstreamError(`请求频率超限：${enhancement.rateLimitRpm} RPM`, {
-        status: 429, type: 'rate_limit_error',
-      });
-    }
+  if (enhancement.rateLimitEnabled === true && enhancement.rateLimitRpm > 0 && !checkRateLimit(ctx.model, enhancement.rateLimitRpm)) {
+    throw new LocalProxyUpstreamError(`请求频率超限：${enhancement.rateLimitRpm} RPM`, { status: 429, type: 'rate_limit_error' });
   }
-
-  // ── 请求日志 ──
-  if (enhancement.requestLogging) {
-    logRequest(ctx, 'request');
-  }
+  if (enhancement.requestLogging) logRequest(ctx, 'request');
 
   const targets = enhancement.autoRouting === false ? [resolved.slot.targets[0]] : [...resolved.slot.targets];
   const policy = retryPolicy(enhancement);
   const failures = [];
-  // 自环目标（providerId = AnyBridge 内置供应商）必须在进程内解析一层换成真实上游目标：
-  // 直接按原目标发请求会打到网关自己，形成"请求→本路由→网关→本路由"的无限环，
-  // 表现为整个网关被拖死。解析回本路由说明没有真实上游，显式报错而不是死循环。
-  const resolvedTargets = [];
-  for (const target of targets) {
-    if (!isLocalProxySelfTarget(target)) {
-      resolvedTargets.push(target);
-      continue;
-    }
-    const inner = resolveProxyModel(target.model || '', 'chat', { scope });
-    if (inner.error || !inner.route) {
-      failures.push({ providerName: target.providerId, message: `自环目标模型 ${target.model || '(空)'} 无法解析: ${inner.error || '未命中路由'}` });
-      continue;
-    }
-    if (sameRoute(inner.route, resolved.route)) {
-      failures.push({
-        providerName: target.providerId,
-        message: `路由 ${resolved.route.id} 的目标指向本地网关自身，且模型 ${target.model} 仍解析回本路由，会形成无限请求环。请把该路由的目标改为真实供应商。`,
-      });
-      continue;
-    }
-    const innerTarget = inner.slot?.targets?.[0];
-    if (!innerTarget) {
-      failures.push({ providerName: target.providerId, message: `自环目标模型 ${target.model} 对应的路由 ${inner.route.id} 没有可用目标` });
-      continue;
-    }
-    resolvedTargets.push(innerTarget);
-  }
+  const resolvedTargets = expandResolvedTargets(targets, resolved.route, scope, failures);
+
   const cooldownPolicy = cooldownPolicyFromEnhancement(enhancement);
   const routed = filterTargets(resolvedTargets, cooldownPolicy);
   if (routed.cooling.length) {
-    const lines = routed.cooling.map(c => `${c.target.providerId}${c.target.model ? `/${c.target.model}` : ''}(剩 ${Math.ceil(c.remainingMs / 1000)}s)`);
+    const lines = routed.cooling.map((c) => `${c.target.providerId}${c.target.model ? `/${c.target.model}` : ''}(剩 ${Math.ceil(c.remainingMs / 1000)}s)`);
     console.warn(`[local-proxy] 🧊 跳过 ${routed.cooling.length} 个冷却中的目标: ${lines.join(', ')}`);
   }
   if (routed.allCooling) {
-    const minWait = Math.ceil(Math.min(...routed.cooling.map(c => c.remainingMs)) / 1000);
+    const minWait = Math.ceil(Math.min(...routed.cooling.map((c) => c.remainingMs)) / 1000);
     const msg = `模型「${ctx.model}」的所有上游目标均在冷却期内（最短剩余 ${minWait} 秒解冻），按策略直接阻断报错。`;
     tracker.reject('cooldown', msg);
     tracker.finish();
     throw new LocalProxyUpstreamError(msg, { status: 503, type: 'upstream_error' });
   }
+
   for (const target of routed.targets) {
-    const conn = resolveTarget(target, providers);
-    // 本地配置错误不是上游故障，冷却只会让改完配置还得干等
+    if (ctx.signal?.aborted) break;
+    let conn = resolveTarget(target, providers);
     if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
     const failuresBefore = failures.length;
     tracker.beginAttempt({ provider: conn.providerName, providerId: conn.providerId, model: conn.model });
     let payload = upstreamBody(conn, effective);
     const started = Date.now();
-    let retryCount = 0;
-    // 智能重试状态：每个 target 独立，每个整流器最多触发一次防无限循环
-    const healState = { signatureHealed: false, budgetHealed: false, mediaHealed: false, thinkingHealed: false };
+    const attemptRunner = createTargetAttemptRunner({
+      conn,
+      policy,
+      tracker,
+      startedAt: started,
+      matchReasonText: false,
+    });
+    const healState = { signatureHealed: false, budgetHealed: false, mediaHealed: false, thinkingHealed: false, minimalDowngraded: false };
+
+    const handleNonOkUpstream = async (statusCode, headers, rawErrorText, parsedJson) => {
+      const safeErrorText = conn.format === 'gemini' ? redactGeminiCredential(rawErrorText, conn.apiKey) : rawErrorText;
+      const msg = compactText(upstreamMessage({ statusCode, json: parsedJson ?? safeParse(safeErrorText), text: safeErrorText }));
+      const healedPayload = trySelfHealUpstreamPayload({
+        conn,
+        payload,
+        statusCode,
+        rawErrorText,
+        safeErrorText,
+        selfHealCfg,
+        healState,
+      });
+      if (healedPayload) {
+        payload = healedPayload;
+        return true;
+      }
+      const decision = attemptRunner.evaluateFailure({ statusCode, headers, reason: msg });
+      if (decision.action !== 'stop') {
+        if (decision.action === 'rotate-key') conn = decision.conn;
+        if (decision.waitMs > 0) await sleep(decision.waitMs);
+        return true;
+      }
+      failures.push({ providerName: conn.providerName, statusCode, headers, body: safeErrorText, message: msg, wireApi: conn.wireApi });
+      return false;
+    };
+
     while (true) {
+      if (ctx.signal?.aborted) break;
       try {
-        // ── 真流式路径：chat 入站 + Gemini 原生上游 ──
-        // Gemini SSE 每个事件是累计快照，出口转换器按已发长度做 diff 出增量。
-        // 这样 Carbon/Pro 这类慢思考模型首字节就能吐字，长输出也不撞客户端超时。
-        if (ctx.kind === 'openai' && effective.stream === true && conn.format === 'gemini') {
-          const streamConn = { ...conn, apiPath: geminiStreamApiPath(conn) };
-          const r = await requestUpstreamStream(streamConn, payload, enhancement);
-          recordLatency(r.durationMs); markSuccess(targetKey(target));
+        const streamPlan = selectStreamingAttempt(effective, conn, payload);
+        if (streamPlan) {
+          const { streamConn, streamPayload, allowJsonFallback } = streamPlan;
+          const r = await requestUpstreamStream(streamConn, streamPayload, enhancement);
+          markSuccess(targetKey(target));
           if (r.statusCode >= 200 && r.statusCode < 300) {
-            const extraRespHeaders = {};
-            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
-              for (const h of enhancement.responseHeaders) {
-                if (h && h.key) extraRespHeaders[h.key] = h.value;
-              }
-            }
+            const extraRespHeaders = extractExtraRespHeaders(enhancement);
             const contentType = String(r.response.headers?.['content-type'] || '');
-            // 上游没有按 SSE 返回（alt=sse 被忽略）：降级为整包，出口仍按非流式处理
-            if (!contentType.includes('text/event-stream')) {
+            if (allowJsonFallback && !contentType.includes('text/event-stream')) {
               const text = await collectStreamBody(r.response);
-              const json = safeParse(text);
-              const bodyText = extractText(conn, json);
-              const toolCalls = extractToolCalls(conn, json);
-              const usage = usageFrom(conn, json, estimateTokens(effective.messages, effective.system), Math.ceil(bodyText.length / 4));
-              recordUsage(usage);
-              tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-              tracker.finish();
-              if (tracker.recentRequestId) {
-                recordRecentOutcome({
-                  requestId: tracker.recentRequestId,
-                  inputTokens: Number(usage?.inputTokens) || 0,
-                  outputTokens: Number(usage?.outputTokens) || 0,
-                  cachedTokens: Number(usage?.cachedTokens) || 0,
-                  latencyMs: r.durationMs,
-                  stream: false,
-                  statusCode: r.statusCode,
-                });
-              }
-              return { conn, text: bodyText, toolCalls, json, usage, extraHeaders: extraRespHeaders };
+              return finalizeNonStreamResult(conn, r, safeParse(text), effective, tracker, extraRespHeaders);
             }
-            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-            tracker.finish();
             return {
               conn: streamConn,
               stream: true,
@@ -2340,883 +222,213 @@ export async function execute(ctx) {
               watchdog: r.watchdog,
               recentRequestId: tracker.recentRequestId,
               startedAt: started,
+              _tracker: tracker,
+              _statusCode: r.statusCode,
             };
           }
-          const errorText = await collectStreamBody(r.response);
-          const errorJson = safeParse(errorText);
-          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
-          if (r.statusCode === 400 && payload?.generationConfig?.thinkingConfig
-            && /thinking/i.test(errorText) && !healState.thinkingHealed) {
-            healState.thinkingHealed = true;
-            const nextConfig = { ...payload.generationConfig };
-            delete nextConfig.thinkingConfig;
-            payload = { ...payload, generationConfig: nextConfig };
-            console.log('[local-proxy] [self-heal] gemini thinkingConfig rejected, retrying without it');
-            continue;
-          }
-          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
-          }
-          failures.push({
-            providerName: conn.providerName,
-            statusCode: r.statusCode,
-            headers: r.headers,
-            body: errorText,
-            message: msg,
-            wireApi: conn.wireApi,
-          });
+          const rawErrorText = await collectStreamBody(r.response);
+          if (await handleNonOkUpstream(r.statusCode, r.headers, rawErrorText, null)) continue;
           break;
         }
-        // ── 真流式路径：wireApi=chat 且客户端请求 stream（仅 Responses API）──
-        if (conn.wireApi === 'chat' && ctx.kind === 'responses' && effective.stream === true) {
-          const r = await requestUpstreamStream(conn, payload, enhancement);
-          recordLatency(r.durationMs); markSuccess(targetKey(target));
-          if (r.statusCode >= 200 && r.statusCode < 300) {
-            const extraRespHeaders = {};
-            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
-              for (const h of enhancement.responseHeaders) {
-                if (h && h.key) extraRespHeaders[h.key] = h.value;
-              }
-            }
-            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-            tracker.finish();
-            return {
-              conn,
-              stream: true,
-              upstreamResponse: r.response,
-              extraHeaders: extraRespHeaders,
-              watchdog: r.watchdog,
-              recentRequestId: tracker.recentRequestId,
-              startedAt: started,
-            };
-          }
-          // 非 2xx：收集错误 body，走重试逻辑
-          const errorText = await collectStreamBody(r.response);
-          const errorJson = safeParse(errorText);
-          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
-          // ── 智能重试：错误驱动的请求自愈（仅 anthropic 格式上游）──
-          if (conn.format === 'anthropic' && selfHealCfg.enabled) {
-            const healed = tryHeal(payload, r.statusCode, errorText, selfHealCfg, healState);
-            if (healed.healed) {
-              console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
-              continue;
-            }
-          }
-          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
-          }
-          failures.push({
-            providerName: conn.providerName,
-            statusCode: r.statusCode,
-            headers: r.headers,
-            body: errorText,
-            message: msg,
-            wireApi: conn.wireApi,
-          });
-          break;
-        }
-        // ── 真流式路径：chat 入站（CodeBuddy/ZCode/WorkBuddy/OpenCode）+ 流式请求 ──
-        // 上游逐块产出（Responses SSE / Anthropic SSE / Chat SSE），出口按 Chat SSE 增量转发。
-        // 长输出（写完整 HTML 等）不再因等整包而撞首字节超时，客户端也能打字机式消费。
-        if (ctx.kind === 'openai' && effective.stream === true && conn.format !== 'gemini') {
-          const streamPayload = { ...payload, stream: true };
-          const r = await requestUpstreamStream(conn, streamPayload, enhancement);
-          recordLatency(r.durationMs); markSuccess(targetKey(target));
-          if (r.statusCode >= 200 && r.statusCode < 300) {
-            const extraRespHeaders = {};
-            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
-              for (const h of enhancement.responseHeaders) {
-                if (h && h.key) extraRespHeaders[h.key] = h.value;
-              }
-            }
-            const contentType = String(r.response.headers?.['content-type'] || '');
-            // 上游忽略 stream 参数直接返回完整 JSON 时，降级为缓冲路径（出口仍为非流式）
-            if (!contentType.includes('text/event-stream')) {
-              const text = await collectStreamBody(r.response);
-              const json = safeParse(text);
-              const bodyText = extractText(conn, json);
-              const toolCalls = extractToolCalls(conn, json);
-              const usage = usageFrom(conn, json, estimateTokens(effective.messages, effective.system), Math.ceil(bodyText.length / 4));
-              recordUsage(usage);
-              tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-              tracker.finish();
-              if (tracker.recentRequestId) {
-                recordRecentOutcome({
-                  requestId: tracker.recentRequestId,
-                  inputTokens: Number(usage?.inputTokens) || 0,
-                  outputTokens: Number(usage?.outputTokens) || 0,
-                  cachedTokens: Number(usage?.cachedTokens) || 0,
-                  latencyMs: r.durationMs,
-                  stream: false,
-                  statusCode: r.statusCode,
-                });
-              }
-              return { conn, text: bodyText, toolCalls, json, usage, extraHeaders: extraRespHeaders };
-            }
-            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-            tracker.finish();
-            return {
-              conn,
-              stream: true,
-              upstreamResponse: r.response,
-              extraHeaders: extraRespHeaders,
-              watchdog: r.watchdog,
-              recentRequestId: tracker.recentRequestId,
-              startedAt: started,
-            };
-          }
-          const errorText = await collectStreamBody(r.response);
-          const errorJson = safeParse(errorText);
-          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
-          if (conn.format === 'anthropic' && selfHealCfg.enabled) {
-            const healed = tryHeal(payload, r.statusCode, errorText, selfHealCfg, healState);
-            if (healed.healed) {
-              console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
-              continue;
-            }
-          }
-          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
-          }
-          failures.push({
-            providerName: conn.providerName,
-            statusCode: r.statusCode,
-            headers: r.headers,
-            body: errorText,
-            message: msg,
-            wireApi: conn.wireApi,
-          });
-          break;
-        }
-        // ── 真流式路径（Antigravity / Gemini 入口 + OpenAI 兼容上游）──
-        // 直接 pipe 上游 SSE，避免缓冲：长回复时 Language Server 不会因等待整包而超时。
-        if (effective.stream === true && ctx.kind === 'gemini' && conn.format === 'openai') {
-          const streamPayload = { ...payload, stream: true };
-          const r = await requestUpstreamStream(conn, streamPayload, enhancement);
-          recordLatency(r.durationMs); markSuccess(targetKey(target));
-          if (r.statusCode >= 200 && r.statusCode < 300) {
-            const extraRespHeaders = {};
-            if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
-              for (const h of enhancement.responseHeaders) {
-                if (h && h.key) extraRespHeaders[h.key] = h.value;
-              }
-            }
-            tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-            tracker.finish();
-            return {
-              conn,
-              stream: true,
-              upstreamResponse: r.response,
-              extraHeaders: extraRespHeaders,
-              watchdog: r.watchdog,
-              recentRequestId: tracker.recentRequestId,
-              startedAt: started,
-            };
-          }
-          const errorText = await collectStreamBody(r.response);
-          const errorJson = safeParse(errorText);
-          const msg = compactText(upstreamMessage({ statusCode: r.statusCode, json: errorJson, text: errorText }));
-          if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-            retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
-          }
-          failures.push({
-            providerName: conn.providerName,
-            statusCode: r.statusCode,
-            headers: r.headers,
-            body: errorText,
-            message: msg,
-            wireApi: conn.wireApi,
-          });
-          break;
-        }
-        // ── 非流式路径（原有逻辑）──
+
         const r = await requestUpstream(conn, payload, enhancement);
-        recordLatency(r.durationMs); markSuccess(targetKey(target));
+        markSuccess(targetKey(target));
         if (r.statusCode >= 200 && r.statusCode < 300) {
-          const text = extractText(conn, r.json);
-          const toolCalls = extractToolCalls(conn, r.json);
-          const usage = usageFrom(conn, r.json, estimateTokens(effective.messages, effective.system), Math.ceil(text.length / 4));
-          recordUsage(usage);
-          if (enhancement.requestLogging) {
-            logRequest({ ...ctx, _response: { statusCode: r.statusCode, text } }, 'response');
-          }
-          // ── 自定义响应头 ──
-          const extraRespHeaders = {};
-          if (enhancement.customHeadersEnabled === true && Array.isArray(enhancement.responseHeaders)) {
-            for (const h of enhancement.responseHeaders) {
-              if (h && h.key) extraRespHeaders[h.key] = h.value;
-            }
-          }
-          // wireApi=chat: 用 chatCompletionToResponse 转换完整响应（含 reasoning/tool_calls）
-          const responseObj = conn.wireApi === 'chat' && r.json
-            ? chatCompletionToResponse(r.json, conn.model)
-            : null;
-          tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs });
-          tracker.finish();
-          if (tracker.recentRequestId) {
-            recordRecentOutcome({
-              requestId: tracker.recentRequestId,
-              inputTokens: Number(usage?.inputTokens ?? usage?.input) || 0,
-              outputTokens: Number(usage?.outputTokens ?? usage?.output) || 0,
-              cachedTokens: Number(usage?.cachedTokens ?? usage?.cacheRead) || 0,
-              latencyMs: r.durationMs,
-              stream: false,
-              statusCode: r.statusCode,
-            });
-          }
-          return { conn, text, toolCalls, json: r.json, usage, extraHeaders: extraRespHeaders, responseObj };
+          const out = finalizeNonStreamResult(conn, r, r.json, effective, tracker, extractExtraRespHeaders(enhancement));
+          if (enhancement.requestLogging) logRequest({ ...ctx, _response: { statusCode: r.statusCode, text: out.text } }, 'response');
+          return out;
         }
-        const msg = compactText(upstreamMessage(r));
-        // ── 智能重试：错误驱动的请求自愈（仅 anthropic 格式上游）──
-        if (conn.format === 'anthropic' && selfHealCfg.enabled) {
-          const healed = tryHeal(payload, r.statusCode, r.text, selfHealCfg, healState);
-          if (healed.healed) {
-            console.log(`[local-proxy] [self-heal] ${healed.kind} triggered, retrying`);
-            continue;
-          }
-        }
-        // ── 智能重试：Gemini 思考档位不被该模型接受（3.x/4.x 只认 level、2.5 只认 budget）
-        // 时去掉 thinkingConfig 重试一次——宁可丢档位，也不让整轮对话中断。
-        if (conn.format === 'gemini' && r.statusCode === 400
-          && payload?.generationConfig?.thinkingConfig && /thinking/i.test(r.text || '')
-          && !healState.thinkingHealed) {
-          healState.thinkingHealed = true;
-          const nextConfig = { ...payload.generationConfig };
-          delete nextConfig.thinkingConfig;
-          payload = { ...payload, generationConfig: nextConfig };
-          console.log('[local-proxy] [self-heal] gemini thinkingConfig rejected, retrying without it');
-          continue;
-        }
-        if (policy.enabled && retryCount < policy.maxRetries && retryable(r.statusCode) && Date.now() - started < policy.totalMs) {
-          retryCount++; tracker.noteRetry(`HTTP ${r.statusCode}: ${msg}`); await sleep(retryDelay(retryCount, policy, r.headers, Date.now() - started)); continue;
-        }
-        failures.push({
-          providerName: conn.providerName,
-          statusCode: r.statusCode,
-          headers: r.headers,
-          body: r.text,
-          message: msg,
-          wireApi: conn.wireApi,
-        });
+        if (await handleNonOkUpstream(r.statusCode, r.headers, r.text || '', r.json)) continue;
         break;
       } catch (e) {
-        const code = e?.code || e?.message;
-        if (policy.enabled && retryCount < policy.maxRetries && retryable(0, code) && Date.now() - started < policy.totalMs) {
-          retryCount++; tracker.noteRetry(code || 'network error'); await sleep(retryDelay(retryCount, policy, null, Date.now() - started)); continue;
+        const safeErrMsg = conn.format === 'gemini' ? redactGeminiCredential(e?.message || String(e), conn.apiKey) : (e?.message || String(e));
+        const code = e?.code || safeErrMsg;
+        const decision = attemptRunner.evaluateFailure({ code: e?.code || '', reason: safeErrMsg });
+        if (decision.action !== 'stop') {
+          if (decision.waitMs > 0) await sleep(decision.waitMs);
+          continue;
         }
-        failures.push({ providerName: conn.providerName, code, message: e.message || String(e) }); break;
+        failures.push({ providerName: conn.providerName, code, message: safeErrMsg });
+        break;
       }
     }
-    // 该目标耗尽重试仍失败 → 计入冷却，后续请求不再白白打它一次
     if (routed.targets.length > 1 && failures.length > failuresBefore) {
       const last = failures[failures.length - 1];
       markFailure(targetKey(target), {
-        statusCode: last.statusCode,
-        code: last.code,
-        reason: last.message,
-        body: last.body,
-        providerName: conn.providerName,
-        model: conn.model,
+        statusCode: last.statusCode, code: last.code, reason: last.message, body: last.body,
+        providerName: conn.providerName, model: conn.model,
       }, cooldownPolicy);
     }
   }
-  const lastUpstreamResponse = [...failures].reverse().find(f => f.statusCode && typeof f.body === 'string');
-  // 「显示供应商原始错误」只在原始响应真的带信息时才透传：上游常见的「403 + 空 body」
-  // （中转站风控拦截 / 模型未开通 / 渠道被拉黑）原样透传后，下游只能收到
-  // "403 (empty response body)"，既不知道是哪个上游目标失败的，也看不到备用目标的结果。
-  const lastRawErrorText = lastUpstreamResponse ? upstreamErrorText(lastUpstreamResponse.body) : '';
-  if (lastUpstreamResponse && rawProviderErrors && lastRawErrorText) {
-    const classification = classifyFailures([lastUpstreamResponse]);
-    tracker.fail('upstream-http', `${lastUpstreamResponse.providerName || 'provider'}: HTTP ${lastUpstreamResponse.statusCode}: ${lastUpstreamResponse.message || ''}`);
-    tracker.finish();
-    throw new LocalProxyUpstreamError(`upstream HTTP ${lastUpstreamResponse.statusCode}`, {
-      status: classification.status,
-      type: classification.type,
-      upstreamResponse: {
-        statusCode: classification.status,
-        headers: lastUpstreamResponse.headers || {},
-        body: lastUpstreamResponse.wireApi === 'chat' && lastUpstreamResponse.body
-          ? JSON.stringify(chatErrorToResponseError(safeParse(lastUpstreamResponse.body)))
-          : lastUpstreamResponse.body,
-      },
-    });
-  }
 
-  const classification = classifyFailures(failures);
-  const emptyResponse403 = failures.some(f => f.statusCode === 403 && !upstreamErrorText(f.body));
-  const hint = emptyResponse403
-    ? '。上游返回的 403 不带可读错误信息，常见于中转站风控拦截了该渠道、或该模型未开通，建议换一个渠道或核对上游模型名'
-    : '';
-  const message = failures.length
-    ? `模型「${ctx.model}」的上游目标都失败了：${failures.map(failureMessage).join('；')}${hint}`
-    : `模型「${ctx.model}」没有可用的上游目标。`;
-  tracker.fail('failover', message);
-  tracker.finish();
-  throw new LocalProxyUpstreamError(message, classification);
+  throwAggregatedUpstreamFailure({ failures, rawProviderErrors, tracker, model: ctx.model });
 }
 
-function openAIUsage(usage = {}) {
-  const prompt = Number(usage.inputTokens) || 0, completion = Number(usage.outputTokens) || 0;
-  const cached = Number(usage.cachedTokens) || 0;
-  const out = { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion };
-  if (cached > 0) out.prompt_tokens_details = { cached_tokens: cached };
-  return out;
-}
-function anthropicUsage(usage = {}) {
-  const out = { input_tokens: Number(usage.inputTokens) || 0, output_tokens: Number(usage.outputTokens) || 0 };
-  const cached = Number(usage.cachedTokens) || 0;
-  if (cached > 0) out.cache_read_input_tokens = cached;
-  return out;
-}
-function sse(res, event, data) { if (event) res.write(`event: ${event}\n`); res.write(`data: ${JSON.stringify(data)}\n\n`); }
-
-function chatCompletionToolCall(call, index) {
-  return {
-    index,
-    id: call.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
-    type: 'function',
-    function: { name: call.name, arguments: JSON.stringify(call.arguments || {}) },
-  };
-}
-
-function sendOpenAIChat(ctx, res, result) {
-  const id = `chatcmpl-${crypto.randomUUID()}`;
-  const extra = result.extraHeaders || {};
-  const created = Math.floor(Date.now() / 1000);
-  const toolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : [];
-  const finishReason = toolCalls.length > 0 ? 'tool_calls' : 'stop';
-  if (ctx.stream) {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-    const chunk = (choices) => ({ id, object: 'chat.completion.chunk', created, model: ctx.model, choices });
-    sse(res, null, chunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]));
-    if (result.text) sse(res, null, chunk([{ index: 0, delta: { content: result.text }, finish_reason: null }]));
-    if (toolCalls.length > 0) {
-      // 首块声明调用 id 与函数名，第二块补全 arguments，与客户端流式增量协议一致
-      sse(res, null, chunk([{
-        index: 0,
-        delta: {
-          tool_calls: toolCalls.map((call, i) => {
-            const { function: fn, ...rest } = chatCompletionToolCall(call, i);
-            return { ...rest, function: { ...fn, arguments: '' } };
-          }),
-        },
-        finish_reason: null,
-      }]));
-      sse(res, null, chunk([{
-        index: 0,
-        delta: {
-          tool_calls: toolCalls.map((call, i) => ({
-            index: i,
-            function: { arguments: JSON.stringify(call.arguments || {}) },
-          })),
-        },
-        finish_reason: null,
-      }]));
-    }
-    sse(res, null, chunk([{ index: 0, delta: {}, finish_reason: finishReason }]));
-    res.write('data: [DONE]\n\n'); res.end(); return;
-  }
-  const message = { role: 'assistant', content: result.text || '' };
-  if (toolCalls.length > 0) {
-    message.tool_calls = toolCalls.map((call, i) => {
-      const { index, ...rest } = chatCompletionToolCall(call, i);
-      return rest;
-    });
-  }
-  sendJson(res, 200, { id, object: 'chat.completion', created, model: ctx.model, choices: [{ index: 0, message, finish_reason: finishReason }], usage: openAIUsage(result.usage) }, extra);
-}
-
-// 真流式出口：消费上游 SSE（Responses / Anthropic / Chat），逐块转成 Chat SSE 下发。
-// 上游形态由 createChatSSEConverter 按 conn 判定；首字节前的失败已在上游请求层重试，
-// 这里只管增量转发与收尾（finish + usage + [DONE]）。
-async function sendOpenAIChatStream(ctx, res, result) {
-  const id = `chatcmpl-${crypto.randomUUID()}`;
-  const created = Math.floor(Date.now() / 1000);
-  const extra = result.extraHeaders || {};
-  res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-  const chunk = (choices, usage) => {
-    const base = { id, object: 'chat.completion.chunk', created, model: ctx.model, choices };
-    if (usage) base.usage = usage;
-    return base;
-  };
-  sse(res, null, chunk([{ index: 0, delta: { role: 'assistant' }, finish_reason: null }]));
-  const keepalive = startSseKeepalive(res);
-  const watchdog = result.watchdog;
-  const converter = createChatSSEConverter(result.conn, ctx.model, id, created);
-  let upstreamFailed = false;
-  try {
-    for await (const event of parseSSEStream(result.upstreamResponse, { onChunk: () => { if (watchdog) watchdog.touch(); } })) {
-      keepalive.touch();
-      // 上游流内错误事件（AnyRouter 偶发 / Anthropic error）：转发给客户端，避免"空回复"假成功
-      if (event?.type === 'error' || event?.type === 'response.failed') {
-        const message = event.error?.message
-          || event.response?.error?.message
-          || event.message
-          || 'upstream stream error';
-        sse(res, null, { error: { message, type: 'upstream_error' } });
-        recordError({ provider: result.conn?.providerName || 'local-proxy', message });
-        upstreamFailed = true;
-        break;
-      }
-      for (const out of converter.write(event)) sse(res, null, out);
-    }
-    if (!upstreamFailed) {
-      for (const out of converter.flush()) sse(res, null, out);
-      const usage = converter.getUsage();
-      if (usage) recordUsage(usageFrom({ format: 'openai' }, { usage: { prompt_tokens: usage.prompt_tokens, completion_tokens: usage.completion_tokens, input_tokens_details: usage.prompt_tokens_details } }, 0, 0));
-      // 审计表：流式结束才有真实 tokens 与总耗时，按 requestId 回补同一条目
-      if (result.recentRequestId) {
-        recordRecentOutcome({
-          requestId: result.recentRequestId,
-          inputTokens: Number(usage?.prompt_tokens) || 0,
-          outputTokens: Number(usage?.completion_tokens) || 0,
-          cachedTokens: Number(usage?.prompt_tokens_details?.cached_tokens) || 0,
-          latencyMs: Date.now() - (Number(result.startedAt) || Date.now()),
-          stream: true,
-        });
-      }
-    }
-  } catch (e) {
-    // 流中途失败：已发出的 chunk 无法收回，按 SSE 错误事件告知客户端（与 OpenAI 流式错误语义一致）
-    try { sse(res, null, { error: { message: e?.message || 'stream error', type: 'upstream_error' } }); } catch { /* ignore */ }
-  } finally {
-    if (watchdog) watchdog.clear();
-    keepalive.stop();
-    try { res.write('data: [DONE]\n\n'); } catch { /* ignore */ }
-    try { res.end(); } catch { /* ignore */ }
-  }
-}
-
-function responseObject(ctx, result, id) {
-  const input = Number(result.usage?.inputTokens) || 0;
-  const output = Number(result.usage?.outputTokens) || 0;
-  const usage = { input_tokens: input, output_tokens: output, total_tokens: input + output };
-  const cached = Number(result.usage?.cachedTokens) || 0;
-  if (cached > 0) usage.input_tokens_details = { cached_tokens: cached };
-  // reasoning items 必须回传（含 encrypted_content）：客户端靠它在下一轮回放思考上下文，
-  // 缺失会让模型每轮从零推理，表现为「多轮对话变笨」。
-  const outputItems = responseReasoningItems(result.conn, result.json);
-  // tool_calls 必须进 output（Responses 协议的 function_call 项），
-  // 否则 Cursor/Agent 这类工具调用客户端只会看到空 message，表现为"模型不回复"。
-  outputItems.push({
-    type: 'message', id: `msg-${crypto.randomUUID()}`, status: 'completed', role: 'assistant',
-    content: [{ type: 'output_text', text: result.text }],
-  });
-  for (const tc of (Array.isArray(result.toolCalls) ? result.toolCalls : [])) {
-    if (!tc?.name) continue;
-    outputItems.push({
-      type: 'function_call',
-      id: `fc_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
-      call_id: tc.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
-      name: tc.name,
-      arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments ?? {}),
-    });
-  }
-  return { id, object: 'response', created_at: Math.floor(Date.now() / 1000), status: 'completed', model: ctx.model, output_text: result.text, output: outputItems, usage };
-}
-
-function sendOpenAIResponses(ctx, res, result) {
-  const extra = result.extraHeaders || {};
-
-  // ── 真流式：wireApi=chat 且 stream=true，逐块转换 Chat SSE → Responses SSE ──
-  if (result.stream === true && result.conn?.wireApi === 'chat') {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-    const converter = createResponsesSSEFromChat(ctx.model, result.conn?.codexChatReasoning?.outputFormat);
-    const keepalive = startSseKeepalive(res);
-    const watchdog = result.watchdog;
-    (async () => {
-      try {
-        for await (const chunk of parseSSEStream(result.upstreamResponse, {
-          onChunk: () => { if (watchdog) watchdog.touch(); },
-        })) {
-          keepalive.touch();
-          const events = converter.write(chunk);
-          for (const ev of events) sse(res, ev.type, ev);
-        }
-        const finalEvents = converter.flush();
-        for (const ev of finalEvents) sse(res, ev.type, ev);
-        // 从最终响应中记录 usage
-        const finalResp = converter.getResponse();
-        const usage = usageFrom(result.conn, { usage: finalResp.usage }, 0, 0);
-        recordUsage(usage);
-        if (result.recentRequestId) {
-          recordRecentOutcome({
-            requestId: result.recentRequestId,
-            inputTokens: Number(usage.inputTokens) || 0,
-            outputTokens: Number(usage.outputTokens) || 0,
-            cachedTokens: Number(usage.cachedTokens) || 0,
-            latencyMs: Date.now() - (Number(result.startedAt) || Date.now()),
-            stream: true,
-          });
-        }
-      } catch (e) {
-        // 流中途出错，尽量优雅结束
-        try { sse(res, 'error', { type: 'error', message: e?.message || 'stream error' }); } catch {}
-      } finally {
-        if (watchdog) watchdog.clear();
-        keepalive.stop();
-        try { res.write('data: [DONE]\n\n'); } catch {}
-        try { res.end(); } catch {}
-      }
-    })();
+async function handleAntigravityRequest(req, res, body, p, json, attachScope) {
+  if (isAntigravityBypassMetricsPath(p)) {
+    sendJson(res, 200, {});
     return;
   }
+  const method = getAntigravityMethod(p);
+  const providersJson = readProvidersJson();
+  const isHybrid = providersJson.antigravityMode === 'hybrid';
 
-  // ── 非流式或假流式（原有逻辑）──
-  const id = `resp-${crypto.randomUUID()}`;
-  // wireApi=chat 时使用预转换的完整响应对象（含 reasoning/tool_calls）
-  const obj = result.responseObj || responseObject(ctx, result, id);
-  if (ctx.stream) {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-    sse(res, 'response.created', { type: 'response.created', response: { ...obj, output: [], output_text: '' } });
-    // 按 item 类型分发：reasoning 先于 message，function_call 等附加项各自发 output_item 事件，
-    // 否则工具调用客户端收不到调用指令，表现为空回复。
-    for (let i = 0; i < obj.output.length; i++) {
-      const item = obj.output[i];
-      if (item.type === 'reasoning') {
-        sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: i, item: { ...item, status: 'in_progress' } });
-        const reasoningDelta = Array.isArray(item.summary) ? item.summary.map(s => s?.text || '').join('') : '';
-        if (reasoningDelta) {
-          sse(res, 'response.reasoning_summary_text.delta', { type: 'response.reasoning_summary_text.delta', item_id: item.id, output_index: i, summary_index: 0, delta: reasoningDelta });
-          sse(res, 'response.reasoning_summary_text.done', { type: 'response.reasoning_summary_text.done', item_id: item.id, output_index: i, summary_index: 0, text: reasoningDelta });
-        }
-        sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: i, item });
-        continue;
-      }
-      if (item.type === 'message') {
-        sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: i, item: { type: 'message', id: item.id, status: 'in_progress', role: 'assistant', content: [] } });
-        sse(res, 'response.output_text.delta', { type: 'response.output_text.delta', item_id: item.id, output_index: i, content_index: 0, delta: result.text });
-        sse(res, 'response.output_text.done', { type: 'response.output_text.done', item_id: item.id, output_index: i, content_index: 0, text: result.text });
-        sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: i, item });
-        continue;
-      }
-      sse(res, 'response.output_item.added', { type: 'response.output_item.added', output_index: i, item: { ...item, status: 'in_progress' } });
-      sse(res, 'response.output_item.done', { type: 'response.output_item.done', output_index: i, item });
+  if (method === 'loadCodeAssist') {
+    if (isHybrid) {
+      await handleHybridHandshake(res, req, body, '/v1internal:loadCodeAssist', ensureAntigravityTier, mockAntigravityLoadCodeAssist);
+      return;
     }
-    sse(res, 'response.completed', { type: 'response.completed', response: obj });
-    res.write('data: [DONE]\n\n'); res.end(); return;
-  }
-  sendJson(res, 200, obj, extra);
-}
-
-function sendAnthropic(ctx, res, result) {
-  const extra = result.extraHeaders || {};
-  const echoModel = ctx.originalModel || ctx.model;
-  // 上游 id 可能是数字/其它类型（第三方中转站常见），而 Anthropic 规范的 message.id
-  // 必须是字符串，客户端 schema 校验会直接失败（Expected 'id' to be a string）。
-  // 这里统一收敛：字符串原样用，其它非空标量转字符串，缺失才自己生成。
-  const rawMessageId = result.json?.id;
-  const messageId = typeof rawMessageId === 'string' && rawMessageId.trim()
-    ? rawMessageId
-    : ((typeof rawMessageId === 'number' || typeof rawMessageId === 'bigint') && String(rawMessageId).trim()
-      ? String(rawMessageId)
-      : `msg_${crypto.randomUUID().replace(/-/g, '')}`);
-
-  let content = [];
-  let stopReason = 'end_turn';
-  let stopSequence = null;
-
-  if (result.conn?.format === 'anthropic' && Array.isArray(result.json?.content) && result.json.content.length > 0) {
-    content = result.json.content;
-    stopReason = result.json.stop_reason || (result.toolCalls?.length ? 'tool_use' : 'end_turn');
-    stopSequence = result.json.stop_sequence || null;
-  } else {
-    if (result.text) {
-      content.push({ type: 'text', text: result.text });
-    }
-    for (const tc of (result.toolCalls || [])) {
-      content.push({
-        type: 'tool_use',
-        id: tc.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
-        name: tc.name,
-        input: tc.arguments || {},
-      });
-    }
-    if (content.length === 0) {
-      content.push({ type: 'text', text: '' });
-    }
-    stopReason = (result.toolCalls && result.toolCalls.length > 0) ? 'tool_use' : 'end_turn';
-  }
-
-  const message = {
-    id: messageId,
-    type: 'message',
-    role: 'assistant',
-    model: echoModel,
-    content,
-    stop_reason: stopReason,
-    stop_sequence: stopSequence,
-    usage: anthropicUsage(result.usage),
-  };
-
-  if (ctx.stream) {
-    res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-    sse(res, 'message_start', { type: 'message_start', message: { ...message, content: [] } });
-
-    let blockIndex = 0;
-    for (const block of content) {
-      if (block.type === 'text') {
-        sse(res, 'content_block_start', {
-          type: 'content_block_start',
-          index: blockIndex,
-          content_block: { type: 'text', text: '' },
-        });
-        if (block.text) {
-          sse(res, 'content_block_delta', {
-            type: 'content_block_delta',
-            index: blockIndex,
-            delta: { type: 'text_delta', text: block.text },
-          });
-        }
-        sse(res, 'content_block_stop', { type: 'content_block_stop', index: blockIndex });
-        blockIndex++;
-      } else if (block.type === 'tool_use') {
-        sse(res, 'content_block_start', {
-          type: 'content_block_start',
-          index: blockIndex,
-          content_block: { type: 'tool_use', id: block.id, name: block.name, input: {} },
-        });
-        const partialJson = typeof block.input === 'string' ? block.input : JSON.stringify(block.input || {});
-        sse(res, 'content_block_delta', {
-          type: 'content_block_delta',
-          index: blockIndex,
-          delta: { type: 'input_json_delta', partial_json: partialJson },
-        });
-        sse(res, 'content_block_stop', { type: 'content_block_stop', index: blockIndex });
-        blockIndex++;
-      } else if (block.type === 'thinking') {
-        sse(res, 'content_block_start', {
-          type: 'content_block_start',
-          index: blockIndex,
-          content_block: { type: 'thinking', thinking: '' },
-        });
-        if (block.thinking) {
-          sse(res, 'content_block_delta', {
-            type: 'content_block_delta',
-            index: blockIndex,
-            delta: { type: 'thinking_delta', thinking: block.thinking },
-          });
-        }
-        sse(res, 'content_block_stop', { type: 'content_block_stop', index: blockIndex });
-        blockIndex++;
-      }
-    }
-
-    sse(res, 'message_delta', {
-      type: 'message_delta',
-      delta: { stop_reason: stopReason, stop_sequence: stopSequence },
-      usage: anthropicUsage(result.usage),
-    });
-    sse(res, 'message_stop', { type: 'message_stop' });
-    res.end();
+    sendJson(res, 200, await singleflight('ag_load_code_assist', 10000, async () => mockAntigravityLoadCodeAssist()));
     return;
   }
-  sendJson(res, 200, message, extra);
-}
-
-function geminiUsageMetadata(usage = {}) {
-  const prompt = Number(usage.inputTokens) || 0;
-  const candidates = Number(usage.outputTokens) || 0;
-  const cached = Number(usage.cachedTokens) || 0;
-  const out = {
-    promptTokenCount: prompt,
-    candidatesTokenCount: candidates,
-    totalTokenCount: prompt + candidates,
-  };
-  if (cached > 0) out.cachedContentTokenCount = cached;
-  return out;
-}
-
-// 构建 Gemini GenerateContentResponse。
-// 原生 Gemini 上游：result.json 即官方完整响应（含 promptFeedback/thoughtSignature 等），原样透传。
-// 跨协议上游：上游没有 Gemini 语义字段，重建响应；functionCall 附加官方文档认可的
-// 占位签名 skip_thought_signature_validator，保证 Gemini 3 客户端多轮工具调用不被 400 拒绝。
-function geminiResponsePayload(ctx, result) {
-  if (result.conn?.format === 'gemini' && isPlainObject(result.json)) return result.json;
-  const parts = [];
-  if (result.reasoningText) {
-    parts.push({ text: result.reasoningText, thought: true });
-  }
-  if (result.text) parts.push({ text: result.text });
-  for (const call of result.toolCalls || []) {
-    parts.push({
-      functionCall: {
-        ...(call.id ? { id: call.id } : {}),
-        name: call.name,
-        args: call.arguments || {},
-      },
-      thoughtSignature: 'skip_thought_signature_validator',
-    });
-  }
-  if (!parts.length) parts.push({ text: '' });
-  return {
-    candidates: [{
-      content: { role: 'model', parts },
-      finishReason: 'STOP',
-      index: 0,
-    }],
-    usageMetadata: geminiUsageMetadata(result.usage),
-    modelVersion: ctx.model,
-  };
-}
-
-// Antigravity LS 的流式客户端无法解析非 SSE 错误体（2.5.5 会空指针崩溃，
-// 见 generation.go:680 / stream_helpers.go:181，进程直接 exit code 2）。
-// 上游失败时必须降级为协议合法的 SSE 快照，把错误文本作为模型回复返回，
-// 保证 Agent 不会永久卡在 "Working."。
-function antigravityErrorSnapshot(ctx, message) {
-  const text = `[AnyBridge] 上游请求失败：${message}`;
-  return {
-    candidates: [{
-      content: { role: 'model', parts: [{ text }] },
-      finishReason: 'STOP',
-      index: 0,
-    }],
-    ...(ctx?.model ? { modelVersion: ctx.model } : {}),
-  };
-}
-
-// Cloud Code v1internal 响应必须包一层信封：{ response, traceId, metadata }。
-// 直接返回裸 candidates 会让 LS 在 ProcessStreamChunks 里取 envelope.Response
-// 得到 nil，触发 generation.go:680 空指针崩溃（进程 exit code 2）。
-function antigravityEnvelope(response) {
-  return { response, traceId: '', metadata: {} };
-}
-
-function writeAntigravityStreamError(res, ctx, message) {
-  res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
-  sse(res, null, antigravityEnvelope(antigravityErrorSnapshot(ctx, message)));
-  res.end();
-}
-
-// 把上游 OpenAI chat SSE chunk 增量转换成 Gemini candidate，供 Antigravity 真流式使用。
-// 直接 pipe 上游流可避免缓冲：长回复时 Language Server 不会因等待整包而超时。
-function createGeminiStreamFromOpenAIChat() {
-  const toolCalls = new Map();
-  let usage = null;
-  return {
-    write(chunk) {
-      const out = [];
-      if (chunk?.usage) usage = chunk.usage;
-      const choice = chunk?.choices?.[0];
-      if (!choice) return out;
-      const delta = choice.delta || {};
-      if (typeof delta.content === 'string' && delta.content) {
-        out.push({ content: { role: 'model', parts: [{ text: delta.content }] }, finishReason: 'OTHER', index: 0 });
-      }
-      if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) {
-        out.push({ content: { role: 'model', parts: [{ text: delta.reasoning_content, thought: true }] }, finishReason: 'OTHER', index: 0 });
-      }
-      for (const call of delta.tool_calls || []) {
-        const index = call.index ?? 0;
-        const current = toolCalls.get(index) || { id: '', name: '', args: '' };
-        if (call.id) current.id = call.id;
-        if (call.function?.name) current.name = call.function.name;
-        if (call.function?.arguments) current.args += call.function.arguments;
-        toolCalls.set(index, current);
-      }
-      return out;
-    },
-    flush() {
-      const out = [];
-      if (toolCalls.size) {
-        const parts = [];
-        for (const call of toolCalls.values()) {
-          let args = {};
-          try { args = call.args ? JSON.parse(call.args) : {}; } catch { args = {}; }
-          parts.push({
-            functionCall: { ...(call.id ? { id: call.id } : {}), name: call.name, args },
-            thoughtSignature: 'skip_thought_signature_validator',
-          });
-        }
-        out.push({ content: { role: 'model', parts }, finishReason: 'TOOL_CALL', index: 0 });
-      }
-      out.push({ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 });
-      return out;
-    },
-    getUsage() {
-      return usage
-        ? {
-          inputTokens: Number(usage.prompt_tokens) || 0,
-          outputTokens: Number(usage.completion_tokens) || 0,
-          cachedTokens: Number(usage.prompt_tokens_details?.cached_tokens) || 0,
-        }
-        : null;
-    },
-  };
-}
-
-function sendGemini(ctx, res, result) {
-  sendJson(res, 200, geminiResponsePayload(ctx, result), result.extraHeaders || {});
-}
-
-// streamGenerateContent：官方 alt=sse 是 SSE（每个 data 为一个累计快照），无 alt 时为 JSON 数组流。
-// 上游非流式拿全量后按协议输出单事件快照（内容+finishReason 同块），语义与官方终止块一致。
-function sendGeminiStream(ctx, res, result, asSse) {
-  const payload = geminiResponsePayload(ctx, result);
-  const extra = result.extraHeaders || {};
-  if (!asSse) { sendJson(res, 200, [payload], extra); return; }
-  res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-  sse(res, null, payload);
-  res.end();
-}
-
-function handleCountTokens(body, res) {
-  const ctx = normalizeRequest('anthropic', body);
-  sendJson(res, 200, { input_tokens: estimateTokens(ctx.messages, ctx.system) });
-}
-
-// Gemini countTokens：官方语义是对输入跑真实分词器。仅在原生 Gemini 目标上真实调用上游
-// models/{model}:countTokens；路由没有原生目标时不做字符估算冒充官方精确值，明确返回 501。
-async function executeGeminiCountTokens(ctx) {
-  const tracker = createTracker({ client: ctx.client || null, route: 'count-tokens', requestedModel: ctx.model });
-  const scope = ctx.proxyRouteScope || 'default';
-  const resolved = resolveProxyModel(ctx.model, 'gemini', { scope, applyRename: !isCodexProxyScope(scope) });
-  if (resolved.error) throw new LocalProxyUpstreamError(resolved.error, { status: 400, type: 'invalid_request_error' });
-  const providers = loadProviders();
-  const failures = [];
-  for (const target of resolved.slot.targets) {
-    const conn = resolveTarget(target, providers);
-    if (conn.error) { failures.push({ providerName: target.providerId, message: conn.error }); continue; }
-    if (conn.format !== 'gemini') continue;
-    tracker.beginAttempt({ provider: conn.providerName, providerId: conn.providerId, model: conn.model });
-    const payload = cleanBody({
-      generateContentRequest: {
-        model: `models/${conn.model}`,
-        contents: geminiContents(ctx.system, ctx.messages),
-        systemInstruction: ctx.system ? { parts: [{ text: ctx.system }] } : undefined,
-        safetySettings: ctx.rawBody?.safetySettings || ctx.rawBody?.safety_settings || undefined,
+  if (method === 'onboardUser') {
+    const onboardMock = () => ({
+      name: 'operations/anybridge-onboard',
+      done: true,
+      response: {
+        cloudaicompanionProject: { id: '', name: '', projectNumber: '0' },
+        status: { statusCode: 'ONBOARDED', displayMessage: 'AnyBridge onboarding complete' },
       },
     });
-    const r = await requestUpstream(conn, payload, {});
-    if (r.statusCode >= 200 && r.statusCode < 300 && Number.isFinite(Number(r.json?.totalTokens))) {
-      tracker.endAttempt({ status: 'ok', statusCode: r.statusCode });
-      tracker.finish();
-      return Number(r.json.totalTokens);
+    if (isHybrid) {
+      await forwardToOfficialAntigravity(req, res, { body, onFailed: () => sendJson(res, 200, onboardMock()) });
+      return;
     }
-    failures.push({ providerName: conn.providerName, statusCode: r.statusCode, body: r.text, message: compactText(upstreamMessage(r)) });
+    sendJson(res, 200, onboardMock());
+    return;
   }
-  if (failures.length) {
-    tracker.fail('upstream-http', `countTokens 上游失败：${failures.map(failureMessage).join('；')}`);
-    tracker.finish();
-    throw new LocalProxyUpstreamError(`countTokens 上游失败：${failures.map(failureMessage).join('；')}`, { status: 502, type: 'upstream_error' });
+  if (method === 'retrieveUserQuotaSummary' || method === 'retrieveUserQuota') {
+    if (isHybrid) {
+      await forwardToOfficialAntigravity(req, res, { body, onFailed: () => sendJson(res, 200, mockAntigravityUserQuotaSummary()) });
+      return;
+    }
+    sendJson(res, 200, await singleflight('ag_user_quota_summary', 10000, async () => mockAntigravityUserQuotaSummary()));
+    return;
   }
-  tracker.fail('not-implemented', 'countTokens requires a native Gemini target');
-  tracker.finish();
-  throw new LocalProxyUpstreamError('countTokens 需要 Gemini Native 上游目标才能返回官方精确值；当前路由没有原生 Gemini 目标，本地不做字符估算冒充。', { status: 501, type: 'not_implemented' });
+  if (method === 'fetchUserInfo') {
+    if (isHybrid) {
+      await handleHybridHandshake(res, req, body, '/v1internal:fetchUserInfo', ensureAntigravityTier, mockAntigravityUserInfo);
+      return;
+    }
+    sendJson(res, 200, await singleflight('ag_user_info', 10000, async () => mockAntigravityUserInfo()));
+    return;
+  }
+  if (method === 'fetchAdminControls') {
+    if (isHybrid) {
+      await handleHybridHandshake(res, req, body, '/v1internal:fetchAdminControls', ensureAntigravityAdminControls, mockAntigravityAdminControls);
+      return;
+    }
+    sendJson(res, 200, await singleflight('ag_admin_controls', 10000, async () => mockAntigravityAdminControls()));
+    return;
+  }
+  if (method === 'getCodeAssistGlobalUserSetting' || method === 'setUserSettings') {
+    if (isHybrid) {
+      await forwardToOfficialAntigravity(req, res, { body, onFailed: () => sendJson(res, 200, mockAntigravityUserSettings()) });
+      return;
+    }
+    sendJson(res, 200, mockAntigravityUserSettings());
+    return;
+  }
+  if (method === 'fetchAvailableModels') {
+    const cacheKey = isHybrid ? `ag_fetch_models_hybrid:${antigravityAuthScopeKey(req)}` : 'ag_fetch_models_pure';
+    const modelsPayload = await singleflight(cacheKey, 15000, async () => {
+      let officialData = null;
+      if (isHybrid && typeof fetchOfficialAntigravityModels === 'function') {
+        try { officialData = await fetchOfficialAntigravityModels(req, body); } catch {}
+      }
+      return mergeAntigravityModelsResponse(officialData, readProvidersJson());
+    });
+    sendJson(res, 200, modelsPayload);
+    return;
+  }
+  if (method === 'streamGenerateContent' || method === 'generateContent') {
+    const reqData = (json.request && typeof json.request === 'object') ? json.request : json;
+    const requestedModel = json.model || reqData.model || '';
+    const customModel = resolveAntigravityCustomModel(requestedModel, providersJson);
+    console.error(`[antigravity] ${method} requestedModel=${JSON.stringify(requestedModel)} resolved=${customModel ? customModel.upstreamModel : 'null'} topLevelKeys=${JSON.stringify(Object.keys(json))} customOverride=${JSON.stringify(json.customModelInfoOverride || reqData.customModelInfoOverride || null)}`);
+    if (!customModel) {
+      if (isHybrid) { await forwardToOfficialAntigravity(req, res, { body }); return; }
+      const errMsg = `未找到模型 [${requestedModel}] 对应的 Provider 配置，请在 AnyBridge 中添加并启用该模型。`;
+      if (method === 'streamGenerateContent') { writeAntigravityStreamError(res, { model: requestedModel }, errMsg); return; }
+      sendJson(res, 400, { error: { code: 400, message: errMsg, status: 'INVALID_ARGUMENT' } });
+      return;
+    }
+    const stream = method === 'streamGenerateContent';
+    const pinned = buildAntigravityRouteFromCustomModel(customModel, requestedModel, loadProviders());
+    if (pinned?.error && !customModel.isInternalDependency) {
+      if (stream) { writeAntigravityStreamError(res, { model: requestedModel }, pinned.error); return; }
+      sendJson(res, 400, { error: { code: 400, message: pinned.error, status: 'FAILED_PRECONDITION' } });
+      return;
+    }
+    const baseCtx = buildAntigravityNormalizedCtx(attachScope, reqData, json, customModel.upstreamModel, { stream });
+    const ctx = pinned?.route ? { ...baseCtx, pinnedRoute: pinned.route } : baseCtx;
+    let result;
+    try {
+      result = await execute(ctx);
+    } catch (e) {
+      if (customModel?.isInternalDependency) {
+        console.error(`[antigravity] internal dependency request failed: ${e?.message || String(e)}`);
+        const empty = antigravityEnvelope({ candidates: [{ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 }] });
+        if (stream) {
+          res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
+          sse(res, null, empty);
+          res.end();
+        } else {
+          sendJson(res, 200, empty);
+        }
+        return;
+      }
+      if (stream) { writeAntigravityStreamError(res, ctx, e?.message || String(e)); return; }
+      throw e;
+    }
+    if (stream) {
+      await sendAntigravityStream(ctx, res, result, customModel);
+    } else {
+      const payload = geminiResponsePayload(ctx, result);
+      const hasToolCalls = Array.isArray(result.toolCalls) && result.toolCalls.length > 0;
+      if (payload.candidates?.[0] && hasToolCalls) payload.candidates[0].finishReason = 'TOOL_CALL';
+      sendJson(res, 200, antigravityEnvelope(payload), result?.extraHeaders || {});
+    }
+    return;
+  }
+  if (method === 'countTokens') {
+    const requestedModel = json.model || json.request?.model || '';
+    const customModel = resolveAntigravityCustomModel(requestedModel, providersJson);
+    if (!customModel && isHybrid) { await forwardToOfficialAntigravity(req, res, { body }); return; }
+    const source = json.request && typeof json.request === 'object' ? json.request : json;
+    const targetModel = customModel?.upstreamModel || json.model || source.model || 'model';
+    const pinned = customModel
+      ? buildAntigravityRouteFromCustomModel(customModel, requestedModel, loadProviders())
+      : null;
+    const baseCtx = buildAntigravityNormalizedCtx(attachScope, source, json, targetModel);
+    const ctx = pinned?.route ? { ...baseCtx, pinnedRoute: pinned.route } : baseCtx;
+    let totalTokens = 0;
+    try {
+      totalTokens = await executeGeminiCountTokens(ctx);
+    } catch {
+      totalTokens = estimateTokens(ctx.messages, ctx.system) || 1;
+    }
+    sendJson(res, 200, { totalTokens: totalTokens || 1 });
+    return;
+  }
+  if (isHybrid) {
+    const raw = await fetchOfficialAntigravityRaw(req, body, p);
+    if (raw) {
+      res.writeHead(raw.statusCode, cors({ 'content-type': raw.contentType || 'application/json; charset=utf-8', 'content-length': raw.body.length }));
+      res.end(raw.body);
+    } else {
+      sendJson(res, 200, {});
+    }
+    return;
+  }
+  sendJson(res, 200, {});
 }
 
 export async function handleLocalProxyRequest(req, res, body) {
   if (req.method === 'OPTIONS') { res.writeHead(204, cors()); res.end(); return; }
   const p = pathnameOf(req);
-  // 健康检查 / 连通性测试：New API 标准端点，不需要鉴权即可返回健康状态
   if (req.method === 'GET' && (p === '/' || p === '/health' || p === '/status' || p === '/v1')) {
-    sendJson(res, 200, {
-      status: true,
-      system_name: 'AnyBridge',
-      message: 'AnyBridge local proxy server is running',
-      version: '0.5.2',
-    });
+    sendJson(res, 200, { status: true, system_name: 'AnyBridge', message: 'AnyBridge local proxy server is running', version: '0.5.2' });
     return;
   }
   const auth = validateAuth(req);
@@ -3226,20 +438,30 @@ export async function handleLocalProxyRequest(req, res, body) {
     return;
   }
   const scope = proxyScopeForPath(p);
-  // 一次请求一个 tracker；所有协议分支共用，终态在下方 catch/execute 内结算。
   const tracker = createTracker({ client: 'local-proxy', route: 'local-proxy' });
   res.__byokTracker = tracker;
+  const reqAbortCtrl = new AbortController();
+  const onReqClose = () => {
+    if (!res.writableEnded) reqAbortCtrl.abort();
+  };
+  if (typeof res.once === 'function') res.once('close', onReqClose);
   const attachScope = (ctx) => {
     ctx.proxyRouteScope = scope;
     ctx.__tracker = tracker;
+    ctx.signal = reqAbortCtrl.signal;
     return ctx;
   };
-  if (req.method === 'GET' && (p === '/v1/models' || p === '/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models' || p === '/v1beta/models' || p === '/claude-desktop/v1/models' || p === '/claude-desktop/models')) { handleModels(req, res); return; }
+  if (req.method === 'GET' && (p === '/v1/models' || p === '/models' || p === '/codex/v1/models' || p === '/anthropic/v1/models' || p === '/v1beta/models' || p === '/claude-desktop/v1/models' || p === '/claude-desktop/models')) {
+    handleModels(req, res);
+    return;
+  }
   const geminiSingleModel = req.method === 'GET' ? p.match(/^\/(?:v1beta|v1)\/models\/(?:models\/)?([^/:]+)$/) : null;
   if (geminiSingleModel) { handleGeminiModelInfo(decodeURIComponent(geminiSingleModel[1]), res, scope); return; }
+
   let json;
-  try { json = body && body.length ? JSON.parse(body.toString('utf8')) : {}; }
-  catch (e) {
+  try {
+    json = body && body.length ? JSON.parse(body.toString('utf8')) : {};
+  } catch (e) {
     const message = `请求 JSON 解析失败: ${e.message}`;
     if (p.startsWith('/v1beta/') || isGeminiGenerateContentPath(p)) sendGeminiError(res, 400, message, 'INVALID_ARGUMENT');
     else if (p.startsWith('/anthropic/') || p.startsWith('/claude-desktop') || p.endsWith('/messages')) sendAnthropicError(res, 400, message);
@@ -3258,33 +480,35 @@ export async function handleLocalProxyRequest(req, res, body) {
     return;
   }
   if (p.endsWith('/messages/count_tokens')) { handleCountTokens(json, res); return; }
+
   try {
     if (p === '/v1/chat/completions' || p === '/chat/completions' || p === '/codex/v1/chat/completions') {
       const ctx = attachScope(normalizeRequest('openai', json));
       const result = await execute(ctx);
-      // 真流式：上游流式增量转发；否则走原有的（假流式 / 非流式）出口
       if (result.stream === true) { await sendOpenAIChatStream(ctx, res, result); return; }
       sendOpenAIChat(ctx, res, result);
       return;
     }
-    if (p === '/v1/responses' || p === '/responses' || p === '/codex/v1/responses') { const ctx = attachScope(normalizeRequest('responses', json)); sendOpenAIResponses(ctx, res, await execute(ctx)); return; }
+    if (p === '/v1/responses' || p === '/responses' || p === '/codex/v1/responses') {
+      const ctx = attachScope(normalizeRequest('responses', json));
+      await sendOpenAIResponses(ctx, res, await execute(ctx));
+      return;
+    }
     if (p === '/claude-desktop/v1/messages' || p === '/claude-desktop/messages') {
       const mapped = mapClaudeDesktopModel(json.model);
-      if (mapped.error) {
-        sendAnthropicError(res, 400, mapped.error);
-        return;
-      }
+      if (mapped.error) { sendAnthropicError(res, 400, mapped.error); return; }
       json.model = mapped.model;
       const ctx = attachScope(normalizeRequest('anthropic', json));
       ctx.originalModel = mapped.original;
-      // mapClaudeDesktopModel 已按"源供应商优先"解析出精确路由（供应商+模型），
-      // 必须透传给 execute，否则 execute 会按模型名重新兜底解析，
-      // 同名模型在多家供应商都存在时会错配供应商并被改写为对方 defaultModel。
       ctx.pinnedRoute = mapped.route || null;
-      sendAnthropic(ctx, res, await execute(ctx));
+      await sendAnthropic(ctx, res, await execute(ctx));
       return;
     }
-    if (p === '/v1/messages' || p === '/messages' || p === '/anthropic/v1/messages' || p === '/anthropic/messages') { const ctx = attachScope(normalizeRequest('anthropic', json)); sendAnthropic(ctx, res, await execute(ctx)); return; }
+    if (p === '/v1/messages' || p === '/messages' || p === '/anthropic/v1/messages' || p === '/anthropic/messages') {
+      const ctx = attachScope(normalizeRequest('anthropic', json));
+      await sendAnthropic(ctx, res, await execute(ctx));
+      return;
+    }
     if (isGeminiGenerateContentPath(p)) {
       if (req.method !== 'POST') {
         sendGeminiError(res, 405, `Gemini ${geminiMethodFromPath(p)} 端点仅支持 POST`, 'FAILED_PRECONDITION');
@@ -3292,7 +516,6 @@ export async function handleLocalProxyRequest(req, res, body) {
       }
       const method = geminiMethodFromPath(p);
       if (method === 'countTokens') {
-        // 官方支持 Model+contents 或 generateContentRequest 两种结构，后者已含 systemInstruction/tools
         const source = json.generateContentRequest && typeof json.generateContentRequest === 'object'
           ? { ...json.generateContentRequest, model: geminiModelFromPath(p) }
           : { ...json, model: geminiModelFromPath(p) };
@@ -3305,295 +528,16 @@ export async function handleLocalProxyRequest(req, res, body) {
       const asSse = new URL(req.url, 'http://localhost').searchParams.get('alt') === 'sse';
       const ctx = attachScope(normalizeRequest('gemini', { ...json, model: geminiModelFromPath(p), stream }));
       const result = await execute(ctx);
-      if (stream) sendGeminiStream(ctx, res, result, asSse);
+      if (stream) await sendGeminiStream(ctx, res, result, asSse);
       else sendGemini(ctx, res, result);
       return;
     }
     if (isAntigravityPath(p)) {
-      // 1. 指标、遥测与环境探测：在入口处 0ms 秒回 200 {}，彻底杜绝后台 Language Server 阻塞
-      if (isAntigravityBypassMetricsPath(p)) {
-        sendJson(res, 200, {});
-        return;
-      }
-
-      const method = getAntigravityMethod(p);
-      const providersJson = readProvidersJson();
-      const isHybrid = providersJson.antigravityMode === 'hybrid';
-
-      // 2. 账号生命周期与授权握手
-      // pure 模式：全本地自治秒级返回（免登录，零外网依赖，杜绝任何超时卡死）
-      // hybrid 模式：尝试透传给 Google 官方（保留真实登录与官方配额），网络不可用时优雅回退本地 Mock
-      if (method === 'loadCodeAssist') {
-        if (isHybrid) {
-          // 官方响应可能 tier 为空（补齐）或非 JSON（原样透传），mock 仅作兜底
-          await handleHybridHandshake(res, req, body, '/v1internal:loadCodeAssist', ensureAntigravityTier, mockAntigravityLoadCodeAssist);
-          return;
-        }
-        const payload = await singleflight('ag_load_code_assist', 10000, async () => {
-          return mockAntigravityLoadCodeAssist();
-        });
-        sendJson(res, 200, payload);
-        return;
-      }
-      if (method === 'onboardUser') {
-        if (isHybrid) {
-          await forwardToOfficialAntigravity(req, res, {
-            body,
-            onFailed: () => sendJson(res, 200, {
-              name: 'operations/anybridge-onboard',
-              done: true,
-              response: {
-                cloudaicompanionProject: { id: '', name: '', projectNumber: '0' },
-                status: { statusCode: 'ONBOARDED', displayMessage: 'AnyBridge onboarding complete' },
-              },
-            }),
-          });
-          return;
-        }
-        sendJson(res, 200, {
-          name: 'operations/anybridge-onboard',
-          done: true,
-          response: {
-            cloudaicompanionProject: {
-              id: '',
-              name: '',
-              projectNumber: '0',
-            },
-            status: {
-              statusCode: 'ONBOARDED',
-              displayMessage: 'AnyBridge onboarding complete',
-            },
-          },
-        });
-        return;
-      }
-      if (method === 'retrieveUserQuotaSummary' || method === 'retrieveUserQuota') {
-        if (isHybrid) {
-          await forwardToOfficialAntigravity(req, res, {
-            body,
-            onFailed: () => sendJson(res, 200, mockAntigravityUserQuotaSummary()),
-          });
-          return;
-        }
-        const payload = await singleflight('ag_user_quota_summary', 10000, async () => {
-          return mockAntigravityUserQuotaSummary();
-        });
-        sendJson(res, 200, payload);
-        return;
-      }
-      if (method === 'fetchUserInfo') {
-        if (isHybrid) {
-          await handleHybridHandshake(res, req, body, '/v1internal:fetchUserInfo', ensureAntigravityTier, mockAntigravityUserInfo);
-          return;
-        }
-        const payload = await singleflight('ag_user_info', 10000, async () => {
-          return mockAntigravityUserInfo();
-        });
-        sendJson(res, 200, payload);
-        return;
-      }
-      if (method === 'fetchAdminControls') {
-        if (isHybrid) {
-          await handleHybridHandshake(res, req, body, '/v1internal:fetchAdminControls', ensureAntigravityAdminControls, mockAntigravityAdminControls);
-          return;
-        }
-        const payload = await singleflight('ag_admin_controls', 10000, async () => {
-          return mockAntigravityAdminControls();
-        });
-        sendJson(res, 200, payload);
-        return;
-      }
-      if (method === 'getCodeAssistGlobalUserSetting' || method === 'setUserSettings') {
-        if (isHybrid) {
-          await forwardToOfficialAntigravity(req, res, {
-            body,
-            onFailed: () => sendJson(res, 200, mockAntigravityUserSettings()),
-          });
-          return;
-        }
-        sendJson(res, 200, mockAntigravityUserSettings());
-        return;
-      }
-
-      // 3. 模型列表：fetchAvailableModels
-      // pure 模式：全本地自治，带 agentModelSorts 与 defaultAgentModelId 规范秒级直出
-      // hybrid 模式：尝试同步 Google 官方模型并合并 AnyBridge 自建模型
-      if (method === 'fetchAvailableModels') {
-        const cacheKey = isHybrid ? 'ag_fetch_models_hybrid' : 'ag_fetch_models_pure';
-        const modelsPayload = await singleflight(cacheKey, 15000, async () => {
-          let officialData = null;
-          if (isHybrid && typeof fetchOfficialAntigravityModels === 'function') {
-            try {
-              officialData = await fetchOfficialAntigravityModels(req, body);
-            } catch {}
-          }
-          return mergeAntigravityModelsResponse(officialData, readProvidersJson());
-        });
-        sendJson(res, 200, modelsPayload);
-        return;
-      }
-
-      // 4. 模型推理生成：streamGenerateContent / generateContent
-      if (method === 'streamGenerateContent' || method === 'generateContent') {
-        const reqData = (json.request && typeof json.request === 'object') ? json.request : json;
-        const requestedModel = json.model || reqData.model || '';
-        const customModel = resolveAntigravityCustomModel(requestedModel, providersJson);
-
-        // 诊断日志：IDE 实际发送的模型 key 与请求骨架（输出到 sidecar stderr，可在网关页日志查看）
-        console.error(`[antigravity] ${method} requestedModel=${JSON.stringify(requestedModel)} resolved=${customModel ? customModel.upstreamModel : 'null'} topLevelKeys=${JSON.stringify(Object.keys(json))} customOverride=${JSON.stringify(json.customModelInfoOverride || reqData.customModelInfoOverride || null)}`);
-
-        if (!customModel) {
-          // 混合模式下未命中的模型直接透传给 Google 官方
-          if (isHybrid) {
-            await forwardToOfficialAntigravity(req, res, { body });
-            return;
-          }
-          if (method === 'streamGenerateContent') {
-            // 流式端点即使模型未解析也必须回 SSE；回 JSON 错误会让 LS 空指针崩溃。
-            writeAntigravityStreamError(res, { model: requestedModel }, `未找到模型 [${requestedModel}] 对应的 Provider 配置，请在 AnyBridge 中添加并启用该模型。`);
-            return;
-          }
-          sendJson(res, 400, {
-            error: {
-              code: 400,
-              message: `未找到模型 [${requestedModel}] 对应的 Provider 配置，请在 AnyBridge 中添加并启用该模型。`,
-              status: 'INVALID_ARGUMENT',
-            },
-          });
-          return;
-        }
-
-        const stream = method === 'streamGenerateContent';
-
-        const source = {
-          ...reqData,
-          model: customModel.upstreamModel,
-          stream,
-          generationConfig: reqData.generationConfig || json.generationConfig,
-          systemInstruction: reqData.systemInstruction || json.systemInstruction,
-          tools: reqData.tools || json.tools,
-        };
-        const ctx = attachScope(normalizeRequest('gemini', source));
-        let result;
-        try {
-          result = await execute(ctx);
-        } catch (e) {
-          // 内部依赖模型（checkpoint / fast）失败不打扰用户：回空响应，错误只进诊断日志
-          if (customModel?.isInternalDependency) {
-            console.error(`[antigravity] internal dependency request failed: ${e?.message || String(e)}`);
-            const empty = antigravityEnvelope({ candidates: [{ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 }] });
-            if (stream) {
-              res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8' }));
-              sse(res, null, empty);
-              res.end();
-            } else {
-              sendJson(res, 200, empty);
-            }
-            return;
-          }
-          if (stream) {
-            // 流式端点必须回 SSE；直接回错误 JSON 会让 Antigravity LS 空指针崩溃。
-            writeAntigravityStreamError(res, ctx, e?.message || String(e));
-            return;
-          }
-          throw e;
-        }
-        const payload = geminiResponsePayload(ctx, result);
-        const hasToolCalls = Array.isArray(result.toolCalls) && result.toolCalls.length > 0;
-        if (payload.candidates?.[0] && hasToolCalls) {
-          payload.candidates[0].finishReason = 'TOOL_CALL';
-        }
-
-        if (stream) {
-          const extra = result.extraHeaders || {};
-          if (result.stream === true && result.upstreamResponse) {
-            // 真流式：逐块把上游 OpenAI SSE 转成 Gemini 帧，避免缓冲导致长回复时 LS 等待超时
-            res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-            const converter = createGeminiStreamFromOpenAIChat();
-            const watchdog = result.watchdog;
-            try {
-              for await (const chunk of parseSSEStream(result.upstreamResponse, {
-                onChunk: () => { if (watchdog) watchdog.touch(); },
-              })) {
-                for (const candidate of converter.write(chunk)) {
-                  sse(res, null, antigravityEnvelope({ candidates: [candidate] }));
-                }
-              }
-            } catch {
-              // 流中断时仍要补发终止帧，否则 LS 会一直等待
-            }
-            for (const candidate of converter.flush()) {
-              sse(res, null, antigravityEnvelope({ candidates: [candidate] }));
-            }
-            const streamUsage = converter.getUsage();
-            if (streamUsage) recordUsage(streamUsage);
-            if (result.recentRequestId) {
-              recordRecentOutcome({
-                requestId: result.recentRequestId,
-                inputTokens: Number(streamUsage?.inputTokens ?? streamUsage?.prompt_tokens) || 0,
-                outputTokens: Number(streamUsage?.outputTokens ?? streamUsage?.completion_tokens) || 0,
-                cachedTokens: Number(streamUsage?.cachedTokens ?? streamUsage?.prompt_tokens_details?.cached_tokens) || 0,
-                latencyMs: Date.now() - (Number(result.startedAt) || Date.now()),
-                stream: true,
-              });
-            }
-            res.end();
-            return;
-          }
-          // 缓冲回退：内容帧 + 空 STOP 终止帧
-          if (payload.candidates?.[0] && !hasToolCalls) payload.candidates[0].finishReason = 'OTHER';
-          res.writeHead(200, cors({ 'content-type': 'text/event-stream; charset=utf-8', ...extra }));
-          sse(res, null, antigravityEnvelope(payload));
-          sse(res, null, antigravityEnvelope({ candidates: [{ content: { parts: [], role: 'model' }, finishReason: 'STOP', index: 0 }] }));
-          res.end();
-        } else {
-          sendJson(res, 200, antigravityEnvelope(payload), result.extraHeaders || {});
-        }
-        return;
-      }
-
-      // 5. Token 计数：countTokens
-      if (method === 'countTokens') {
-        const customModel = resolveAntigravityCustomModel(json.model || json.request?.model || '', providersJson);
-        if (!customModel && isHybrid) {
-          await forwardToOfficialAntigravity(req, res, { body });
-          return;
-        }
-        const source = json.request && typeof json.request === 'object' ? json.request : json;
-        const targetModel = customModel?.upstreamModel || json.model || source.model || 'model';
-        const ctx = attachScope(normalizeRequest('gemini', { ...source, model: targetModel }));
-        let totalTokens = 0;
-        try {
-          totalTokens = await executeGeminiCountTokens(ctx);
-        } catch {
-          totalTokens = estimateTokens(ctx.messages, ctx.system) || 1;
-        }
-        sendJson(res, 200, { totalTokens: totalTokens || 1 });
-        return;
-      }
-
-      // 6. 其它未明确拦截的内部请求：
-      // listExperiments / buildWithGooglePlugins / cascadeNuxes 等服务发现类端点
-      // 携带实验开关与插件信息（boost / teamwork-preview 等 preview 功能的启用
-      // 依赖 listExperiments），返回空 {} 会导致这些命令在斜杠面板消失。
-      // - hybrid：透传官方，保持与直连一致的服务发现结果
-      // - pure：保持 200 {} 秒回（无官方通道）
-      if (isHybrid) {
-        const raw = await fetchOfficialAntigravityRaw(req, body, p);
-        if (raw) {
-          res.writeHead(raw.statusCode, cors({ 'content-type': raw.contentType || 'application/json; charset=utf-8', 'content-length': raw.body.length }));
-          res.end(raw.body);
-        } else {
-          sendJson(res, 200, {});
-        }
-        return;
-      }
-      sendJson(res, 200, {});
+      await handleAntigravityRequest(req, res, body, p, json, attachScope);
       return;
     }
     sendError(res, 404, `未知本地网关路径: ${p}`);
   } catch (e) {
-    // 未在 execute 内结算的异常（配置读取失败等）在这里收口；已结算的 finish 为幂等。
     tracker.finish();
     if (e.upstreamResponse) {
       sendRaw(res, e.upstreamResponse.statusCode || e.status || 502, e.upstreamResponse.body, e.upstreamResponse.headers);
@@ -3607,13 +551,7 @@ export async function handleLocalProxyRequest(req, res, body) {
       return;
     }
     if (isAntigravityPath(p)) {
-      sendJson(res, status >= 400 && status < 600 ? status : 502, {
-        error: {
-          code: status,
-          message,
-          status: type,
-        },
-      });
+      sendJson(res, status >= 400 && status < 600 ? status : 502, { error: { code: status, message, status: type } });
       return;
     }
     if (p.startsWith('/v1beta/') || isGeminiGenerateContentPath(p)) {

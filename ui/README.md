@@ -98,10 +98,9 @@ Include 语法（路径相对 `ui-src/`）：
 - `ui/assets/scripts/ui/feedback.js`  
 - `ui/assets/scripts/state/logs.js`  
 
-**入口 / 兼容**
+**入口**
 
-- `ui/assets/scripts/main.js`：ES module 入口  
-- `ui/assets/scripts/00-bridge.js`：re-export `api/bridge.js`（兼容旧路径）  
+- `ui/assets/scripts/main.js`：ES module 入口（bridge 唯一真源为 `api/bridge.js`）  
 
 **功能**
 

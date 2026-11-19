@@ -1,0 +1,424 @@
+/* ══════════════════════════════════════════════════════════════
+   60-plugins.css — 运行时插件系统（由 plugin.json 驱动的通用渲染）
+   组件：PluginList / PluginCard / PluginPanel / PluginConfigForm /
+        PluginTable / PluginLogs / PluginDeployDialog
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── 插件区块 ── */
+.plugin-section {
+  margin-top: 0;
+}
+
+.plugin-section[hidden] {
+  display: none;
+}
+
+.plugin-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.plugin-section-head h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.plugin-section-head p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.plugin-card-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.plugin-empty {
+  grid-column: 1 / -1;
+  padding: 28px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+  background: var(--bg-glass);
+  border: 1px dashed var(--border-strong);
+  border-radius: 14px;
+}
+
+/* ── PluginCard ── */
+.plugin-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.plugin-card[hidden] {
+  display: none !important;
+}
+
+.plugin-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── 插件列表两段式布局（控制条 + 大表格，完全对齐模型映射风格） ── */
+.plugin-control-bar {
+  margin-bottom: 14px !important;
+}
+
+.plugin-table-card-wrap {
+  border-radius: 14px !important;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  overflow-x: auto;
+}
+
+.plugin-table-main {
+  width: 100%;
+  min-width: 960px;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.plugin-table-main thead th {
+  padding: 13px 18px;
+  background: var(--table-th-bg);
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+
+.plugin-table-main tbody td {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  font-size: 12.5px;
+  color: var(--text-primary);
+  background: transparent;
+  transition: background var(--duration-fast) var(--ease);
+}
+
+.plugin-table-main tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.plugin-table-main tbody tr:hover td {
+  background: var(--bg-hover);
+}
+
+/* 第一列：图标 + 标题 + 状态 + 描述 */
+.plugin-identity-cell {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.plugin-identity-cell .plugin-card-mark {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 13.5px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.plugin-identity-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.plugin-identity-text .plugin-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.plugin-identity-text .plugin-name {
+  font-size: 14.5px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+
+.plugin-identity-text .plugin-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 分类标签 */
+.plugin-tag {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* 端口代码块 */
+.plugin-port-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+/* 操作按钮列 */
+.plugin-table-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.plugin-table-actions .btn-sm,
+.plugin-table-actions button {
+  height: 32px;
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 650;
+  border-radius: 8px;
+}
+
+/* 状态筛选按钮选中态 */
+.plugin-control-bar .provider-bulk-btn.active {
+  background: var(--accent-light);
+  color: var(--accent);
+  border-color: rgba(var(--accent-rgb), 0.28);
+}
+
+.plugin-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.plugin-card-mark {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.plugin-card-title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plugin-card-title-wrap h3 {
+  margin: 0 0 3px;
+  font-size: 14.5px;
+  font-weight: 640;
+  color: var(--text-primary);
+}
+
+.plugin-card-title-wrap p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.plugin-status {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.plugin-status.status-running {
+  background: var(--success-dim);
+  color: var(--success);
+}
+
+.plugin-status.status-stopped,
+.plugin-status.status-not-installed {
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+
+.plugin-status.status-installing {
+  background: var(--accent-warm-dim);
+  color: var(--accent-warm);
+}
+
+.plugin-status.status-error {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+.plugin-card-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 14px;
+}
+
+.plugin-card-meta > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.plugin-card-meta span {
+  color: var(--text-muted);
+}
+
+.plugin-card-meta strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.plugin-card-error {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-radius: 8px;
+  word-break: break-word;
+}
+
+/* ── PluginPanel（管理面板） ── */
+.plugin-manager-container {
+  width: 92vw;
+}
+
+.plugin-manager-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 24px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.plugin-tab {
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.plugin-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+}
+
+.plugin-tab.is-active {
+  background: var(--accent-light);
+  border-color: var(--accent-glow);
+  color: var(--accent);
+}
+
+.plugin-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.plugin-panel-loading,
+.plugin-panel-hint {
+  margin: 0;
+  padding: 18px 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.plugin-panel-hint.is-bad {
+  color: var(--danger);
+}
+
+.plugin-panel-error {
+  padding: 16px;
+  background: var(--danger-dim);
+  border-radius: 10px;
+}
+
+.plugin-panel-error p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.plugin-panel-error code {
+  display: block;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.plugin-panel-error-line {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--danger);
+  background: var(--danger-dim);
+  border-radius: 8px;
+  word-break: break-word;
+}
+
+.plugin-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+

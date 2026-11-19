@@ -42,10 +42,9 @@ deviations are listed explicitly so they are not mistaken for intended behavior.
    for `ok`, `recordError` for `failed` / `rejected`, and `recordRetry` when
    retries happened. It is idempotent.
 
-### Local gateway path
+### Local gateway & Cursor paths
 
-`sidecar/local-proxy.js` and `sidecar/cursor-proxy.js` still call the `stats.js`
-`record*` functions directly; they do not use the tracker yet.
+`sidecar/local-proxy.js` and `sidecar/lib/local-proxy/count-tokens.js` create a `RequestTracker` per request; for streaming responses, `tracker.finish()` is deferred until `sidecar/lib/codec-registry.js` (`settleStreamTrackerSuccess` / `settleStreamTrackerFail`) or `sidecar/lib/cursor/streaming.js` (`consumeCursorUpstreamStream`) finishes or aborts the stream so `usage-ledger.js` receives actual token counts instead of zero placeholders. Non-`execute` preflight / helper calls in `cursor-proxy.js` still record lightweight counters via `stats.js`.
 
 ### Storage
 
@@ -157,8 +156,7 @@ Rules:
 - Tokens and latency come from the successful attempt only (failed attempts keep
   their usage in `attempts` for inspection but do not contribute).
 - `upstreamAttempts = requests + retries`.
-- `estCostUsd` is a blended estimate (`input * 3 + output * 15` per million);
-  cache tokens are recorded but do not contribute to the estimate.
+- `estCostUsd` uses per-model unit prices from `sidecar/pricing.js` (including input, output, `cacheRead`, and `cacheWrite`).
 - History pruning is based on the date key, never on file mtime.
 - A missing or unreadable `stats.json` must not crash the gateway: counters
   restart from zero and history is empty.
@@ -171,11 +169,9 @@ Rules:
   entries and is not a substitute for request-level history.
 - Codeium RPC forwarding (`proxyToCodeium`), blocked/preflight responses and
   plugin upstream calls are not recorded in `stats.json`.
-- `sidecar/local-proxy.js` and `sidecar/cursor-proxy.js` do not use the tracker;
-  their retry/rejection accounting still differs from the chat path.
+- Direct non-`execute` RPC helper paths in `sidecar/cursor-proxy.js` outside `consumeCursorUpstreamStream` / `execute()` still emit lightweight `stats.js` counters.
 - `byModel` is keyed by the resolved upstream model; requested identity and
   provider/account dimensions are not aggregated.
-- `estCostUsd` is a single blended rate; cache read/write are not priced.
 
 ## Verification
 

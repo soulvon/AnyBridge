@@ -7,9 +7,6 @@ use std::process::Command;
 #[cfg(target_os = "windows")]
 mod windows;
 
-#[cfg(unix)]
-use std::os::unix::fs::PermissionsExt;
-
 use rcgen::{
     BasicConstraints, CertificateParams, DistinguishedName, DnType, IsCa, Issuer, KeyPair,
     KeyUsagePurpose, RsaKeySize, PKCS_RSA_SHA256,
@@ -183,15 +180,8 @@ fn parse_issuer(cert: &str, key: &str) -> Result<Issuer<'static, KeyPair>> {
         .map_err(|error| Error::Config(format!("parse CA certificate: {error}")))
 }
 
-fn write_atomic(path: &std::path::Path, data: &[u8], _mode: u32) -> Result<()> {
-    let temp = path.with_extension("tmp");
-    fs::write(&temp, data)?;
-    #[cfg(unix)]
-    fs::set_permissions(&temp, fs::Permissions::from_mode(_mode))?;
-    fs::rename(&temp, path)?;
-    #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(_mode))?;
-    Ok(())
+fn write_atomic(path: &std::path::Path, data: &[u8], mode: u32) -> Result<()> {
+    crate::fs_atomic::write_atomic_with_mode(path, data, Some(mode))
 }
 
 #[cfg(target_os = "macos")]

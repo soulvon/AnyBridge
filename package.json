@@ -1,6 +1,6 @@
 {
   "name": "anybridge",
-  "version": "1.1.12",
+  "version": "1.1.14",
   "description": "Open-source desktop BYOK bridge for AI coding tools",
   "type": "module",
   "main": "sidecar/proxy-entry.js",
@@ -21,6 +21,9 @@
     "dev": "node --watch sidecar/proxy-entry.js",
     "dev:proxy": "node --watch sidecar/hybrid-server.js",
     "dev:inference": "node --watch sidecar/inference-proxy.js",
+    "dev:sandbox": "node scripts/dev-sandbox.mjs",
+    "test:ui": "node scripts/ui-browser-regression.mjs && node scripts/ui-interactive-e2e.mjs",
+    "test:ui:interactive": "node scripts/ui-interactive-e2e.mjs",
     "build:ui": "node scripts/build-ui.mjs",
     "build:ui:watch": "node scripts/build-ui.mjs --watch",
     "build:desktop": "npm run check:i18n && npm run check:rust && npm run build:ui && npm run build:cursor-core",

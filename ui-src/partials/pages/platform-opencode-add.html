@@ -1,71 +1,9 @@
         <!-- ═══════ PAGE: PLATFORM · OPENCODE · 添加/编辑配置（独立页面） ═══════ -->
         <div class="page" id="page-platform-opencode-add" role="tabpanel" aria-labelledby="tab-platforms">
-          <div class="platform-console-hero model-add-hero glass-card">
-            <div class="platform-console-titlebar">
-              <button class="btn-ghost platform-console-back" data-action="closeOpenCodeConfigEditor">← 返回</button>
-              <div class="platform-console-titlewrap">
-                <strong id="opencode-config-page-title">添加配置 · OpenCode</strong>
-                <span class="platform-console-sub" id="opencode-config-page-sub">从现有供应商创建或自由定制一份独立 OpenCode provider 配置方案。</span>
-              </div>
-              <div class="codex-page-hero-actions" style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
-                <button class="btn-ghost" data-action="closeOpenCodeConfigEditor">取消</button>
-                <button class="btn-primary" data-action="saveOpenCodeConfigEditor" data-args="[false]">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                    <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                    <polyline points="7 3 7 8 15 8"></polyline>
-                  </svg>
-                  <span>保存配置</span>
-                </button>
-                <button class="btn-ghost accent" id="opencode-config-save-switch-btn" data-action="saveOpenCodeConfigEditor" data-args="[true]">
-                  <span>保存并加入</span>
-                </button>
-              </div>
-            </div>
-          </div>
+<!-- @include partials/components/platform-config-hero.html closeAction="closeOpenCodeConfigEditor" titleId="opencode-config-page-title" titleText="添加配置 · OpenCode" subId="opencode-config-page-sub" subText="从现有供应商创建或自由定制一份独立 OpenCode provider 配置方案。" saveAction="saveOpenCodeConfigEditor" saveSwitchHtml='<button class="btn-ghost accent" id="opencode-config-save-switch-btn" data-action="saveOpenCodeConfigEditor" data-args="[true]"><span>保存并加入</span></button>' -->
 
           <div class="cb-add-layout">
-            <!-- 左列：供应商列表 -->
-            <aside class="cb-add-sidebar glass-card" id="opencode-config-source-wrap">
-              <div class="cb-add-search">
-                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
-                  stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="11" cy="11" r="8" />
-                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                </svg>
-                <input type="text" id="opencode-add-search" placeholder="搜索供应商" data-action="onOpenCodeAddSearch" data-events="input">
-                <div class="provider-sort-control platform-add-sort-control" id="opencodeAddSortControl">
-                  <button type="button" class="provider-sort-trigger platform-add-sort-trigger" id="opencodeAddSortTrigger"
-                    aria-haspopup="listbox" aria-expanded="false"
-                    aria-controls="opencodeAddSortMenu" aria-label="供应商排序" title="供应商排序" data-action="toggleOpenCodeAddSort" data-pass-event>
-                    <svg class="provider-sort-icon" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"
-                      aria-hidden="true">
-                      <path d="M8 3v18"></path>
-                      <path d="m4 7 4-4 4 4"></path>
-                      <path d="M16 21V3"></path>
-                      <path d="m20 17-4 4-4-4"></path>
-                    </svg>
-                    <span id="opencodeAddSortLabel">默认排序</span>
-                    <svg class="provider-sort-caret" width="13" height="13" viewBox="0 0 24 24" fill="none"
-                      stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                      aria-hidden="true">
-                      <path d="m6 9 6 6 6-6"></path>
-                    </svg>
-                  </button>
-                  <div class="provider-sort-menu platform-add-sort-menu" id="opencodeAddSortMenu" role="listbox"
-                    aria-label="供应商排序">
-                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
-                      data-sort-mode="default" data-action="chooseOpenCodeAddSortMode" data-arg="default">默认排序</button>
-                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
-                      data-sort-mode="name-asc" data-action="chooseOpenCodeAddSortMode" data-arg="name-asc">名称正序</button>
-                    <button type="button" class="provider-sort-option platform-add-sort-option" role="option"
-                      data-sort-mode="name-desc" data-action="chooseOpenCodeAddSortMode" data-arg="name-desc">名称反序</button>
-                  </div>
-                </div>
-              </div>
-              <div class="cb-add-provider-list" id="opencode-add-provider-list"></div>
-            </aside>
+<!-- @include partials/components/platform-add-sidebar.html asideIdAttr=' id="opencode-config-source-wrap"' searchId="opencode-add-search" onSearchAction="onOpenCodeAddSearch" prefix="opencode" Pascal="OpenCode" listId="opencode-add-provider-list" -->
 
             <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
             <section class="cb-add-main codex-add-main">
@@ -73,53 +11,7 @@
               <input type="hidden" id="opencode-config-source-id">
               <textarea id="opencode-config-models" class="codex-config-models-input" style="display:none;" aria-hidden="true" tabindex="-1"></textarea>
 
-              <!-- 卡片 1：基础连接信息 -->
-              <div class="glass-card" style="padding: 16px 20px;">
-                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
-                    <span>基础连接信息</span>
-                  </div>
-                  <span style="font-size: 12px; font-weight: normal; color: var(--text-muted);">从左侧点击供应商一键填入，亦支持自由修改</span>
-                </div>
-
-                <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
-                  <div style="display: flex; flex-direction: column; gap: 6px;">
-                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
-                    <input id="opencode-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：AnyRouter"
-                      data-action="syncOpenCodeRawConfigFromFields" data-events="input">
-                  </div>
-                  <div style="display: flex; flex-direction: column; gap: 6px;">
-                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">Base URL (API 端点)</label>
-                    <input id="opencode-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.example.com/v1"
-                      data-action="syncOpenCodeRawConfigFromFields" data-events="input">
-                  </div>
-                </div>
-
-                <div style="display: flex; flex-direction: column; gap: 6px;">
-                  <div style="display: flex; align-items: center; justify-content: space-between;">
-                    <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
-                    <button type="button" class="btn-ghost" id="opencode-config-sync-token-btn"
-                      data-action="syncOpenCodeConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-                      </svg>
-                      <span>同步来源令牌</span>
-                    </button>
-                  </div>
-                  <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
-                    <input id="opencode-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off"
-                      data-action="syncOpenCodeRawConfigFromFields" data-events="input">
-                    <button type="button" class="codex-password-toggle-btn" id="opencode-config-api-key-toggle"
-                      data-action="toggleOpenCodeKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
-                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
+<!-- @include partials/components/platform-config-connection-card.html idPrefix="opencode" Pascal="OpenCode" hintHtml='<span style="font-size: 12px; font-weight: normal; color: var(--text-muted);">从左侧点击供应商一键填入，亦支持自由修改</span>' namePlaceholder="例如：AnyRouter" urlLabel="Base URL (API 端点)" urlPlaceholder="https://api.example.com/v1" syncAction="syncOpenCodeConfigTokenFromSource" keyPlaceholder="sk-..." toggleAction="toggleOpenCodeKeyVisibility" -->
 
               <!-- 卡片 2：模型管理 -->
               <div class="glass-card cb-add-models-card" style="flex: 0 0 auto;">
@@ -153,23 +45,7 @@
                 </div>
               </div>
 
-              <!-- 卡片 3：实际配置文件内容（大模态弹窗） -->
-              <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
-                  <div>
-                    <div style="font-weight: 700; color: var(--text-primary); font-size: 13.5px;">实际配置文件 (opencode.json)</div>
-                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">以大弹窗查看 ~/.config/opencode/opencode.json 原文与完整结构</div>
-                  </div>
-                </div>
-                <button type="button" class="btn-ghost accent" data-action="openPlatformRealConfigModal" data-arg="opencode" style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 14px; height: 32px; font-size: 12.5px; font-weight: 600;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 20h9"/>
-                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
-                  </svg>
-                  <span>查看配置文件</span>
-                </button>
-              </div>
+<!-- @include partials/components/platform-real-config-card.html platformId="opencode" cardStyleExtra="" titleText="实际配置文件 (opencode.json)" descText="以大弹窗查看 ~/.config/opencode/opencode.json 原文与完整结构" -->
             </section>
           </div>
         </div>

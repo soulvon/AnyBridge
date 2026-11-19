@@ -8,9 +8,9 @@
 //! - `InjectTarget::Json { pointer }` → JSON 配置文件（JSON Pointer 写入）
 //!
 //! 安全与可回滚：
-//! - 首次写入前备份到 `<file>.anybridge-bak`（幂等，保留接管前原始状态）
+//! - 首次写入前备份到 `<file>.byok-bak`（幂等，保留接管前原始状态）
 //! - 还原 = 备份存在则写回；原先不存在则删除文件
-//! - 写入走 `write_atomic`（临时文件 + rename）
+//! - 写入走 `super::write_atomic`（统一临时文件 + rename）
 
 use super::agent_spec::{AgentSpec, InjectTarget};
 use serde_json::Value;
@@ -25,7 +25,7 @@ pub struct InjectPlan<'a> {
 
 fn bak_path(p: &Path) -> PathBuf {
     let mut s = p.as_os_str().to_os_string();
-    s.push(".anybridge-bak");
+    s.push(".byok-bak");
     PathBuf::from(s)
 }
 
@@ -41,10 +41,6 @@ fn ensure_backup(path: &Path) -> Result<(), String> {
         b"__ANYBRIDGE_ABSENT__".to_vec()
     };
     super::write_atomic(&bak, &content).map_err(|e| format!("备份失败: {e}"))
-}
-
-fn write_atomic(path: &Path, content: &[u8]) -> Result<(), String> {
-    super::write_atomic(path, content).map_err(|e| format!("写入 {} 失败: {e}", path.display()))
 }
 
 /// 写 dotenv：保留其它行与注释，替换同名 key，缺则追加。
@@ -154,7 +150,8 @@ pub fn apply_declared_with_paths(
         for (key, val) in env_targets {
             content = upsert_env(&content, key, val);
         }
-        write_atomic(&env_path, content.as_bytes())?;
+        super::write_atomic(&env_path, content.as_bytes())
+            .map_err(|e| format!("写入 {} 失败: {e}", env_path.display()))?;
         touched.push(env_path);
     }
 
@@ -187,7 +184,8 @@ pub fn apply_declared_with_paths(
             set_json_pointer(&mut root, pointer, value)?;
         }
         let pretty = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-        write_atomic(&cfg, pretty.as_bytes())?;
+        super::write_atomic(&cfg, pretty.as_bytes())
+            .map_err(|e| format!("写入 {} 失败: {e}", cfg.display()))?;
         touched.push(cfg);
     }
 
@@ -220,7 +218,8 @@ pub fn restore_declared(spec: &AgentSpec) -> Result<(), String> {
         if content == b"__ANYBRIDGE_ABSENT__" {
             let _ = std::fs::remove_file(&path);
         } else {
-            write_atomic(&path, &content)?;
+            super::write_atomic(&path, &content)
+                .map_err(|e| format!("写入 {} 失败: {e}", path.display()))?;
         }
         let _ = std::fs::remove_file(&bak);
         restored += 1;
@@ -236,34 +235,42 @@ pub fn restore_declared(spec: &AgentSpec) -> Result<(), String> {
 /// 声明式接入：按 `AgentSpec.inject` 写入 endpoint / api_key / model。
 /// 返回被改动的文件列表（供前端提示与「查看配置」）。
 #[tauri::command]
-pub fn apply_declared_agent(
+pub async fn apply_declared_agent(
     platform: String,
     endpoint: String,
     api_key: String,
     model: Option<String>,
 ) -> Result<Vec<String>, String> {
-    let spec = super::agent_spec::find(&platform)
-        .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
-    let touched = apply_declared(
-        spec,
-        &InjectPlan {
-            endpoint: &endpoint,
-            api_key: &api_key,
-            model: model.as_deref(),
-        },
-    )?;
-    Ok(touched
-        .iter()
-        .map(|p| p.to_string_lossy().to_string())
-        .collect())
+    tauri::async_runtime::spawn_blocking(move || {
+        let spec = super::agent_spec::find(&platform)
+            .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
+        let touched = apply_declared(
+            spec,
+            &InjectPlan {
+                endpoint: &endpoint,
+                api_key: &api_key,
+                model: model.as_deref(),
+            },
+        )?;
+        Ok(touched
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect())
+    })
+    .await
+    .map_err(|e| format!("声明式接入任务失败: {e}"))?
 }
 
-/// 声明式还原：从 `.anybridge-bak` 恢复（备份标记「原不存在」则删除）。
+/// 声明式还原：从 `.byok-bak` 恢复（备份标记「原不存在」则删除）。
 #[tauri::command]
-pub fn restore_declared_agent(platform: String) -> Result<(), String> {
-    let spec = super::agent_spec::find(&platform)
-        .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
-    restore_declared(spec)
+pub async fn restore_declared_agent(platform: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let spec = super::agent_spec::find(&platform)
+            .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
+        restore_declared(spec)
+    })
+    .await
+    .map_err(|e| format!("声明式还原任务失败: {e}"))?
 }
 
 /// 一键接入（声明式平台）。
@@ -271,62 +278,73 @@ pub fn restore_declared_agent(platform: String) -> Result<(), String> {
 /// `provider_id` 指定用哪个供应商；不传则取第一个已启用且有 key 的
 /// （保持「零配置可用」，同时允许用户主动选择）。
 #[tauri::command]
-pub fn apply_declared_platform(
+pub async fn apply_declared_platform(
     platform: String,
     provider_id: Option<String>,
     model: Option<String>,
 ) -> Result<String, String> {
-    let spec = super::agent_spec::find(&platform)
-        .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
-    let store = super::config::read_provider_store()?;
-    let p = match provider_id.as_deref() {
-        Some(id) if !id.is_empty() => store
-            .providers
-            .iter()
-            .find(|p| p.id == id)
-            .ok_or_else(|| format!("供应商不存在: {id}"))?,
-        _ => store
-            .providers
-            .iter()
-            .find(|p| p.enabled && !p.api_key.trim().is_empty())
-            .ok_or_else(|| "没有可用的供应商：请先在「供应商」页添加并启用一个".to_string())?,
-    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let spec = super::agent_spec::find(&platform)
+            .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
+        let store = super::config::read_provider_store()?;
+        let p = match provider_id.as_deref() {
+            Some(id) if !id.is_empty() => store
+                .providers
+                .iter()
+                .find(|p| p.id == id)
+                .ok_or_else(|| format!("供应商不存在: {id}"))?,
+            _ => store
+                .providers
+                .iter()
+                .find(|p| p.enabled && !p.api_key.trim().is_empty())
+                .ok_or_else(|| "没有可用的供应商：请先在「供应商」页添加并启用一个".to_string())?,
+        };
+        if !p.enabled {
+            return Err(format!("供应商「{}」已禁用，请先启用后再接入", p.name));
+        }
 
-    let endpoint = super::platforms::declared_base_url(p);
-    // 模型优先用前端选择的值（用户可切换），否则用供应商默认模型
-    let chosen = model
-        .as_deref()
-        .map(|m| m.trim())
-        .filter(|m| !m.is_empty())
-        .unwrap_or_else(|| p.default_model.trim());
-    let touched = apply_declared(
-        spec,
-        &InjectPlan {
-            endpoint: &endpoint,
-            api_key: &p.api_key,
-            model: if chosen.is_empty() { None } else { Some(chosen) },
-        },
-    )?;
+        let endpoint = super::platforms::declared_base_url(p);
+        // 模型优先用前端选择的值（用户可切换），否则用供应商默认模型
+        let chosen = model
+            .as_deref()
+            .map(|m| m.trim())
+            .filter(|m| !m.is_empty())
+            .unwrap_or_else(|| p.default_model.trim());
+        let touched = apply_declared(
+            spec,
+            &InjectPlan {
+                endpoint: &endpoint,
+                api_key: &p.api_key,
+                model: if chosen.is_empty() { None } else { Some(chosen) },
+            },
+        )?;
 
-    let files: Vec<String> = touched
-        .iter()
-        .map(|x| x.to_string_lossy().to_string())
-        .collect();
-    Ok(format!(
-        "已接入 {}（供应商：{}）→ 写入 {}",
-        spec.name,
-        p.name,
-        files.join("、")
-    ))
+        let files: Vec<String> = touched
+            .iter()
+            .map(|x| x.to_string_lossy().to_string())
+            .collect();
+        Ok(format!(
+            "已接入 {}（供应商：{}）→ 写入 {}",
+            spec.name,
+            p.name,
+            files.join("、")
+        ))
+    })
+    .await
+    .map_err(|e| format!("接入声明式平台任务失败: {e}"))?
 }
 
 /// 停止接入（声明式平台）：从备份还原。
 #[tauri::command]
-pub fn restore_declared_platform(platform: String) -> Result<String, String> {
-    let spec = super::agent_spec::find(&platform)
-        .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
-    restore_declared(spec)?;
-    Ok(format!("已还原 {} 的配置", spec.name))
+pub async fn restore_declared_platform(platform: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let spec = super::agent_spec::find(&platform)
+            .ok_or_else(|| format!("未声明的 agent: {platform}"))?;
+        restore_declared(spec)?;
+        Ok(format!("已还原 {} 的配置", spec.name))
+    })
+    .await
+    .map_err(|e| format!("还原声明式平台任务失败: {e}"))?
 }
 
 #[cfg(test)]
@@ -450,7 +468,7 @@ mod tests {
             if content == b"__ANYBRIDGE_ABSENT__" {
                 let _ = std::fs::remove_file(&path);
             } else {
-                write_atomic(&path, &content)?;
+                crate::commands::write_atomic(&path, &content)?;
             }
             let _ = std::fs::remove_file(&bak);
         }

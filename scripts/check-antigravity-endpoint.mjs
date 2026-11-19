@@ -26,8 +26,18 @@ const ok = (name, cond, detail = '') => {
   else { failed++; console.log(`  ❌ ${name}${detail ? ' — ' + detail : ''}`); }
 };
 const section = (n) => console.log(`\n■ ${n}`);
-const rs = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
-const loc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_localization.rs'), 'utf8');
+const platformFiles = [
+  'src-tauri/src/commands/platforms/antigravity_patch.rs',
+  'src-tauri/src/commands/platforms/antigravity.rs',
+  'src-tauri/src/commands/platforms/tests/mod.rs',
+  'src-tauri/src/commands/platforms/tests/antigravity_patch.rs',
+  'src-tauri/src/commands/platforms/tests/antigravity_settings.rs',
+];
+const rs = platformFiles.map((f) => fs.readFileSync(path.join(root, f), 'utf8')).join('\n');
+const loc = [
+  fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_localization/mod.rs'), 'utf8'),
+  fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_localization/hub_patch.rs'), 'utf8'),
+].join('\n');
 
 // 提取 Rust 里的 raw string 常量/函数返回值，交给 Node 真解析。
 // 函数可能带参数，用「fn <name>(」定位而非精确空参签名。
@@ -150,8 +160,8 @@ section('还原对称：杜绝 v1.1.0 死端点事故');
     // 判据只针对注入模板函数体本身，语义不变。
     const start = rs.indexOf('fn antigravity_hub_endpoint_injection');
     if (start < 0) return false;
-    const end = rs.indexOf('\nfn ', start + 1);
-    const body = rs.slice(start, end > start ? end : rs.length);
+    const nextOffset = rs.slice(start + 1).search(/\n(?:pub[^\n]*\s+)?fn /);
+    const body = nextOffset > 0 ? rs.slice(start, start + 1 + nextOffset) : rs.slice(start);
     return !/return process\.env\.CLOUD_CODE_URL/.test(body);
   })());
   ok('白底 fallback 回官方端点', /return 'https:\/\/daily-cloudcode-pa\.googleapis\.com'/.test(rs));
@@ -160,9 +170,11 @@ section('还原对称：杜绝 v1.1.0 死端点事故');
     && rs.includes('antigravity_settings_candidates_js(ANTIGRAVITY_HUB_SETTINGS_NAMES)'));
   ok('黑底还原也终止语言服务（清掉继承环境块）',
     (() => {
-      const start = rs.indexOf('fn apply_antigravity_ide_official_with_stash');
-      const end = rs.indexOf('fn apply_antigravity_official(', start);
-      return start >= 0 && end > start && rs.slice(start, end).includes('kill_antigravity_language_server()');
+      const start = rs.indexOf('fn apply_antigravity_ide_official_with_stash_locked(');
+      const end = rs.indexOf('fn apply_antigravity_official_with_stash(', start);
+      if (start < 0 || end <= start) return false;
+      const body = rs.slice(start, end);
+      return (body.match(/Self::kill_antigravity_language_server\(\)/g) || []).length >= 2;
     })());
   ok('门控含还原后死端点回归测试', rs.includes('antigravity_restore_clears_inherited_endpoint'));
   ok('成套还原清理两端残留托管端点', rs.includes('fn clear_antigravity_stale_managed_endpoints'));
@@ -283,8 +295,16 @@ section('安装路径：多用户名 / 自定义路径 / 三平台');
 
 section('保活与还原：不擅自改未接入的安装目录');
 {
-  ok('keeper 仅在配置指向本地网关时工作', rs.includes('if !hub_managed && !ide_managed'));
-  ok('keeper 持全局注入锁', rs.includes('super::inject_lock()'));
+  const keeperStart = rs.indexOf('fn antigravity_endpoint_keeper_tick()');
+  const keeperEnd = rs.indexOf('pub fn spawn_antigravity_endpoint_keeper()', keeperStart);
+  const keeperBody = keeperStart >= 0 && keeperEnd > keeperStart ? rs.slice(keeperStart, keeperEnd) : '';
+  const lockAt = keeperBody.indexOf('inject_lock()');
+  ok('keeper 仅在配置指向本地网关时工作（含持锁后二次校验）',
+    keeperBody.includes('if !is_hub_managed() && !is_ide_managed()')
+    && lockAt > 0
+    && keeperBody.indexOf('if is_hub_managed()', lockAt) > lockAt
+    && keeperBody.indexOf('if is_ide_managed()', lockAt) > lockAt);
+  ok('keeper 持全局注入锁', rs.includes('crate::commands::inject_lock()') || rs.includes('super::inject_lock()'));
   ok('keeper 已挂载到应用启动', fs.readFileSync(path.join(root, 'src-tauri/src/lib.rs'), 'utf8').includes('spawn_antigravity_endpoint_keeper'));
   ok('还原撤键后注入块自动回退官方（对称）',
     rs.includes('apply_antigravity_ide_official_with_stash')

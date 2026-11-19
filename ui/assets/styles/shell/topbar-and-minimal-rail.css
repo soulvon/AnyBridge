@@ -1,0 +1,428 @@
+/* ═══════ TOP BAR — Glass ═══════ */
+.topbar {
+  background: var(--topbar-bg);
+  border-bottom: 1px solid var(--topbar-border);
+  box-shadow: var(--topbar-shadow);
+  padding: 0 26px;
+  display: grid;
+  grid-template-columns: minmax(148px, 1fr) auto minmax(300px, 1fr);
+  gap: 18px;
+  align-items: center;
+  height: 56px; flex-shrink: 0;
+  position: relative;
+  z-index: 40;
+  transition: background var(--duration-normal) var(--ease);
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+[data-scheme="dark"] .topbar {
+  border-bottom-color: var(--topbar-border);
+}
+.topbar button, .topbar a, .topbar .tab-nav, .topbar .win-controls, .topbar .win-btn, .topbar .win-btn svg {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.topbar-left { display: flex; align-items: center; justify-self: start; gap: 14px; min-width: 0; }
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  user-select: none;
+  flex-shrink: 0;
+}
+.brand-logo-frame {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid var(--brand-frame-border);
+  border-radius: 12px;
+  background: var(--brand-frame-bg);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.82),
+    0 12px 24px -18px rgba(20, 30, 42, 0.55);
+}
+[data-scheme="dark"] .brand-logo-frame {
+  border-color: rgba(226, 232, 240, 0.16);
+  background: linear-gradient(145deg, rgba(75, 85, 99, 0.64), rgba(38, 48, 60, 0.82));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 12px 24px -18px rgba(0, 0, 0, 0.72);
+}
+.brand-logo {
+  width: 40px;
+  height: 40px;
+  display: block;
+}
+.brand-name {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  font-size: 18px;
+  font-weight: 850;
+  line-height: 0.86;
+  letter-spacing: 0;
+  color: var(--text-primary);
+  text-align: left;
+}
+.brand-name span {
+  display: block;
+}
+.brand-tag {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  background: var(--accent-light); padding: 2px 8px;
+  border-radius: var(--radius-pill); font-family: var(--font-mono);
+}
+
+/* ═══════ TOP TABS ═══════ */
+.tab-nav {
+  position: relative;
+  z-index: 10;
+  width: fit-content;
+  max-width: min(100%, 52vw, 560px);
+  height: 40px;
+  justify-self: center;
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid rgba(var(--accent-rgb), 0.08);
+  border-radius: 14px;
+  background: var(--topbar-segment-bg);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.82),
+    inset 0 -1px 1px rgba(60, 82, 105, 0.10);
+  overflow: visible;
+  padding: 2px;
+  min-width: 0;
+  scrollbar-width: none;
+}
+
+.tab-nav::-webkit-scrollbar {
+  display: none;
+}
+
+[data-scheme="dark"] .tab-nav {
+  border-color: rgba(var(--accent-rgb), 0.18);
+  background:
+    linear-gradient(180deg, rgba(24, 34, 44, 0.96), rgba(17, 27, 36, 0.92));
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.08),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.34);
+}
+
+.tab-nav .tab-item {
+  position: relative;
+  flex: 0 0 auto;
+  height: 100%;
+  min-width: 76px;
+  min-height: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 760;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  color: rgba(67, 82, 105, 0.82);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease),
+    border-color var(--duration-fast) var(--ease),
+    color var(--duration-fast) var(--ease),
+    box-shadow var(--duration-fast) var(--ease),
+    transform var(--duration-fast) var(--ease);
+  user-select: none;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+[data-scheme="dark"] .tab-nav .tab-item {
+  color: rgba(213, 225, 241, 0.72);
+}
+
+.tab-nav .tab-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  opacity: .88;
+  stroke-width: 2.25;
+  transition: opacity var(--duration-fast) var(--ease), transform var(--duration-fast) var(--ease);
+}
+
+.tab-nav .tab-icon-fill {
+  width: 17px;
+  height: 20px;
+  fill: currentColor;
+  stroke: none;
+}
+
+html[data-nav-icons="hidden"] .tab-nav .tab-icon {
+  display: none;
+}
+
+.tab-nav .tab-item:hover {
+  color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.07);
+  border-color: rgba(var(--accent-rgb), 0.12);
+}
+
+.tab-nav .tab-item:hover .tab-icon {
+  opacity: 1;
+  transform: translateY(0.5px);
+}
+
+[data-scheme="dark"] .tab-nav .tab-item:hover {
+  color: #eaf5ff;
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(var(--accent-rgb), 0.16);
+}
+
+.tab-nav .tab-item.active {
+  color: #fff;
+  isolation: isolate;
+  overflow: hidden;
+  /* 提高层级，让激活态 Tab 的边框/阴影叠在外框之上，不再被遮挡 */
+  position: relative;
+  z-index: 50;
+  background:
+    radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.34), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(var(--accent-bright-rgb), 0.50), transparent 64%),
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.95), rgba(var(--accent-secondary-rgb), 0.95)),
+    rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.56);
+  backdrop-filter: blur(18px) saturate(1.70);
+  -webkit-backdrop-filter: blur(18px) saturate(1.70);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.46),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.08),
+    0 9px 22px -13px rgba(var(--accent-rgb), 0.68),
+    0 0 0 1px rgba(var(--accent-rgb), 0.12);
+  text-shadow: 0 1px 1px rgba(0, 50, 65, 0.24);
+}
+
+.tab-nav .tab-item.active .tab-icon {
+  opacity: 1;
+}
+
+[data-scheme="dark"] .tab-nav .tab-item.active {
+  border-color: rgba(255, 255, 255, 0.22);
+  background:
+    radial-gradient(ellipse 90% 70% at 18% 0%, rgba(255, 255, 255, 0.1), transparent 62%),
+    radial-gradient(ellipse 70% 80% at 100% 100%, rgba(var(--accent-bright-rgb), 0.36), transparent 64%),
+    linear-gradient(135deg, rgba(var(--accent-rgb), 0.98), rgba(var(--accent-secondary-rgb), 0.98));
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 11px 24px -17px rgba(var(--accent-rgb), 0.75);
+}
+
+/* ═══════ 极简云白专用：平滑胶囊药丸导航 ═══════ */
+
+[data-style="minimal"] .tab-nav {
+  height: 38px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+[data-style="minimal"] .tab-nav .tab-item {
+  height: 100%;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 14px;
+  background: transparent;
+  box-shadow: none;
+  transition: all var(--duration-fast) var(--ease);
+}
+
+[data-style="minimal"] .tab-nav .tab-item:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+[data-style="minimal"] .tab-nav .tab-item.active {
+  color: var(--text-primary);
+  background: var(--bg-card);
+  border-color: rgba(0, 0, 0, 0.04);
+  font-weight: 700;
+  text-shadow: none;
+  box-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+[data-style="minimal"] .tab-nav .tab-item.active .tab-icon {
+  color: var(--text-primary);
+}
+
+/* ═══════ 极简扁平 × 深色主题（工作台深色 / 霓虹 EVA）专修 ═══════
+   minimal 的 Tab 配色按浅色底设计（容器=--bg-secondary、active=--bg-card），
+   套在深色顶栏上 active 深灰药丸零对比，整条 Tab 糊一块。
+   参照极简墨黑的既有做法（60-plugins.css 的 [data-theme="ink"] 覆盖）：
+   扁平中性胶囊——白系半透明底 + 白字，无渐变、无外发光。
+   浅色主题与 ink（自带 !important 专属覆盖）均不受影响。 */
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item {
+  color: rgba(255, 255, 255, 0.60);
+}
+
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item:hover,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item:hover {
+  color: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item.active,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item.active {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.135);
+  border-color: rgba(255, 255, 255, 0.10);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.30);
+}
+
+[data-theme="dark"][data-style="minimal"] .tab-nav .tab-item.active .tab-icon,
+[data-theme="eva"][data-style="minimal"] .tab-nav .tab-item.active .tab-icon {
+  color: #ffffff;
+}
+
+[data-style="minimal"] .global-proxy-pill {
+  border-radius: 999px !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-secondary) !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .global-proxy-pill .global-proxy-dot {
+  width: 6px !important;
+  height: 6px !important;
+  background: #94A3B8 !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .global-proxy-pill.running {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-primary) !important;
+  font-weight: 650 !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .global-proxy-pill.running .global-proxy-dot {
+  background: #10B981 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.25) !important;
+}
+
+[data-style="minimal"] .topbar {
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+/* ═══════ 极简云白专用：全盘统一的高级纯粹设计 ═══════ */
+
+/* 1. 左侧侧边栏：去厚重白浮卡，转为清爽极简大胶囊选中态 */
+
+[data-style="minimal"] .app-sidebar {
+  background: var(--bg-primary) !important;
+  border-right: 1px solid var(--border) !important;
+  box-shadow: none !important;
+}
+
+[data-style="minimal"] .platform-rail-item {
+  border-radius: 12px !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--text-dim) !important;
+  box-shadow: none !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+[data-style="minimal"] .platform-rail-item:hover {
+  background: var(--accent-light) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-style="minimal"] .platform-rail-item.active {
+  background: var(--bg-card) !important;
+  border-color: var(--border) !important;
+  color: var(--text-primary) !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+}
+
+[data-style="minimal"] .platform-rail-icon {
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  /* 跟随主题的图标底定义，不能写死 --bg-card（深色主题下会变深、深色 logo 看不见） */
+  background: var(--sidebar-icon-bg) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] .platform-rail-item.active .platform-rail-icon {
+  border-color: var(--border) !important;
+  background: var(--sidebar-icon-bg) !important;
+}
+
+/* 2. 头部控制按钮组（已接入 / 刷新状态 / 停止接入 / 汉化） */
+
+[data-style="minimal"] .platform-console-actions {
+  gap: 8px;
+}
+
+[data-style="minimal"] .platform-console-actions .btn-primary,
+[data-style="minimal"] .platform-console-actions .btn-ghost,
+[data-style="minimal"] .platform-console-actions .platform-lang-action-btn {
+  height: 34px !important;
+  border-radius: 8px !important;
+  font-size: 12.5px !important;
+  font-weight: 600 !important;
+  padding: 0 14px !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  text-shadow: none !important;
+  transition: all var(--duration-fast) var(--ease) !important;
+}
+
+/* 接入成功状态：采用极简曜石黑药丸配微翠绿标识，或者高级静谧黑绿呼应 */
+
+[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected {
+  background: var(--accent) !important;
+  border: 1px solid var(--accent) !important;
+  color: var(--button-on-solid) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected:hover:not(:disabled) {
+  background: var(--accent-hover) !important;
+  border-color: var(--accent-hover) !important;
+  box-shadow: var(--shadow-card-hover) !important;
+  transform: translateY(-0.5px);
+}
+
+[data-style="minimal"] .platform-console-actions .btn-primary.platform-proxy-primary.is-connected svg {
+  color: #34D399 !important;
+  stroke: #34D399 !important;
+}
+

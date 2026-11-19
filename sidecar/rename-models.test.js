@@ -4,7 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { unlockModels } from './rename-models.js';
+import { extractModelList, unlockModels, renameModels } from './rename-models.js';
+import {
+  parseFields,
+  writeMessageField,
+  writeStringField,
+  writeVarintField,
+} from './proto.js';
 
 function withConfigDir(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'anybridge-rename-models-'));
@@ -280,4 +286,137 @@ test('shorthand slot uid resolves canonical effort (deepseek-v4-pro → High)', 
   const rows = json.userStatus.cascadeModelConfigData.clientModelConfigs;
   assert.equal(rows.length, 1);
   assert.equal(rows[0].label, 'deepseek-v4-pro High (商汤)');
+}));
+
+function buildClientModelConfigProto({ label, modelUid, disabled = false, supportsImages = false, contextWindow = 128000 }) {
+  return Buffer.concat([
+    writeStringField(1, label),
+    writeMessageField(2, writeVarintField(1, 1)),
+    ...(disabled ? [writeVarintField(4, 1)] : []),
+    ...(supportsImages ? [writeVarintField(5, 1)] : []),
+    writeVarintField(18, contextWindow),
+    writeStringField(22, modelUid),
+  ]);
+}
+
+function cliModelConfigsProto(entries) {
+  return Buffer.concat(entries.map((entry) => writeMessageField(1, buildClientModelConfigProto(entry))));
+}
+
+function extractClientModelEntries(protoBuf) {
+  return parseFields(protoBuf)
+    .filter((f) => f.field === 1 && f.wireType === 2)
+    .map((entryField) => {
+      const sub = parseFields(entryField.value);
+      const getStr = (num) => sub.find((f) => f.field === num && f.wireType === 2)?.value.toString('utf8');
+      const getVar = (num) => sub.find((f) => f.field === num && f.wireType === 0)?.value;
+      return {
+        label: getStr(1),
+        modelUid: getStr(22),
+        disabled: Boolean(getVar(4)),
+        supportsImages: Boolean(getVar(5)),
+      };
+    });
+}
+
+test('unlockModels rewrites bare application/proto GetCliModelConfigs without Connect envelope', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'Provider One' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    labelTemplate: '{label} ({provider})',
+    enhancement: { unlockModels: true },
+    slots: [{
+      modelUid: 'claude-opus-4-8-high',
+      displayName: 'Custom Opus',
+      enabled: true,
+      supportsImages: true,
+      targets: [{ providerId: 'p1', model: 'upstream-opus' }],
+    }],
+  }), 'utf8');
+
+  const rawCliConfigs = cliModelConfigsProto([
+    { modelUid: 'claude-opus-4-8-high', label: 'Claude Opus 4.8 High', disabled: true, supportsImages: false },
+    { modelUid: 'swe-1-6-slow', label: 'SWE 1.6 Slow', disabled: false },
+  ]);
+
+  const result = unlockModels(rawCliConfigs);
+  assert.ok(result, 'bare protobuf GetCliModelConfigs must not return null');
+  assert.ok(result.changed >= 1);
+  assert.equal(Boolean(result.wasConnect), false);
+  assert.equal(result.recompressed, false);
+
+  const entries = extractClientModelEntries(result.body);
+  assert.equal(entries.length, 2);
+  const custom = entries.find((e) => e.modelUid === 'claude-opus-4-8-high');
+  assert.equal(custom?.label, 'Custom Opus (Provider One)');
+  assert.equal(custom?.disabled, false);
+  assert.equal(custom?.supportsImages, true);
+}));
+
+test('renameModels rewrites bare application/proto payload without Connect envelope', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'ide-models.json'), JSON.stringify({
+    models: [{ modelUid: 'claude-opus-4-8-high', label: 'Claude Opus 4.8 High' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    slots: [{
+      modelUid: 'claude-opus-4-8-high',
+      displayName: 'Renamed Opus',
+      enabled: true,
+    }],
+  }), 'utf8');
+
+  const rawCliConfigs = cliModelConfigsProto([
+    { modelUid: 'claude-opus-4-8-high', label: 'Claude Opus 4.8 High', disabled: false },
+  ]);
+
+  const result = renameModels(rawCliConfigs);
+  assert.ok(result, 'renameModels must handle bare protobuf');
+  assert.equal(Boolean(result.wasConnect), false);
+  const entries = extractClientModelEntries(result.body);
+  assert.equal(entries[0]?.label, 'Renamed Opus');
+}));
+
+test('extractModelList extracts models from bare application/proto payload', () => {
+  const rawCliConfigs = cliModelConfigsProto([
+    { modelUid: 'claude-opus-4-8-high', label: 'Claude Opus 4.8 High', disabled: true },
+    { modelUid: 'swe-1-6-slow', label: 'SWE 1.6 Slow', disabled: false },
+  ]);
+  const extracted = extractModelList(rawCliConfigs);
+  assert.deepEqual(extracted, [
+    { modelUid: 'claude-opus-4-8-high', label: 'Claude Opus 4.8 High' },
+    { modelUid: 'swe-1-6-slow', label: 'SWE 1.6 Slow' },
+  ]);
+});
+
+test('unlockModels preserves Connect envelope when input is Connect-framed protobuf', () => withConfigDir((dir) => {
+  fs.writeFileSync(path.join(dir, 'providers.json'), JSON.stringify({
+    providers: [{ id: 'p1', name: 'Provider One' }],
+  }), 'utf8');
+  fs.writeFileSync(path.join(dir, 'model-map.json'), JSON.stringify({
+    labelTemplate: '{label}',
+    slots: [{
+      modelUid: 'claude-opus-4-8-high',
+      displayName: 'Custom Opus',
+      enabled: true,
+      targets: [{ providerId: 'p1', model: 'upstream-opus' }],
+    }],
+  }), 'utf8');
+
+  const protoPayload = cliModelConfigsProto([
+    { modelUid: 'claude-opus-4-8-high', label: 'Original', disabled: true },
+  ]);
+  const envelope = Buffer.alloc(5 + protoPayload.length);
+  envelope[0] = 0;
+  envelope.writeUInt32BE(protoPayload.length, 1);
+  protoPayload.copy(envelope, 5);
+
+  const result = unlockModels(envelope);
+  assert.ok(result);
+  assert.equal(result.wasConnect, true);
+  assert.equal(result.body[0], 0);
+  const innerLen = result.body.readUInt32BE(1);
+  assert.equal(innerLen, result.body.length - 5);
+  const entries = extractClientModelEntries(result.body.subarray(5));
+  assert.equal(entries[0]?.label, 'Custom Opus');
 }));

@@ -1,0 +1,65 @@
+        <!-- ═══════ CURSOR 界面汉化与日志弹窗 ═══════ -->
+        <div class="modal-overlay" id="cursorLangModal" role="dialog" aria-modal="true" aria-labelledby="cursorLangModalTitle" data-action="closeCursorLangModal" data-only-self>
+          <div class="modal-container" style="max-width: 580px; width: 92%; border-radius: 16px; overflow: hidden; padding: 0; box-shadow: var(--shadow-xl, 0 24px 38px 3px rgba(0,0,0,0.18)); border: 1px solid var(--border);">
+            <div class="modal-header" style="padding: 16px 22px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(37, 99, 235, 0.08); color: var(--accent); display: flex; align-items: center; justify-content: center; flex-shrink: 0; border: 1px solid rgba(37, 99, 235, 0.15);">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m5 8 6 6"/>
+                    <path d="m4 14 6-6 2-3"/>
+                    <path d="M2 5h12"/>
+                    <path d="M7 2h1"/>
+                    <path d="m22 22-5-10-5 10"/>
+                    <path d="M14 18h6"/>
+                  </svg>
+                </div>
+                <div>
+                  <div class="modal-title" id="cursorLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Cursor 界面汉化</div>
+                  <div id="cursorLangModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">官方语言包 + 专有词库 · 升级后自动保持</div>
+                </div>
+              </div>
+              <button type="button" class="btn-ghost icon-btn" data-action="closeCursorLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
+            </div>
+
+            <div class="modal-body" style="padding: 20px 22px; display: flex; flex-direction: column; gap: 14px;">
+              <div style="background: var(--bg-glass-elevated, rgba(255,255,255,0.04)); border: 1px solid var(--border-subtle, rgba(255,255,255,0.06)); border-radius: 10px; padding: 12px 14px; font-size: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">目标客户端：</span>
+                  <strong id="cursorLangModalClientName" style="color: var(--text-primary);">Cursor</strong>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">当前状态：</span>
+                  <span id="cursorLangModalStatusBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="color: var(--text-muted);">词库版本：</span>
+                  <span style="color: var(--text-secondary); font-family: var(--font-mono);" id="cursorLangModalVer">—</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="color: var(--text-muted);">中文语言包：</span>
+                  <span id="cursorLangModalLangPack" style="color: var(--text-muted);">检测中</span>
+                </div>
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
+                  <button type="button" class="btn-ghost" data-action="clearCursorLangLog" style="font-size: 12px; padding: 2px 10px; height: 26px; border-radius: 6px;">清空日志</button>
+                </div>
+                <pre id="cursorLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+              </div>
+
+              <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+                官方语言包负责 VS Code 界面，内置词库负责 Cursor 专有界面。重启后生效，可一键还原。装新版后需重新汉化。
+              </div>
+            </div>
+
+            <div class="modal-footer" style="padding: 12px 22px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; min-height: 56px; box-sizing: border-box;">
+              <button type="button" class="btn-ghost" id="cursorLangModalCheckUpdateBtn" data-action="checkCursorLocalizationUpdateAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">检查在线词库更新</button>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn-ghost danger" id="cursorLangModalRestoreBtn" data-action="restoreCursorLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
+                <button type="button" class="btn-primary" id="cursorLangModalApplyBtn" data-action="applyCursorLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
+              </div>
+            </div>
+          </div>
+        </div>

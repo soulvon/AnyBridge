@@ -44,3 +44,10 @@ export function mitmCertRejected(err) {
   const alert = text.match(/alert number (\d+)/);
   return alert !== null && CERT_REJECT_ALERT_NUMBERS.has(Number(alert[1]));
 }
+
+/// 判断是否为「TLS 握手尚未完成前客户端主动重置/断开」的异常（如不发 alert 直接 RST）。
+/// 握手完成后的 ECONNRESET / EPIPE 属于正常关闭噪声可忽略，握手前断开则必须暴露给排查日志。
+export function isPreHandshakeDisconnect(err, tlsEstablished) {
+  if (tlsEstablished || !err) return false;
+  return err.code === 'ECONNRESET' || err.code === 'EPIPE';
+}

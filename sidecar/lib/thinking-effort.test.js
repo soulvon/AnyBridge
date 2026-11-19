@@ -255,4 +255,18 @@ describe('clampEffortLevel / modelFamily / describeThinking', () => {
     assert.equal(describeThinking({ mode: 'off' }), 'off');
     assert.equal(describeThinking(null), '');
   });
+
+  it('applyThinkingToPayload Gemini: 2.5-pro off 用 128，flash off 用 0，3.5-flash 用 thinkingLevel', () => {
+    const proPayload = { contents: [] };
+    applyThinkingToPayload(proPayload, { format: 'gemini', model: 'gemini-2.5-pro' }, { mode: 'off' });
+    assert.equal(proPayload.generationConfig.thinkingConfig.thinkingBudget, 128);
+
+    const flashPayload = { contents: [] };
+    applyThinkingToPayload(flashPayload, { format: 'gemini', model: 'gemini-2.5-flash' }, { mode: 'off' });
+    assert.equal(flashPayload.generationConfig.thinkingConfig.thinkingBudget, 0);
+
+    const modernPayload = { contents: [] };
+    applyThinkingToPayload(modernPayload, { format: 'gemini', model: 'gemini-3.5-flash' }, { mode: 'level', level: 'high' });
+    assert.equal(modernPayload.generationConfig.thinkingConfig.thinkingLevel, 'high');
+  });
 });

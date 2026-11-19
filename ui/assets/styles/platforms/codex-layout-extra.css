@@ -1,0 +1,479 @@
+.codex-config-modal-head {
+  flex: 0 0 auto;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding: 22px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.codex-config-modal-sub {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.codex-config-modal-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+  padding: 18px 24px 20px;
+}
+
+.claude-code-config-modal .codex-config-modal-body,
+.opencode-config-modal .codex-config-modal-body {
+  padding-bottom: 18px;
+}
+
+.codex-config-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 18px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.codex-config-editor-layout.is-editing {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.codex-config-source {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 10px;
+  border-right: 1px solid var(--border);
+  padding-right: 18px;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.claude-code-config-modal .codex-config-source,
+.opencode-config-modal .codex-config-source {
+  overflow: hidden;
+}
+
+.codex-config-source.is-hidden {
+  display: none;
+}
+
+.codex-config-source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.codex-config-source-head span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.codex-config-source-head strong {
+  display: inline-flex;
+  min-width: 24px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.codex-config-source-list {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.claude-code-config-modal .codex-config-source-list,
+.opencode-config-modal .codex-config-source-list {
+  max-height: 400px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.codex-config-source-item {
+  position: relative;
+  display: grid;
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 10px 12px;
+  text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.codex-config-source-item:hover {
+  border-color: rgba(var(--accent-rgb), 0.3);
+  background: var(--bg-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.08);
+}
+
+.codex-config-source-item.active {
+  border-color: rgba(var(--accent-rgb), 0.4);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.08) 0%, rgba(var(--accent-rgb), 0.03) 100%);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.1);
+}
+
+.codex-config-source-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 60%;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+.codex-config-source-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.codex-config-source-copy strong,
+.codex-config-source-copy em {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.codex-config-source-copy strong {
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.codex-config-source-copy em {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+}
+
+.codex-config-source-empty {
+  display: flex;
+  min-height: 160px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+}
+
+.codex-config-source-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.codex-config-form-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.claude-code-config-modal .codex-config-form-grid,
+.opencode-config-modal .codex-config-form-grid {
+  align-content: start;
+  padding: 3px 6px 3px 3px;
+}
+
+/* ── 表单分区卡片 ── */
+.config-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 16px 18px;
+}
+
+.config-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.config-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.config-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.config-section-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.config-section-row > .codex-config-field {
+  grid-column: auto;
+}
+
+.codex-config-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  gap: 12px;
+}
+
+.codex-config-toggle-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.codex-config-toggle-hint {
+  margin: -2px 0 10px 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-muted, #888);
+  line-height: 1.5;
+}
+
+.codex-config-toggle-row .switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.codex-config-toggle-row .switch input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.codex-config-toggle-row .slider {
+  position: absolute;
+  inset: 0;
+  background: #d0d0d0;
+  border-radius: 999px;
+  transition: background 0.22s ease;
+}
+
+.codex-config-toggle-row .slider::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.22s ease;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+}
+
+.codex-config-toggle-row .switch input:checked + .slider {
+  background: var(--accent);
+}
+
+.codex-config-toggle-row .switch input:checked + .slider::before {
+  transform: translateX(16px);
+}
+
+.codex-config-badge-success {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1a8754;
+  background: rgba(26, 135, 84, 0.08);
+  border: 1px solid rgba(26, 135, 84, 0.25);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: 6px;
+}
+
+.codex-config-badge-muted {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  color: #888;
+  background: rgba(0,0,0,0.04);
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: 6px;
+}
+
+.codex-config-badge-current {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(135deg, #14b89a 0%, #0e9a87 100%);
+  border-radius: 999px;
+  padding: 2px 8px;
+  margin-left: 2px;
+  white-space: nowrap;
+}
+
+html:not([data-style="minimal"]) button.codex-reconfigure-action {
+  width: 92px;
+  min-width: 92px;
+  height: 32px;
+  flex: 0 0 92px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 8px;
+  font-family: inherit;
+}
+
+[data-style="minimal"] button.codex-reconfigure-action {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  padding: 0 12px !important;
+  width: 92px !important;
+  min-width: 92px !important;
+  height: 32px !important;
+  flex: 0 0 92px !important;
+  cursor: pointer !important;
+  border-radius: 8px !important;
+  background: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-strong) !important;
+  font-weight: 600 !important;
+  font-size: 12.5px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-style="minimal"] button.codex-reconfigure-action:hover:not(:disabled) {
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--shadow-md) !important;
+  transform: translateY(-0.5px) !important;
+}
+
+button.codex-reconfigure-action:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+button.codex-reconfigure-action:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.codex-config-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.codex-config-field-wide {
+  grid-column: 1 / -1;
+}
+
+.codex-config-field > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.codex-field-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.codex-field-header-row > span {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.codex-field-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 3px 8px;
+  font-size: 12px;
+  color: var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background var(--duration-fast) var(--ease), color var(--duration-fast) var(--ease);
+}
+
+.codex-field-action-btn:hover {
+  background: var(--accent-light);
+  color: var(--accent);
+}
+
+.codex-field-action-btn svg {
+  flex-shrink: 0;
+}
+
+.codex-input-password-wrap {
+  position: relative;
+  width: 100%;
+  display: flex;
+  align-items: center;
+}
+

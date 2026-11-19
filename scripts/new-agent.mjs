@@ -21,7 +21,7 @@ const title = id
 
 console.log(`
 // ─────────────────────────────────────────────────────────────
-// 把下面这段加到 src-tauri/src/commands/agent_spec.rs 的 AGENTS 表
+// 把下面这段加到 src-tauri/src/commands/agent_spec/specs.rs 的 AGENTS 表
 // （挑一个同族的条目照抄最省事：JsonConfig / TomlConfig / YamlConfig）
 // ─────────────────────────────────────────────────────────────
 

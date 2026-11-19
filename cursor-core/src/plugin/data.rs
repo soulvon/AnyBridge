@@ -78,7 +78,7 @@ impl PluginDataStore {
             .parent()
             .expect("plugin data path has a parent")
             .to_owned();
-        let temporary = directory.join(format!(".{key}.{}.tmp", uuid::Uuid::new_v4()));
+        let temporary = crate::fs_atomic::unique_tmp_path(path, &format!(".{key}."));
         let target = path.to_owned();
         let bytes = serde_json::to_vec_pretty(value)?;
         tokio::task::spawn_blocking(move || {

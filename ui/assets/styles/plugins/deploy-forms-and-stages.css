@@ -1,0 +1,427 @@
+/* ── 字段网格 ── */
+.plugin-field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.plugin-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: 10px;
+}
+
+.plugin-field > span {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plugin-field > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 640;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.plugin-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.plugin-dot.state-running {
+  background: var(--success);
+  box-shadow: 0 0 0 3px var(--success-dim);
+}
+
+.plugin-dot.state-error {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-dim);
+}
+
+.plugin-dot.state-installing {
+  background: var(--accent-warm);
+  box-shadow: 0 0 0 3px var(--accent-warm-dim);
+}
+
+.plugin-install-path {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.plugin-health-line {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.plugin-health-line.is-ok {
+  color: var(--success);
+}
+
+.plugin-health-line.is-bad {
+  color: var(--danger);
+}
+
+/* ── PluginTable ── */
+.plugin-table-box {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.plugin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.plugin-table th {
+  padding: 9px 12px;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: var(--table-th-bg);
+  white-space: nowrap;
+}
+
+.plugin-table td {
+  padding: 9px 12px;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--border);
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plugin-table-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 22px 12px;
+}
+
+.btn-xs {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* ── PluginConfigForm ── */
+.plugin-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plugin-config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.plugin-config-row > label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.plugin-config-required {
+  color: var(--danger);
+}
+
+.plugin-config-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plugin-config-controls .settings-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.plugin-config-controls input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+}
+
+.plugin-config-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plugin-config-sep {
+  margin: 6px 0 0;
+  padding-top: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border);
+}
+
+/* ── PluginLogs ── */
+.plugin-log-box {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: var(--bg-input);
+  border-radius: 10px;
+  font-family: ui-monospace, 'SFMono-Regular', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.plugin-log-line {
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.plugin-log-line.is-err {
+  color: var(--danger);
+}
+
+/* ── PluginDeployDialog ── */
+.plugin-deploy-container {
+  width: 580px;
+  max-width: 92vw;
+}
+
+.plugin-deploy-view {
+  min-height: 400px;
+  max-height: 400px;
+  height: 400px;
+  box-sizing: border-box;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+#plugin-deploy-progress-view {
+  overflow: hidden;
+}
+
+.plugin-deploy-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.plugin-deploy-info-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.plugin-deploy-info-row span {
+  color: var(--text-muted);
+}
+
+.plugin-deploy-info-row strong {
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: right;
+  word-break: break-all;
+}
+
+.plugin-deploy-env {
+  padding: 12px 14px;
+  background: var(--bg-input);
+  border-radius: 10px;
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.plugin-deploy-env-title {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 620;
+}
+
+.plugin-deploy-env-title.is-ok {
+  color: var(--success);
+}
+
+.plugin-deploy-env-title.is-bad {
+  color: var(--accent-warm);
+}
+
+.plugin-deploy-env-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.plugin-deploy-env-row strong {
+  min-width: 90px;
+  font-weight: 600;
+}
+
+.plugin-deploy-env-row span {
+  color: var(--text-muted);
+}
+
+.plugin-deploy-env-row a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.plugin-deploy-env-row a:hover {
+  text-decoration: underline;
+}
+
+.plugin-deploy-env-hint {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.plugin-deploy-env-hint.is-bad {
+  color: var(--danger);
+}
+
+/* 进度视图：进度条 + 步骤阶段 + 终端日志 */
+.plugin-deploy-progress-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.plugin-deploy-progress-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.plugin-deploy-progress-bar-track {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--bg-input, rgba(0, 0, 0, 0.06));
+  overflow: hidden;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+
+.plugin-deploy-progress-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent, #2563eb), #60a5fa);
+  transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.plugin-deploy-progress-percent {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-mono, ui-monospace, 'SFMono-Regular', Consolas, monospace);
+  color: var(--accent, #2563eb);
+  min-width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.plugin-deploy-progress-message {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-secondary, #475569);
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  min-height: 18px;
+  line-height: 18px;
+}
+
+/* 4 个标准阶段卡片：单行四列均分，杜绝折行与多重滚动 */
+.plugin-deploy-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.plugin-deploy-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 6px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted, #94a3b8);
+  background: var(--bg-card, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.plugin-deploy-step-icon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.5;
+  flex: 0 0 auto;
+  transition: all 0.2s ease;
+}
+
+.plugin-deploy-step[data-status='running'] {
+  color: var(--accent, #2563eb);
+  background: var(--accent-light, rgba(37, 99, 235, 0.08));
+  border-color: color-mix(in srgb, var(--accent, #2563eb) 35%, transparent);
+}
+
+.plugin-deploy-step[data-status='running'] .plugin-deploy-step-icon {
+  background: var(--accent, #2563eb);
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--accent-light, rgba(37, 99, 235, 0.16));
+}
+
+.plugin-deploy-step[data-status='done'] {
+  color: var(--success, #16a34a);
+  background: var(--success-dim, rgba(22, 163, 74, 0.08));
+  border-color: color-mix(in srgb, var(--success, #16a34a) 35%, transparent);
+}
+
+.plugin-deploy-step[data-status='done'] .plugin-deploy-step-icon {
+  background: var(--success, #16a34a);
+  opacity: 1;
+}
+
+.plugin-deploy-step[data-status='error'] {
+  color: var(--danger, #dc2626);
+  background: var(--danger-dim, rgba(220, 38, 38, 0.08));
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 35%, transparent);
+}
+
+.plugin-deploy-step[data-status='error'] .plugin-deploy-step-icon {
+  background: var(--danger, #dc2626);
+  opacity: 1;
+}
+

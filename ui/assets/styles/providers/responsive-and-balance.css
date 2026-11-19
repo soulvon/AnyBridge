@@ -1,0 +1,255 @@
+/* 窄屏降级：不硬撑宽屏，列数与头部布局一起收 */
+@media (max-width: 900px) {
+  #providerPresetModal .provider-preset-modal {
+    width: calc(100vw - 32px);
+    max-width: 720px;
+  }
+  .provider-preset-head {
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 18px 14px;
+  }
+  .provider-preset-head-actions {
+    flex-direction: column-reverse;
+    align-items: flex-end;
+    gap: 8px;
+  }
+  .provider-preset-search {
+    width: min(260px, 46vw);
+    height: 34px;
+  }
+  .provider-preset-list {
+    padding: 14px 18px 16px;
+  }
+  .preset-group-items {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 8px;
+  }
+  .provider-preset-foot {
+    padding: 10px 18px 14px;
+  }
+}
+
+/* ═══════ 供应商多密钥池 ═══════ */
+.provider-keys-add {
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease;
+}
+.provider-keys-add:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.provider-keys-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.provider-keys-list:empty {
+  display: none;
+}
+
+.provider-key-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto 32px;
+  grid-template-areas:
+    "enable label use remove"
+    "value value value value";
+  gap: 6px 8px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-input);
+}
+.provider-key-row.is-disabled {
+  opacity: .55;
+}
+
+.provider-key-enable {
+  grid-area: enable;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 32px;
+  cursor: pointer;
+}
+.provider-key-enable input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.provider-key-label,
+.provider-key-value {
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 600;
+}
+.provider-key-label {
+  grid-area: label;
+}
+.provider-key-value {
+  grid-area: value;
+}
+.provider-key-label:focus,
+.provider-key-value:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
+}
+
+.provider-key-use {
+  grid-area: use;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.provider-key-use:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.provider-key-remove {
+  grid-area: remove;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.provider-key-remove:hover {
+  border-color: rgba(239, 68, 68, .4);
+  color: #dc2626;
+}
+
+.provider-keys-empty {
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+/* ═══════ 供应商余额（卡片内一行）═══════ */
+.provider-balance-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  /* 与上方模型区的间距由 .provider-body 的 gap 统一给，这里不再叠一层 */
+  margin-top: 0;
+  min-height: 32px;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+.provider-balance-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+}
+.provider-balance-age {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.provider-balance-row.is-ok .provider-balance-text {
+  color: var(--success);
+}
+.provider-balance-row.is-error .provider-balance-text {
+  color: #dc2626;
+}
+.provider-balance-row.is-unsupported .provider-balance-text {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.provider-balance-query {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease;
+}
+.provider-balance-query:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.provider-balance-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease;
+}
+.provider-balance-refresh:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.provider-balance-spinner {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: provider-balance-spin .7s linear infinite;
+}
+@keyframes provider-balance-spin {
+  to { transform: rotate(360deg); }
+}
+
+[data-scheme="dark"] .provider-balance-row.is-error .provider-balance-text {
+  color: #f87171;
+}

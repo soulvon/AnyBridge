@@ -43,32 +43,31 @@ function warn(name, detail = '') {
 }
 function section(name) { console.log(`\n■ ${name}`); }
 
-// ─────────────────────────────────────────────────────────────
-// [0] 开头先亮出坑点与核心能力清单 —— 人和 AI 在改代码前就该看到，
-//     而不是等提交被拦下才知道踩了旧坑或重复造了轮子。
-// ─────────────────────────────────────────────────────────────
-{
-  const pfPath = path.join(root, 'docs', 'pitfalls.json');
-  if (fs.existsSync(pfPath)) {
-    const pf = JSON.parse(fs.readFileSync(pfPath, 'utf8'));
-    console.log(`📌 已知坑点 ${pf.pitfalls.length} 条（改动前必读 docs/pitfalls.json）：`);
-    pf.pitfalls.forEach((p, i) => {
-      console.log(`   ${String(i + 1).padStart(2)}. [${p.severity}] ${p.title}`);
-    });
-    console.log('');
-  }
-  const capPath = path.join(root, 'docs', 'capabilities.md');
-  if (fs.existsSync(capPath)) {
-    console.log(`🛡️ 核心能力清单（改动前必查 docs/capabilities.md，严禁重复造轮子）：`);
-    const capContent = fs.readFileSync(capPath, 'utf8');
-    const matches = capContent.matchAll(/\|\s*\*\*([^*]+)\*\*\s*\|\s*`([^`]+)`/g);
-    let idx = 1;
-    for (const m of matches) {
-      console.log(`   ${String(idx++).padStart(2)}. ${m[1]} → ${m[2]}`);
-    }
-    console.log('');
-  }
-}
+import {
+  printStartupManifest,
+  runPitfallsCheck,
+  runSymmetryChecks,
+} from './lib/key-features/pitfalls-and-symmetry.mjs';
+import {
+  runCommitHygiene,
+  runPathPortability,
+  runPlatformGuards,
+  runTempFileDiscipline,
+} from './lib/key-features/hygiene-and-portability.mjs';
+import {
+  runActionReachability,
+  runDynamicLoadingChecks,
+  runCodebaseStructureChecks,
+  runProviderPresetChecks,
+} from './lib/key-features/ui-guards-and-presets.mjs';
+import {
+  runAgentSpecChecks,
+  runRegressionAssertions,
+} from './lib/key-features/regression-and-agent.mjs';
+
+const ctx = { root, ok, warn, section };
+
+printStartupManifest(ctx);
 
 // ─────────────────────────────────────────────────────────────
 // [1] Rust 编译与单测
@@ -105,685 +104,45 @@ for (const f of fs.readdirSync(scriptsDir).filter(f => f.endsWith('.js'))) {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// [3] 坑点库逐条执行（docs/pitfalls.json —— 沉淀必须能反馈工作流，
-//     而不是躺在文档里；每条坑都带可机器验证的判据）
-// ─────────────────────────────────────────────────────────────
 section('坑点库（docs/pitfalls.json 逐条验证）');
-{
-  const pfPath = path.join(root, 'docs', 'pitfalls.json');
-  if (!fs.existsSync(pfPath)) {
-    ok('坑点库存在', false, 'docs/pitfalls.json 缺失');
-  } else {
-    const pf = JSON.parse(fs.readFileSync(pfPath, 'utf8'));
-    ok(`坑点库已加载（${pf.pitfalls.length} 条）`, true);
-    for (const p of pf.pitfalls) {
-      const c = p.check;
-      if (!c) { ok(`[${p.id}] 有判据`, false); continue; }
-      const file = path.join(root, c.file);
-      if (!fs.existsSync(file)) { ok(`[${p.id}] ${c.file} 存在`, false); continue; }
-      const src = fs.readFileSync(file, 'utf8');
-      let pass = false;
-      if (c.type === 'source_contains') pass = src.includes(c.must_contain);
-      else if (c.type === 'source_not_regex') pass = !new RegExp(c.must_not_match).test(src);
-      ok(`[${p.id}] ${p.title}`, pass, pass ? '' : `判据未满足（${c.type}）`);
-      // 额外的 must_not 判据
-      if (pass && p.check_not) {
-        const n = p.check_not;
-        const nf = path.join(root, n.file);
-        if (fs.existsSync(nf)) {
-          const nsrc = fs.readFileSync(nf, 'utf8');
-          const okNot = !new RegExp(n.must_not_match).test(nsrc);
-          ok(`[${p.id}] 反向判据（不得回退）`, okNot);
-        }
-      }
-      // 行为测试引用：由 test:unit / cargo test 实际执行，这里只防止引用漂移
-      if (p.regression_test) {
-        const [refFile, ...refParts] = p.regression_test.split('::');
-        const refPath = path.join(root, refFile);
-        const refName = refParts.join('::');
-        const refExists = fs.existsSync(refPath);
-        const refSource = refExists ? fs.readFileSync(refPath, 'utf8') : '';
-        ok(`[${p.id}] 行为测试引用未漂移`, refExists && refSource.includes(refName),
-          refExists ? `未找到: ${refName}` : `${refFile} 不存在`);
-      }
-    }
-  }
-}
+runPitfallsCheck(ctx);
 
-// ─────────────────────────────────────────────────────────────
-// [3.5] 对称路径检查（专治「改 A 漏 B」：接入↔还原、apply↔restore）
-// ─────────────────────────────────────────────────────────────
 section('对称路径（接入↔还原 / apply↔restore 必须一致）');
-{
-  // 3.5.1 命令级：成对的 apply_/restore_ 命令异步化状态必须一致
-  const cmds = [];
-  for (const f of fs.readdirSync(path.join(root, 'src-tauri/src/commands'))) {
-    if (!f.endsWith('.rs')) continue;
-    const src = fs.readFileSync(path.join(root, 'src-tauri/src/commands', f), 'utf8');
-    const re = /#\[tauri::command\]\s*(?:pub\s+)?(async\s+)?fn\s+(\w+)/g;
-    let m;
-    while ((m = re.exec(src))) cmds.push({ name: m[2], async: !!m[1] });
-  }
-  const byName = new Map(cmds.map(c => [c.name, c]));
-  const asym = [];
-  for (const c of cmds) {
-    if (!/^(apply|restore)_/.test(c.name)) continue;
-    const paired = c.name.replace(/^(apply|restore)_/, (_, k) => (k === 'apply' ? 'restore_' : 'apply_'));
-    const other = byName.get(paired);
-    if (other && other.async !== c.async) {
-      asym.push(`${c.name}(${c.async ? 'async' : 'sync'}) ↔ ${other.name}(${other.async ? 'async' : 'sync'})`);
-    }
-  }
-  ok('apply/restore 命令对异步化一致', asym.length === 0, asym.join('; '));
+runSymmetryChecks(ctx);
 
-  // 3.5.2 Antigravity 接入与还原共用同一杀进程实现（曾漏改还原路径）
-  const pf = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
-  const killCalls = (pf.match(/Self::kill_antigravity_language_server\(\)/g) || []).length;
-  ok('Antigravity 接入+还原都调用同一 kill 实现', killCalls >= 2, `调用点 ${killCalls} 处（应≥2）`);
-
-  // 3.5.3 Cursor 登录态：接入写 vscdb ↔ 还原必须读同一份账本。
-  // 事故 2026-11-01：还原侧读 cursor-state-backup.json，全仓库无人写它，
-  // 于是「还原成功」但账号仍停在 cursor@ai.com 的接管态，用户真账号被冲掉。
-  const cursorAccount = fs.readFileSync(path.join(root, 'cursor-core/src/local_app/account.rs'), 'utf8');
-  const cursorAuthSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/cursor_auth.rs'), 'utf8');
-  const cursorLocalApp = fs.readFileSync(path.join(root, 'cursor-core/src/local_app/mod.rs'), 'utf8');
-  const LEDGER_FILE = 'cursor-auth-backup.json';
-  ok('Cursor 账号账本两侧同名', cursorAccount.includes(LEDGER_FILE) && cursorAuthSrc.includes(LEDGER_FILE));
-  ok('Cursor 关闭接管时调用账号还原', cursorLocalApp.includes('account::restore_if_backed_up'));
-  const ledgerWriteAt = cursorAccount.indexOf('write_ledger(ledger');
-  const accountWriteAt = cursorAccount.indexOf('INSERT OR REPLACE INTO ItemTable');
-  ok(
-    'Cursor 注入覆盖前先落账本',
-    ledgerWriteAt >= 0 && accountWriteAt > ledgerWriteAt,
-    ledgerWriteAt < 0 ? '未找到 write_ledger 调用' : `write_ledger@${ledgerWriteAt} / 首次写库@${accountWriteAt}`
-  );
-  ok(
-    'Cursor 本地账号标识两侧一致',
-    cursorAccount.includes('cursor@ai.com') && cursorAuthSrc.includes('cursor@ai.com')
-  );
-  const ideConfigSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/ide_config.rs'), 'utf8');
-  ok(
-    'Cursor proxySupport 不得写回 on（必须 override）',
-    !/PROXY_SUPPORT_KEY\.into\(\),\s*Value::String\("on"/.test(ideConfigSrc)
-  );
-}
-
-// ─────────────────────────────────────────────────────────────
-// [3.6] 临时文件纪律：只允许放 tmp/，根目录与源码目录不允许
-// ─────────────────────────────────────────────────────────────
 section('临时文件纪律（只允许 tmp/）');
-{
-  // 临时/杂项文件的判定（与 tmp/migrate-rest.mjs 保持一致）：
-  // 常见前缀（tmp/temp/scratch/test/debug/probe/draft/untitled/new_/old_/check_）
-  // + 临时后缀（.bak/.orig/.old/.swp/.tmp/.rej/~）+ 运行时日志（.log）
-  const TEMP_PREFIX = /^(\.?tmp[-_]|temp[-_]|scratch|test[-_]|debug[-_]|probe|draft|untitled|new_|old_|check_)/i;
-  const TEMP_SUFFIX = /\.(bak|orig|old|swp|tmp|rej)$/i;
-  // 注意排除 tmp/ 目录本身（它是临时文件的唯一合法去处）
-  const isTemp = (name) =>
-    name !== 'tmp' && (TEMP_PREFIX.test(name) || TEMP_SUFFIX.test(name) || /~$/.test(name));
-  const isLog = (name) => /\.log$/i.test(name);
+runTempFileDiscipline(ctx);
 
-  // 脚本/数据型临时文件 → 硬失败（必须进 tmp/）
-  const strays = fs.readdirSync(root).filter(f => isTemp(f) && !isLog(f));
-  ok('根目录无散落临时文件（脚本/数据）', strays.length === 0,
-    strays.length ? `违规: ${strays.join(', ')}（请移入 tmp/）` : '');
-
-  // 运行时日志：自愈式处理——能移就自动迁入 tmp/；被存活进程锁定时
-  // 物理上无法移动（Windows 独占句柄），只提示、不判失败（下次句柄释放后
-  // 检查会自动迁走）。新日志已固定写 tmp/tauri-run.log。
-  const tmpDirPath = path.join(root, 'tmp');
-  const strayLogs = fs.readdirSync(root).filter(isLog);
-  let lockedLogs = [];
-  for (const lf of strayLogs) {
-    try {
-      if (!fs.existsSync(tmpDirPath)) fs.mkdirSync(tmpDirPath);
-      fs.renameSync(path.join(root, lf), path.join(tmpDirPath, lf));
-      console.log(`  ↪ 已自动迁入 tmp/: ${lf}`);
-    } catch {
-      lockedLogs.push(lf);
-    }
-  }
-  if (lockedLogs.length) {
-    console.log(`  ℹ 被进程独占锁定，暂无法移动（下次检查自动重试）: ${lockedLogs.join(', ')}`);
-  }
-  // 判定标准：可移动的日志已全部迁入 tmp/（能移的都移了即通过；
-  // 被锁文件属物理限制，不制造永久红灯）
-  ok('运行日志已归入 tmp/（可移动部分）', true);
-
-  // 源码目录同样不允许
-  for (const d of ['src-tauri/src', 'ui', 'ui-src', 'scripts']) {
-    const full = path.join(root, d);
-    if (!fs.existsSync(full)) continue;
-    const bad = [];
-    const scan = (dir, depth) => {
-      if (depth > 4) return;
-      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (e.name.startsWith('.tmp_')) bad.push(path.join(dir, e.name).replace(root + path.sep, ''));
-        else if (e.isDirectory()) scan(path.join(dir, e.name), depth + 1);
-      }
-    };
-    scan(full, 0);
-    ok(`${d}/ 无散落临时文件`, bad.length === 0, bad.join(', '));
-  }
-
-  // tmp/ 目录存在（临时文件的唯一去处）
-  // CI 干净检出没有 tmp/（被 gitignore），自动创建自愈，而不是让三平台门控必挂
-  const tmpDir = path.join(root, 'tmp');
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir, { recursive: true });
-    console.log('  ℹ tmp/ 不存在（CI 干净检出），已自动创建');
-  }
-  ok('tmp/ 目录存在', fs.existsSync(tmpDir));
-}
-
-// ─────────────────────────────────────────────────────────────
-// [3.7] 提交卫生：不该入库的东西必须被 gitignore 挡住
-// ─────────────────────────────────────────────────────────────
 section('提交卫生（不该提交的不提交）');
-{
-  // 3.7.1 关键忽略规则必须存在且真实生效（防规则被误删/失效）
-  const mustIgnore = [
-    ['tmp/', '临时文件目录'],
-    ['.codebuddy/', 'AI 工具配置目录'],
-    ['src-tauri/target/', 'Rust 构建产物'],
-    ['node_modules/', '依赖目录'],
-  ];
-  for (const [pat, label] of mustIgnore) {
-    let ignored = false;
-    try {
-      execSync(`git check-ignore -q "${pat}__probe__"`, { cwd: root, stdio: 'pipe' });
-      ignored = true;
-    } catch { ignored = false; }
-    ok(`${pat} 被 gitignore 覆盖（${label}）`, ignored, ignored ? '' : '规则缺失或失效');
-  }
+runCommitHygiene(ctx);
 
-  // 文件级规则不能用 __probe__ 后缀探测，单独校验
-  {
-    let ignored = false;
-    try {
-      execSync('git check-ignore -q AGENTS.md', { cwd: root, stdio: 'pipe' });
-      ignored = true;
-    } catch { ignored = false; }
-    ok('AGENTS.md 被 gitignore 覆盖（AI 操作手册不入库）', ignored, ignored ? '' : '规则缺失或失效');
-  }
-
-  // 3.7.2 已跟踪文件里不得有 日志/临时/敏感/构建产物
-  let tracked = '';
-  try {
-    tracked = execSync('git ls-files', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-  } catch {}
-  const files = tracked.split('\n').filter(Boolean);
-  const banned = files.filter(f => {
-    if (/^(tmp\/|node_modules\/|src-tauri\/target\/|cursor-core\/target\/)/.test(f)) return true;
-    if (/\.(log|bak|orig|swp|rej)$/i.test(f)) return true;
-    if (/^\.tmp_|^tmp_/.test(path.basename(f))) return true;
-    // 敏感文件（.env.example / .gitkeep 属正当模板，放行）
-    if (/(^|\/)\.env$/.test(f)) return true;
-    if (/\.(pem|key|pfx|p12)$/i.test(f) && !/\.gitkeep$/.test(f)) return true;
-    return false;
-  });
-  ok('已跟踪文件无日志/临时/敏感/构建产物', banned.length === 0,
-    banned.slice(0, 6).join(', ') + (banned.length > 6 ? ` …共 ${banned.length} 个` : ''));
-
-  // 3.7.3 暂存区（pre-commit 时）不得含不该提交的文件
-  let staged = '';
-  try {
-    staged = execSync('git diff --cached --name-only', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-  } catch {}
-  const stagedBad = staged.split('\n').filter(Boolean).filter(f => {
-    if (/^(tmp\/|node_modules\/|src-tauri\/target\/)/.test(f)) return true;
-    if (/\.(log|bak|orig|swp|rej)$/i.test(f)) return true;
-    if (/^\.tmp_|^tmp_/.test(path.basename(f))) return true;
-    if (/(^|\/)\.env$/.test(f)) return true;
-    if (/\.(pem|key|pfx|p12)$/i.test(f)) return true;
-    return false;
-  });
-  ok('暂存区无非预期文件', stagedBad.length === 0, stagedBad.join(', '));
-
-  // 3.7.4 敏感值扫一遍暂存区的源码改动（防止把 key/token 提交上去）
-  const secretRe = /(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})/;
-  let leaked = [];
-  if (staged.trim()) {
-    for (const f of staged.split('\n').filter(Boolean)) {
-      if (!/\.(rs|js|mjs|ts|json|toml|html|md)$/i.test(f)) continue;
-      try {
-        const content = execSync(`git show :${JSON.stringify(f)}`, { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-        if (secretRe.test(content)) leaked.push(f);
-      } catch {}
-    }
-  }
-  ok('暂存内容无明文密钥', leaked.length === 0, leaked.join(', '));
-
-  // 3.7.5 文档纪律：只允许「说明文档」入库，设计/调研/规划文档不入库
-  //
-  // 区分标准：
-  //   ✅ 说明文档：给使用者/贡献者看的（README、CHANGELOG、
-  //      架构/开发/发布/排障/WORKFLOW），以及**运行时资源**（Cursor 提示词
-  //      模板、sidecar 与插件自带的 prompt/deploy 说明——它们是程序的一部分）
-  //   ⚠ AGENTS.md 不在此列：它是本机 AI 操作手册，含实现约束细节，已在 gitignore
-  //   ❌ 设计文档：开发过程产物（调研报告、方案设计、规划、逆向分析），
-  //      随迭代快速过期，入库只会变成噪音和泄密风险
-  const DOC_ALLOW = [
-    /^README(_en)?\.md$/i,
-    /^CHANGELOG\.md$/i,
-    // 对内技术变更记录：与 CHANGELOG.md 配套（对外文案 / 对内根因），
-    // 长期随版本维护而不是一次性调研，属说明文档
-    /^docs\/CHANGELOG_INTERNAL\.md$/i,
-    /^docs\/capabilities\.md$/i,
-    /^docs\/(ARCHITECTURE|DEVELOPMENT|RELEASE|MACOS_TROUBLESHOOTING|WORKFLOW)(_zh)?\.md$/i,
-    /^docs\/subsystems\/[a-z0-9-]+\.md$/i,
-    /(^|\/)README\.md$/i,
-    /^\.github\/pull_request_template\.md$/i,
-    // 对外隐私政策：随应用形态长期维护（包管理器审核要求公开），属说明文档
-    /^PRIVACY\.md$/i,
-    /^cursor-core\/prompt\//,        // 运行时提示词模板（程序资源）
-    /^cursor-core\/UPSTREAM\.md$/i,  // 上游来源说明
-    /^sidecar\/prompts\//,           // 运行时 prompt
-    /^src-tauri\/resources\//,       // 插件自带说明与运行时 prompt
-  ];
-  const trackedMd = files.filter(f => /\.md$/i.test(f));
-  const docViolations = trackedMd.filter(f => !DOC_ALLOW.some(re => re.test(f)));
-  ok('已跟踪文档均为说明文档（无设计/调研文档）', docViolations.length === 0,
-    docViolations.length ? `不应入库：${docViolations.join(', ')}` : '');
-
-  // 暂存区同样检查（pre-commit 时拦住新加的设计文档）。
-  // 只看新增/修改（--diff-filter=AM）：删除设计文档恰恰是正确操作，不该报错。
-  let stagedAddMod = '';
-  try {
-    stagedAddMod = execSync('git diff --cached --name-only --diff-filter=AM', {
-      cwd: root, encoding: 'utf8', stdio: 'pipe',
-    });
-  } catch {}
-  const stagedMd = stagedAddMod.split('\n').filter(Boolean).filter(f => /\.md$/i.test(f));
-  const stagedDocBad = stagedMd.filter(f => !DOC_ALLOW.some(re => re.test(f)));
-  ok('暂存区无新增设计/调研文档', stagedDocBad.length === 0, stagedDocBad.join(', '));
-
-  // 3.7.6 经典陷阱：.gitignore 对**已跟踪**文件无效。
-  // 先提交、后加忽略规则的文件仍会留在库里（实测曾有 5 个探针/测试脚本）。
-  // 这条断言保证「以为忽略了其实还在」的情况不再积累。
-  let ignoredButTracked = '';
-  try {
-    ignoredButTracked = execSync('git ls-files -i -c --exclude-standard', {
-      cwd: root, encoding: 'utf8', stdio: 'pipe',
-    });
-  } catch {}
-  const ibt = ignoredButTracked.split('\n').filter(Boolean);
-  ok('无「已跟踪却匹配 gitignore」的文件', ibt.length === 0,
-    ibt.length ? `${ibt.join(', ')} → 需 git rm --cached 或加 ! 例外` : '');
-}
-
-// ─────────────────────────────────────────────────────────────
-// [3.8] 路径可移植性（多平台兼容 / 不同用户名 / 不同安装位置）
-//      不写死盘符、不写死用户目录、不写死安装路径。
-//      参照 magpie：所有路径来自 dirs/appdir 抽象 + PathBuf::join。
-// ─────────────────────────────────────────────────────────────
 section('路径可移植性（禁止硬编码盘符/用户目录/安装路径）');
-{
-  // 硬编码模式：盘符绝对路径（C:\Program ...）、Windows 用户目录、Unix 用户目录
-  const HARDCODED = /([A-Za-z]:[\\/](?:Program|Users|Windows|ProgramData))|(C:[\\/]Users[\\/][A-Za-z0-9._-]+)|(\/[Uu]sers\/[A-Za-z0-9._-]+)|(\/home\/[A-Za-z0-9._-]+)/;
-  const isComment = (line) => /^\s*(\/\/|\/\*|\*|#|<!--|""")/.test(line);
+runPathPortability(ctx);
 
-  const scanFiles = (dirs, exts) => {
-    const out = [];
-    for (const d of dirs) {
-      const full = path.join(root, d);
-      if (!fs.existsSync(full)) continue;
-      const walk = (cur, depth) => {
-        if (depth > 5) return;
-        for (const e of fs.readdirSync(cur, { withFileTypes: true })) {
-          if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
-          const p = path.join(cur, e.name);
-          if (e.isDirectory()) walk(p, depth + 1);
-          else if (exts.some(x => e.name.endsWith(x))) out.push(p);
-        }
-      };
-      walk(full, 0);
-    }
-    return out;
-  };
-
-  const violations = [];
-  for (const file of scanFiles(['src-tauri/src', 'ui/assets/scripts', 'ui-src'], ['.rs', '.js', '.mjs', '.html'])) {
-    const rel = file.replace(root + path.sep, '').split(path.sep).join('/');
-    const lines = fs.readFileSync(file, 'utf8').split('\n');
-    // Rust 文件：tests 模块之后全部豁免（测试样本路径是合法输入）
-    let testStart = -1;
-    if (file.endsWith('.rs')) {
-      const idx = lines.findIndex(l => /^\s*(#\[cfg\(test\)\]|mod tests)/.test(l));
-      if (idx >= 0) testStart = idx;
-    }
-    lines.forEach((line, i) => {
-      if (isComment(line)) return;
-      if (testStart >= 0 && i > testStart) return;
-      // 豁免：C:\Windows 是 OS 固定系统目录（SystemRoot 环境变量缺失时的
-      // 最后兜底），不属于「用户/安装路径硬编码」。
-      // 豁免：先剥掉整段 URL —— `/users/me/balance`、`/home/xxx` 这类片段可能是
-      // 远端接口路径（如 Kimi 的 /v1/users/me/balance），不是本机文件系统路径。
-      const probe = line
-        .replace(/C:\\+Windows/gi, '')
-        .replace(/https?:\/\/\S+/gi, '');
-      if (!HARDCODED.test(probe)) return;
-      violations.push(`${rel}:${i + 1}`);
-    });
-  }
-  ok('生产代码无硬编码盘符/用户目录', violations.length === 0,
-    violations.slice(0, 6).join(', ') + (violations.length > 6 ? ` …共 ${violations.length} 处` : ''));
-
-  // 路径来源必须走 dirs / PathBuf::join（抽查关键目录解析函数是否用了 dirs）
-  const platSrc = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
-  ok('平台配置目录解析使用 dirs 抽象', /dirs::(home_dir|data_dir|data_local_dir|config_dir)/.test(platSrc));
-}
-
-// ─────────────────────────────────────────────────────────────
-// [3.9] 平台守卫：Windows 专属 API 必须处于 cfg(windows) 上下文
-//      （将来加 macOS/Linux 目标时，未守卫的代码会直接编译失败）
-// ─────────────────────────────────────────────────────────────
 section('平台守卫（Windows API 需 cfg 守卫）');
-{
-  const WIN_API = /windows_sys::|creation_flags\(|CommandExt/;
-  const GUARD = /cfg\(\s*(windows|target_os\s*=\s*"windows")\s*\)/;
-  const unguarded = [];
-  let apiLines = 0;
+runPlatformGuards(ctx);
 
-  const walk = (dir, depth) => {
-    if (depth > 5) return;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) { walk(p, depth + 1); continue; }
-      if (!e.name.endsWith('.rs')) continue;
-      const lines = fs.readFileSync(p, 'utf8').split('\n');
-      lines.forEach((line, i) => {
-        if (!WIN_API.test(line) || isCommentLine(line)) return;
-        apiLines++;
-        // 向上 80 行内需有 cfg 守卫（覆盖函数级 / 块级 cfg）
-        const ctx = lines.slice(Math.max(0, i - 80), i + 2).join('\n');
-        if (!GUARD.test(ctx)) {
-          unguarded.push(`${p.replace(root + path.sep, '').split(path.sep).join('/')}:${i + 1}`);
-        }
-      });
-    }
-  };
-  const isCommentLine = (l) => /^\s*(\/\/|\/\*|\*)/.test(l);
-  walk(path.join(root, 'src-tauri/src'), 0);
-
-  // 白名单：UAC / 证书子系统整体是 Windows 语义（certutil + registry + ShellExecuteExW），
-  // 历史代码未做函数级 cfg。多平台化时需统一重构（提权在 mac 是 osascript、linux 是 pkexec）。
-  // 新文件一律不得进白名单——新增平台专属代码必须 cfg 守卫。
-  const PLATFORM_WHITELIST = new Set(['src-tauri/src/commands/cert_install.rs']);
-  const strict = unguarded.filter(x => !PLATFORM_WHITELIST.has(x.split(':')[0]));
-  const whitelisted = unguarded.filter(x => PLATFORM_WHITELIST.has(x.split(':')[0]));
-  if (whitelisted.length) {
-    console.log(`  ℹ 白名单（UAC/证书子系统，待多平台化）：${whitelisted.length} 处`);
-  }
-  ok(`Windows API 调用（${apiLines} 处）均在 cfg 守卫内（白名单除外）`, strict.length === 0,
-    strict.slice(0, 6).join(', ') + (strict.length > 6 ? ` …共 ${strict.length} 处` : ''));
-}
-
-// ─────────────────────────────────────────────────────────────
-// [3.9b] data-action 处理器可达性（点击必须有反馈）
-//   背景：main.js 是 ES module，顶层 function 不会挂到 window；
-//   data-action 通过 window[name] 解析 → 漏导出 = 点击静默失效
-//   （实测事故：Codex 页「更新」按钮点了没反应）。
-//   规则：新增 data-action 必须有可达 handler；已知未实现的进白名单，
-//   且白名单只减不增（修好后必须从清单移除，否则本检查失败）。
-// ─────────────────────────────────────────────────────────────
 section('data-action 处理器可达性（点击必须有反馈）');
-{
-  const ACTION_RE = /data-action="([A-Za-z0-9_]+)"/g;
-  const actionNames = new Set();
-  const scan = (dir, exts, cb) => {
-    if (!fs.existsSync(dir)) return;
-    const walk = (cur, depth) => {
-      if (depth > 6) return;
-      for (const e of fs.readdirSync(cur, { withFileTypes: true })) {
-        if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
-        const p = path.join(cur, e.name);
-        if (e.isDirectory()) walk(p, depth + 1);
-        else if (exts.some((x) => e.name.endsWith(x))) cb(fs.readFileSync(p, 'utf8'));
-      }
-    };
-    walk(dir, 0);
-  };
-  scan(path.join(root, 'ui-src'), ['.html'], (s) => {
-    for (const m of s.matchAll(ACTION_RE)) actionNames.add(m[1]);
-  });
-  scan(path.join(root, 'ui/assets/scripts'), ['.js'], (s) => {
-    // 跳过注释行：05-actions.js 的文档注释里有 data-action="fnName" 示例
-    const codeOnly = s
-      .split('\n')
-      .filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line))
-      .join('\n');
-    for (const m of codeOnly.matchAll(ACTION_RE)) actionNames.add(m[1]);
-  });
+runActionReachability(ctx);
 
-  const reachable = new Set();
-  scan(path.join(root, 'ui/assets/scripts'), ['.js'], (s) => {
-    for (const m of s.matchAll(/globalThis\.([A-Za-z0-9_]+)\s*=/g)) reachable.add(m[1]);
-    for (const m of s.matchAll(/\bwindow\.([A-Za-z0-9_]+)\s*=/g)) reachable.add(m[1]);
-    for (const m of s.matchAll(/\bg\.([A-Za-z0-9_]+)\s*=/g)) reachable.add(m[1]);
-    for (const m of s.matchAll(/Object\.assign\(\s*globalThis\s*,\s*\{([^}]+)\}/g)) {
-      for (const part of m[1].split(',')) {
-        const name = part.split(':')[0].trim();
-        if (/^[A-Za-z0-9_]+$/.test(name)) reachable.add(name);
-      }
-    }
-  });
-
-  // 已知未实现（Pi / Hermes / DeepSeek Harness 的模型 CRUD 从未实现；
-  // CodeBuddy 系的导入导出 / JSON 编辑器同理）。修好一个就删一个。
-  const KNOWN_MISSING = new Set([
-    // JSON 编辑器 / 导入导出 / 排序菜单：CodeBuddy 系与 Pi 系的这批按钮
-    // 目前只有 UI，功能待实现（点击会明确提示「尚未实现」）。
-    'applyCbJson', 'applyDshJson', 'applyHermesJson', 'applyPiJson', 'applyWbJson',
-    'chooseDshAddSortMode', 'chooseHermesAddSortMode',
-    'exportCbModels', 'exportDshModels', 'exportHermesModels', 'exportPiModels', 'exportWbModels',
-    'formatCbJson', 'formatDshJson', 'formatHermesJson', 'formatPiJson', 'formatWbJson', 'formatZcJson',
-    'importCbModels', 'importDshModels', 'importHermesModels', 'importPiModels', 'importWbModels',
-    'toggleCbJsonEditor', 'toggleDshAddSort', 'toggleDshJsonEditor',
-    'toggleHermesAddSort', 'toggleHermesJsonEditor', 'togglePiJsonEditor', 'toggleWbJsonEditor',
-  ]);
-
-  const missing = [...actionNames].filter((n) => !reachable.has(n));
-  const unexpected = missing.filter((n) => !KNOWN_MISSING.has(n)).sort();
-  const stale = [...KNOWN_MISSING].filter((n) => !missing.includes(n)).sort();
-
-  ok(`data-action 共 ${actionNames.size} 个，均有可达 handler 或已登记未实现`,
-    unexpected.length === 0,
-    unexpected.length ? `新增未实现：${unexpected.slice(0, 6).join(', ')}` : '');
-  ok('未实现白名单无过期条目（修好一个就要删一个）',
-    stale.length === 0,
-    stale.length ? `${stale.slice(0, 6).join(', ')} → 已实现，请从 KNOWN_MISSING 移除` : '');
-  if (missing.length) {
-    console.log(`  ℹ 已知未实现（点击会提示「尚未实现」）：${missing.length} 个`);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// [3.9c] 加载态必须动态（静态「加载中…」= 用户无法区分卡死）
-//   规则：禁止 textContent = '…中…' 这类静态加载文案，必须用
-//   loadingHtml() / setLoading()（带 spinner）。见 AGENTS.md 4.1。
-// ─────────────────────────────────────────────────────────────
 section('加载态动态化（禁止静态 loading 文案）');
 {
-  const LOADING_WORDS = /(加载|更新|保存|检测|安装|处理|刷新|同步|导入|导出|写入|探测|切换|体检|执行)/;
-  const STATIC_ASSIGN = /(textContent|innerText)\s*=\s*(['"`])([^'"`]*)\2/;
-  const violations = [];
-  const walk = (dir, depth) => {
-    if (depth > 6) return;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        walk(p, depth + 1);
-        continue;
-      }
-      if (!e.name.endsWith('.js')) continue;
-      const lines = fs.readFileSync(p, 'utf8').split('\n');
-      lines.forEach((l, i) => {
-        if (/^\s*(\/\/|\*|\/\*)/.test(l)) return;
-        const m = l.match(STATIC_ASSIGN);
-        if (!m) return;
-        const text = m[3];
-        if (!LOADING_WORDS.test(text)) return;
-        // 「…中」才是 loading 语义；「已保存」「保存修改」「检查更新」等是常态文案
-        if (!/中\s*(…|\.\.\.)?['"`]?\s*$/.test(text)) return;
-        violations.push(`${p.replace(root + path.sep, '').split(path.sep).join('/')}:${i + 1}  ${text.slice(0, 40)}`);
-      });
-    }
-  };
-  walk(path.join(root, 'ui/assets/scripts'), 0);
-
-  ok('无静态 loading 文案（一律用 loadingHtml / setLoading）',
-    violations.length === 0,
-    violations.slice(0, 6).join(' | '));
-
-  // 单一 spinner 源：loadingHtml 已自带 spinner，任何"自造第二个圈"的类名
-  // （btn-spinner 等）都会叠成双加载圈。实测事故：扩展中心 CPA「更新中…」。
-  const handmade = [];
-  const walkSpinner = (dir, depth) => {
-    if (depth > 6) return;
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (['node_modules', 'target', '.git', 'tmp'].includes(e.name)) continue;
-      const p = path.join(dir, e.name);
-      if (e.isDirectory()) { walkSpinner(p, depth + 1); continue; }
-      if (!e.name.endsWith('.js')) continue;
-      if (/btn-spinner/.test(fs.readFileSync(p, 'utf8'))) {
-        handmade.push(p.replace(root + path.sep, '').split(path.sep).join('/'));
-      }
-    }
-  };
-  walkSpinner(path.join(root, 'ui/assets/scripts'), 0);
+  const { handmade, feedbackOk, spinnerCssOk } = runDynamicLoadingChecks(ctx);
   ok('spinner 只有一套实现（禁止自造 btn-spinner 叠加成双圈）',
     handmade.length === 0,
     handmade.slice(0, 6).join(' | '));
-
-  // 基础设施必须在位（防止有人删掉 spinner 实现）
-  const fb = fs.readFileSync(path.join(root, 'ui/assets/scripts/ui/feedback.js'), 'utf8');
-  ok('loadingHtml / setLoading 已提供且挂到 globalThis',
-    /function loadingHtml/.test(fb) && /g\.loadingHtml\s*=/.test(fb) && /g\.setLoading\s*=/.test(fb));
-  const css = fs.readFileSync(path.join(root, 'ui/assets/styles/00-foundation.css'), 'utf8');
-  ok('spinner 动画样式存在', /\.ab-spinner\s*\{/.test(css) && /@keyframes ab-spin/.test(css));
+  ok('loadingHtml / setLoading 已提供且挂到 globalThis', feedbackOk);
+  ok('spinner 动画样式存在', spinnerCssOk);
 }
 
-// ─────────────────────────────────────────────────────────────
-// [3.10] Agent 声明表（社区扩展入口的完整性）
-//   新增 agent = 一个 spec 条目；这里强制每条声明字段完整、
-//   id 唯一、与既有 Platform 对齐（Rust 侧 registry_is_valid 单测兜底语义）
-// ─────────────────────────────────────────────────────────────
 section('Agent 声明表（扩展入口）');
-{
-  const specPath = path.join(root, 'src-tauri/src/commands/agent_spec.rs');
-  ok('AgentSpec 声明模块存在', fs.existsSync(specPath));
-  if (fs.existsSync(specPath)) {
-    const src = fs.readFileSync(specPath, 'utf8');
-    ok('声明表 AGENTS 存在', /pub static AGENTS: &\[AgentSpec\]/.test(src));
+runAgentSpecChecks(ctx);
 
-    const ids = [...src.matchAll(/\n\s+id: "([a-z0-9-]+)"/g)].map(m => m[1]);
-    const uniq = new Set(ids);
-    ok('声明 id 唯一', ids.length === uniq.size,
-      ids.length !== uniq.size ? '存在重复 id' : '');
-    ok('内置平台声明齐全（≥13）', ids.length >= 13, `实际 ${ids.length}`);
-
-    // 每条声明必须有 family / config_dir / config_file / api_format
-    const blocks = src.split('AgentSpec {').slice(1).filter(b => /\n\s+id: "/.test(b));
-    const incomplete = blocks.filter(
-      b => !/family: Family::/.test(b) || !/config_dir: PathSource::/.test(b) || !/config_file: FileSource::/.test(b) || !/api_format: "/.test(b)
-    );
-    ok('每条声明字段完整（family/config_dir/config_file/api_format）', incomplete.length === 0,
-      incomplete.length ? `${incomplete.length} 条不完整` : '');
-
-    // 新增 agent 的脚手架必须存在（降低社区 PR 门槛）
-    ok('扩展脚手架 scripts/new-agent.mjs 存在', fs.existsSync(path.join(root, 'scripts/new-agent.mjs')));
-  }
-}
-
-// ─────────────────────────────────────────────────────────────
-// [4] 关键判据回归（出过事故的点，源码级断言）
-// ─────────────────────────────────────────────────────────────
 section('关键判据（源码级回归断言）');
-
-// 3.1 workbench 损坏判据必须是结构完整性（不能用体积阈值——Devin 原厂仅 1.7KB）
-{
-  const s = fs.readFileSync(path.join(root, 'src-tauri/src/commands/app_localization.rs'), 'utf8');
-  ok('损坏判据用 is_valid_workbench（结构）而非体积阈值', s.includes('fn is_valid_workbench') && !/MIN_VALID_WORKBENCH_LEN:\s*usize\s*=\s*\d{3,}/.test(s));
-  ok('apply 前快照 + 写后校验存在', s.includes('html_snapshot_path') && s.includes('写后校验'));
-  ok('语言包三条件判定（目录+废弃标记+注册表）', s.includes('条件 2：不在 .obsolete') && s.includes('条件 3：languagepacks.json'));
-  ok('Windsurf/Devin 注入带 CSP nonce', s.includes('extract_csp_nonce') && s.includes('nonce='));
-  ok('keeper 不重入死锁（apply_inner）', s.includes('fn apply_inner') && s.includes('apply_inner(platform'));
-}
-
-// 3.2 BYOK 剥离保留汉化块（strip_byok_block 单测锁过，这里查源码仍存在）
-{
-  const s = fs.readFileSync(path.join(root, 'src-tauri/src/commands/workbench_inject.rs'), 'utf8');
-  ok('BYOK 剥离保留汉化块的测试仍在', s.includes('汉化块必须保留'));
-  ok('BYOK 还原是剥离式而非整体覆盖', s.includes('fn strip_byok_block'));
-}
-
-// 3.3 Antigravity asar 补丁的幂等优化仍在
-{
-  const s = fs.readFileSync(path.join(root, 'src-tauri/src/commands/platforms.rs'), 'utf8');
-  ok('BYOK asar 补丁轻量预检（幂等跳过）', s.includes('轻量预检'));
-  ok('汉化 asar 补丁构造→比对→按需写回', fs.readFileSync(path.join(root, 'src-tauri/src/commands/antigravity_localization.rs'), 'utf8').includes('if original_code == new_code'));
-}
-
-// 3.4 Codex Desktop 注入前置（issue #38）
-//   事故形态：代理服务没起来就直接注入 → 先 kill 再失败，用户窗口被白重启。
-//   顺序是本条判据的核心，源码里注释写再多也挡不住下次改动把它挪回去。
-{
-  const s = fs.readFileSync(path.join(root, 'src-tauri/src/commands/codex_desktop.rs'), 'utf8');
-  const implAt = s.indexOf('async fn restart_codex_desktop_impl');
-  const guardAt = implAt >= 0 ? s.indexOf('ensure_injection_backend(', implAt) : -1;
-  const killAt = implAt >= 0 ? s.indexOf('kill_codex()', implAt) : -1;
-  ok('Codex 切换：代理就绪检查先于 kill 客户端',
-    implAt >= 0 && guardAt > implAt && killAt > implAt && guardAt < killAt,
-    `impl=${implAt} guard=${guardAt} kill=${killAt}`);
-
-  const startAt = s.indexOf('pub async fn start_codex_with_cdp');
-  const startGuard = startAt >= 0 ? s.indexOf('ensure_injection_backend(', startAt) : -1;
-  ok('Codex 手动启动：同样走代理就绪检查', startGuard > startAt);
-
-  // 双回环地址探测：失败原因必须逐条保留。只留最后一个会把 IPv4 真因盖掉，
-  // 排障被误导成 IPv6 问题（issue #38 现场就栽在这行）。
-  ok('本地 HTTP 探测保留全部地址的失败原因',
-    s.includes('fn connect_error') && s.includes('errors.push') && !/last_err\s*=/.test(s));
-
-  // 前端展示契约：主句（可整句翻译）与详情分离，详情只进日志
-  const ui = fs.readFileSync(path.join(root, 'ui/assets/scripts/55-platforms.js'), 'utf8');
-  ok('切换失败只把主句上屏，详情进日志',
-    ui.includes('function messageHeadline') && ui.includes('function messageDetail') &&
-    ui.includes('function switchFlowErrorLog'));
-}
-
-// 3.4.1 Codex CDP 双栈与目标身份（新版客户端把 CDP 绑在 ::1）
-//   删掉 IPv6 分支 → 新版 Codex 注入直接失效；去掉身份校验 → 注入可能打到别的 Electron 应用。
-{
-  const cdp = fs.readFileSync(path.join(root, 'sidecar/lib/codex-desktop-cdp.js'), 'utf8');
-  ok('CDP 探测同时覆盖 IPv4 与 IPv6 回环',
-    cdp.includes('http://127.0.0.1:${port}/json') && cdp.includes('http://[::1]:${port}/json'));
-  ok('注入前自证目标是 Codex（拒绝注入别人的页面）', cdp.includes('function isCodexDesktopTarget'));
-
-  // 切换确认文案必须克制：不重复供应商名、不暴露实现细节（统一桶 / CDP / 库文件名）
-  const uiSrc = fs.readFileSync(path.join(root, 'ui/assets/scripts/55-platforms.js'), 'utf8');
-  const start = uiSrc.indexOf('function codexApplyConfirmMessage');
-  const end = start >= 0 ? uiSrc.indexOf('\n}', start) : -1;
-  // 只看字符串字面量与模板串，注释里出现实现词（解释为何这么写）不算违规
-  const confirmSrc = start >= 0 && end > start
-    ? uiSrc.slice(start, end).split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
-    : '';
-  ok('Codex 切换确认文案不暴露实现细节',
-    confirmSrc.length > 0 && !/统一桶|CDP 注入|state_5\.sqlite/.test(confirmSrc));
-  ok('Codex 切换确认不再重复供应商名', confirmSrc.length > 0 && !confirmSrc.includes('供应商：'));
-  ok('切换失败详情不丢（错误聚合保留每个地址）',
-    fs.readFileSync(path.join(root, 'src-tauri/src/commands/codex_desktop.rs'), 'utf8')
-      .includes('fn connect_error'));
-}
+runRegressionAssertions(ctx);
 
 // ─────────────────────────────────────────────────────────────
-// [3.8] UI 设计铁律守卫：硬规则拦提交，存量风格债务进提示档
-//   档位依据 2026-10-25 全量试跑数据（先报告后定档，拒绝拍脑袋硬规则）：
-//   uppercase 存量 5 处已清零 → 硬规则；breath/ripple/wave 类动画名 0 处 → 硬规则；
-//   pulse/glow/shimmer、蓝紫点缀色、<12px 字号、border-left → 提示档。
+// [3.8] UI 设计铁律守卫：全部已清零并升格为硬阻断守卫
 // ─────────────────────────────────────────────────────────────
 section('UI 设计铁律守卫（ui-src + ui/assets）');
 {
@@ -811,162 +170,72 @@ section('UI 设计铁律守卫（ui-src + ui/assets）');
     }
     return hits;
   };
-  const total = (hits) => hits.reduce((n, h) => n + h.count, 0);
   const topFiles = (hits) => hits.sort((a, b) => b.count - a.count).slice(0, 3)
     .map(h => `${h.file}(${h.count})`).join(', ');
 
   // [硬] 全大写英文标签（设计铁律 7）
   const upper = scanUi(/text-transform:\s*uppercase/gi);
   ok('全大写英文标签已清零（text-transform: uppercase）', upper.length === 0,
-    upper.map(h => `${h.file}(${h.count})`).join(', '));
+    topFiles(upper));
 
   // [硬] 被禁的廉价动效关键帧（雷达波纹/呼吸微光类，设计铁律 6）
   const bannedAnim = scanUi(/@keyframes\s+[\w-]*(?:breath|ripple|wave|扩散|波纹|呼吸|微光)[\w-]*/gi);
   ok('被禁动效关键帧为零（breath/ripple/wave 类）', bannedAnim.length === 0,
-    bannedAnim.map(h => `${h.file}(${h.count})`).join(', '));
+    topFiles(bannedAnim));
 
-  // [提示] pulse/glow/shimmer 关键帧——多为状态点呼吸，骨架屏 shimmer 豁免（铁律 2 要求骨架屏）
+  // [硬] 非骨架屏廉价装饰动效关键帧（pulse/glow/shimmer，skeleton.css 骨架屏豁免）
   const softAnim = scanUi(/@keyframes\s+[\w-]*(?:pulse|glow|shimmer)[\w-]*/gi)
     .filter(h => !/skeleton/i.test(h.file));
-  if (softAnim.length) warn(`pulse/glow/shimmer 关键帧 ${total(softAnim)} 处待人工定性`,
-    `${topFiles(softAnim)}（状态点呼吸合法，装饰性光效应删）`);
+  ok('非骨架屏廉价动效关键帧为零（pulse/glow/shimmer）', softAnim.length === 0,
+    topFiles(softAnim));
 
-  // [提示] 蓝紫系点缀色（设计铁律 6；供应商图标等功能性用色需人工甄别）
+  // [硬] 蓝紫系 AI 模板色值清零
   const purple = scanUi(/#(?:6366f1|818cf8|4f46e5|4338ca|8b5cf6|7c3aed|6d28d9|a78bfa|c4b5fd|9333ea|7e22ce)\b/gi);
-  if (purple.length) warn(`蓝紫系色值 ${total(purple)} 处`, `${topFiles(purple)}（功能性点缀可保留，禁作整体配色/渐变背景）`);
+  ok('蓝紫系 AI 模板色值已清零', purple.length === 0,
+    topFiles(purple));
 
-  // [提示] 字号 <12px（设计铁律 5；存量约 489 处，清理属全局视觉改版，待拍板）
+  // [硬] 全局字号底线（设计铁律 5：>= 12px）
   const smallFont = scanUi(/font-size:\s*(?:[0-9]|1[01])(?:\.\d+)?px\b/gi);
-  if (smallFont.length) warn(`字号低于 12px ${total(smallFont)} 处`, `${topFiles(smallFont)}（存量债务，新增代码不得再增）`);
+  ok('全局字号均 >= 12px（<12px 已清零）', smallFont.length === 0,
+    topFiles(smallFont));
 
-  // [提示] 左侧彩条装饰（设计铁律 12；CSS 三角形是合法误报）
-  const leftBar = scanUi(/border-left:\s*[1-9]\d*px/g);
-  if (leftBar.length) warn(`border-left 装饰 ${total(leftBar)} 处`, `${topFiles(leftBar)}（含三角形绘制误报，真彩条应换用背景/伪元素）`);
+  // [硬] 左侧彩条装饰（设计铁律 12）
+  const leftBar = scanUi(/border-left(?:-width)?:\s*[1-9]\d*px/g);
+  ok('左侧彩条装饰已清零（border-left）', leftBar.length === 0,
+    topFiles(leftBar));
+
+  // [硬] [hidden] 属性防穿透兜底（devloop 规则 #40：禁止 display:flex !important 穿透 [hidden]）
+  const foundationCss = fs.readFileSync(path.join(root, 'ui/assets/styles/00-foundation.css'), 'utf8');
+  const hiddenGuard = /\[hidden\][\s\S]{0,160}?display:\s*none\s*!important/.test(foundationCss);
+  ok('[hidden] 防穿透规则就位（display: none !important）', hiddenGuard,
+    'ui/assets/styles/00-foundation.css 缺少 [hidden] { display: none !important }');
 
   // [硬] 面板内嵌状态条贴边（设计铁律 3 安全间距；坑点 panel-status-bar-hugs-edge）：
   //   自带 padding 的面板（.model-panel：header 20px / toolbar 16px / custom 20px）里，
   //   同层插入的状态条必须补水平 margin，不得零边距贴面板边框（事故：供应商编辑页拉取结果条左右贴边）
-  const modalsCss = fs.readFileSync(path.join(root, 'ui/assets/styles/40-modals.css'), 'utf8');
+  const readCssWithImports = (relPath) => {
+    const absPath = path.join(root, relPath);
+    const dir = path.dirname(absPath);
+    const raw = fs.readFileSync(absPath, 'utf8');
+    return raw.replace(/@import\s+url\(['"]?([^'")]+)['"]?\)\s*;/g, (_, sub) => {
+      const target = path.resolve(dir, sub);
+      return fs.existsSync(target) ? fs.readFileSync(target, 'utf8') : '';
+    });
+  };
+  const modalsCss = readCssWithImports('ui/assets/styles/40-modals.css');
   const edgeGuard = /\.model-panel\s*>\s*\.provider-editor-op-result\s*\{[^}]*margin:[^;}]*16px/.test(modalsCss);
   ok('面板内嵌状态条贴边已拦截（.model-panel > .provider-editor-op-result 需 16px 水平 margin）', edgeGuard,
-    'ui/assets/styles/40-modals.css 缺少 .model-panel > .provider-editor-op-result 的水平 margin 规则，状态条会贴面板边框');
+    'ui/assets/styles/40-modals.css（及其导入模块）缺少 .model-panel > .provider-editor-op-result 的水平 margin 规则，状态条会贴面板边框');
 }
 
 // ─────────────────────────────────────────────────────────────
 // [3.9] 新增文件行数守卫：只拦新增，存量豁免（防巨型文件持续入场）
 // ─────────────────────────────────────────────────────────────
 section('服务商模板库完整性（预设数据 + 图标一致性）');
-{
-  // 模板是「配一次就不动」的数据，坏了不会自己暴露：
-  // 图标键写错只会静默降级成首字母，地址写错要等用户点下去才报错。
-  // 所以把一致性做进门控，改数据改错立刻红。
-  const presetPath = path.join(root, 'ui/assets/provider-presets.json');
-  const iconPath = path.join(root, 'ui/assets/scripts/33-provider-icons.js');
+runProviderPresetChecks(ctx);
 
-  let presets = null;
-  try {
-    presets = JSON.parse(fs.readFileSync(presetPath, 'utf8'));
-    ok('预设 JSON 可解析', true);
-  } catch (err) {
-    ok('预设 JSON 可解析', false, String(err && err.message ? err.message : err));
-  }
-
-  let icons = {};
-  let iconsLoadable = true;
-  try {
-    const sandbox = {};
-    new Function('globalThis', fs.readFileSync(iconPath, 'utf8'))(sandbox);
-    icons = sandbox.PROVIDER_ICON_SVGS || {};
-  } catch (err) {
-    iconsLoadable = false;
-    ok('图标表可执行', false, String(err && err.message ? err.message : err));
-  }
-  if (iconsLoadable) ok('图标表可执行', true);
-
-  if (presets && Array.isArray(presets.providers)) {
-    const providers = presets.providers;
-    const groupIds = new Set((presets.groups || []).map((g) => g.id));
-    const seenIds = new Set();
-    const problems = [];
-    for (const p of providers) {
-      if (!p.id || !p.name || !p.group || !p.url) {
-        problems.push(`字段缺失 ${p.id || '(无 id)'}`);
-        continue;
-      }
-      if (!/^https?:\/\//.test(p.url)) problems.push(`url 非法 ${p.id}`);
-      if (!['openai', 'anthropic', 'gemini'].includes(p.format)) problems.push(`format 非法 ${p.id}`);
-      if (!groupIds.has(p.group)) problems.push(`分组未声明 ${p.id} → ${p.group}`);
-      if (seenIds.has(p.id)) problems.push(`id 重复 ${p.id}`);
-      seenIds.add(p.id);
-    }
-    ok(`预设条目完整（${providers.length} 家 / ${groupIds.size} 组）`, problems.length === 0, problems.slice(0, 6).join('; '));
-
-    // 最容易出的一条：icon 写了但图标表里没有 → 界面静默退回首字母，没人会发现
-    const missingIcon = providers
-      .filter((p) => p.icon && !icons[p.icon])
-      .map((p) => `${p.id} → ${p.icon}`);
-    ok('预设引用的图标键都存在', missingIcon.length === 0, missingIcon.slice(0, 6).join(', '));
-
-    const unusedIcons = Object.keys(icons).filter((key) => !providers.some((p) => p.icon === key));
-    if (unusedIcons.length > 0) {
-      warn(`图标表有 ${unusedIcons.length} 个未被引用`, unusedIcons.slice(0, 8).join(', '));
-    }
-  } else {
-    ok('预设条目完整', false, 'providers 不是数组');
-  }
-
-  // 转换脚本若回归，会生成 fill=url(#x) 这种无引号属性或残留 ${iconId}
-  const badSvg = Object.entries(icons)
-    .filter(([, svg]) => {
-      if (!svg.startsWith('<svg') || !svg.endsWith('</svg>')) return true;
-      if (svg.includes('${')) return true;
-      if (/(stopColor|strokeWidth|fillRule|clipPath|xmlnsXlink)=/.test(svg)) return true;
-      if (/\s(?:fill|stroke|clip-path|id)=url\(/.test(svg)) return true;
-      return false;
-    })
-    .map(([key]) => key);
-  ok('图标 SVG 格式合法（无 JSX 残留 / 无裸 url 属性）', badSvg.length === 0, badSvg.slice(0, 6).join(', '));
-
-  // 防止有人把 base64 位图塞进来：cherry 的 dmxapi 单图标就 143KB
-  const iconBytes = fs.existsSync(iconPath) ? fs.statSync(iconPath).size : 0;
-  ok(
-    '图标表体积在限度内（< 300KB）',
-    iconBytes > 0 && iconBytes < 300 * 1024,
-    `${(iconBytes / 1024).toFixed(0)}KB`
-  );
-}
-
-section('新增文件行数守卫（>1500 行阻断，>1000 行提示）');
-{
-  let newFiles = '';
-  try {
-    newFiles = execSync('git diff --cached --name-only --diff-filter=A', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-  } catch {}
-  if (!newFiles.trim()) {
-    try {
-      newFiles = execSync('git ls-files -o --exclude-standard', { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-    } catch {}
-  }
-  const codeExt = /\.(js|mjs|cjs|ts|jsx|tsx|rs|py|css|html)$/i;
-  const candidates = newFiles.split('\n').filter(Boolean)
-    .filter(f => codeExt.test(f))
-    .filter(f => !/^tmp\//.test(f))
-    .filter(f => f !== 'ui/index.html');
-  if (candidates.length === 0) {
-    console.log('  ⏭ 暂无新增代码文件，跳过');
-  } else {
-    for (const f of candidates) {
-      const lines = fs.readFileSync(path.join(root, f), 'utf8').split('\n').length;
-      if (lines > 1500) {
-        ok(`新增文件 ${f} 行数（${lines} 行）`, false, '超过 1500 行硬上限：新增文件必须拆分入场');
-      } else if (lines > 1000) {
-        warn(`新增文件 ${f} 行数（${lines} 行）`, '超过 1000 行提示线：建议拆分后再提交');
-      } else {
-        ok(`新增文件 ${f} 行数（${lines} 行）`, true);
-      }
-    }
-  }
-}
+section('代码文件体积与结构守卫（禁止 >800 行巨型文件与无语义 part-NN 分片）');
+runCodebaseStructureChecks(ctx);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1079,6 +348,123 @@ checkClient('Devin', {
   dotDir: '.devin',
   appDataDir: 'Devin',
 });
+}
+
+if (runFast) {
+  section('Sidecar ESM 导入导出完整性');
+  {
+    const sidecarDir = path.join(root, 'sidecar');
+    const jsFiles = [];
+    const walkJs = (d) => {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        if (e.name === 'node_modules' || e.name === 'build' || e.name.startsWith('.')) continue;
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walkJs(p);
+        else if (e.name.endsWith('.js')) jsFiles.push(p);
+      }
+    };
+    walkJs(sidecarDir);
+    const stripComments = (s) =>
+      s.replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const getExports = (src) => {
+      const cleaned = stripComments(src);
+      const names = new Set();
+      const reexportAll = [];
+      for (const m of cleaned.matchAll(/^\s*export\s+(?:async\s+)?(?:function\*?|class|const|let|var)\s+([A-Za-z_$][A-Za-z0-9_$]*)/gm)) {
+        names.add(m[1]);
+      }
+      for (const m of cleaned.matchAll(/^\s*export\s*\{([^}]*)\}(?:\s*from\s*['"]([^'"]+)['"])?/gm)) {
+        for (const part of m[1].split(',')) {
+          const s = part.trim();
+          if (!s) continue;
+          const asMatch = s.match(/^([A-Za-z_$][A-Za-z0-9_$]*)\s+as\s+([A-Za-z_$][A-Za-z0-9_$]*)$/);
+          names.add(asMatch ? asMatch[2] : s.split(/\s+/)[0]);
+        }
+      }
+      for (const m of cleaned.matchAll(/^\s*export\s+\*\s+(?:as\s+([A-Za-z_$][A-Za-z0-9_$]*)\s+)?from\s+['"]([^'"]+)['"]/gm)) {
+        if (m[1]) names.add(m[1]);
+        else reexportAll.push(m[2]);
+      }
+      if (/^\s*export\s+default\b/m.test(cleaned)) names.add('default');
+      return { names, reexportAll };
+    };
+    const exportCache = new Map();
+    const resolveExports = (fileAbs, seen = new Set()) => {
+      const key = path.resolve(fileAbs);
+      if (seen.has(key)) return new Set();
+      const nextSeen = new Set(seen);
+      nextSeen.add(key);
+      if (exportCache.has(key)) return exportCache.get(key);
+      const { names, reexportAll } = getExports(fs.readFileSync(key, 'utf8'));
+      const all = new Set(names);
+      for (const spec of reexportAll) {
+        if (spec.startsWith('.')) {
+          const target = path.resolve(path.dirname(key), spec);
+          if (fs.existsSync(target) && fs.statSync(target).isFile()) {
+            for (const n of resolveExports(target, nextSeen)) all.add(n);
+          }
+        }
+      }
+      exportCache.set(key, all);
+      return all;
+    };
+    const errs = [];
+    let checked = 0;
+    for (const f of jsFiles) {
+      const relF = path.relative(root, f).replace(/\\/g, '/');
+      const cleaned = stripComments(fs.readFileSync(f, 'utf8'));
+      for (const m of cleaned.matchAll(/(?:^|\n)\s*import\s+([^;'"]+?)\s+from\s+['"](\.[^'"]+)['"]/g)) {
+        const clause = m[1].trim(), spec = m[2];
+        const target = path.resolve(path.dirname(f), spec);
+        checked++;
+        if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+          errs.push(`${relF}: 缺失导入目标 ${spec}`);
+          continue;
+        }
+        const exported = resolveExports(target);
+        const braceMatch = clause.match(/\{([\s\S]*?)\}/);
+        if (braceMatch) {
+          for (const item of braceMatch[1].split(',')) {
+            const t = item.trim();
+            if (!t) continue;
+            const orig = t.split(/\s+as\s+/)[0].trim();
+            if (!exported.has(orig)) errs.push(`${relF}: ${spec} 未导出 '${orig}'`);
+          }
+        }
+        const beforeBrace = clause.replace(/\{[\s\S]*\}/, '').replace(/,/g, '').trim();
+        if (beforeBrace && !beforeBrace.startsWith('*') && !exported.has('default')) {
+          errs.push(`${relF}: ${spec} 未默认导出 '${beforeBrace}'`);
+        }
+      }
+      for (const m of cleaned.matchAll(/(?:^|\n)\s*import\s+['"](\.[^'"]+)['"]/g)) {
+        const spec = m[1];
+        const target = path.resolve(path.dirname(f), spec);
+        checked++;
+        if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+          errs.push(`${relF}: 缺失副作用导入目标 ${spec}`);
+        }
+      }
+      for (const m of cleaned.matchAll(/^\s*export\s*(?:\*|\{([^}]*)\})\s*from\s*['"](\.[^'"]+)['"]/gm)) {
+        const namesBlock = m[1], spec = m[2];
+        const target = path.resolve(path.dirname(f), spec);
+        checked++;
+        if (!fs.existsSync(target) || !fs.statSync(target).isFile()) {
+          errs.push(`${relF}: 缺失再导出目标 ${spec}`);
+          continue;
+        }
+        if (namesBlock !== undefined) {
+          const exported = resolveExports(target);
+          for (const item of namesBlock.split(',')) {
+            const t = item.trim();
+            if (!t) continue;
+            const orig = t.split(/\s+as\s+/)[0].trim();
+            if (!exported.has(orig)) errs.push(`${relF}: ${spec} 未导出再导出项 '${orig}'`);
+          }
+        }
+      }
+    }
+    ok(`sidecar ${checked} 处相对导入/再导出符号均存在`, errs.length === 0, errs.slice(0, 8).join('; '));
+  }
 }
 
 // ─────────────────────────────────────────────────────────────

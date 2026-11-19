@@ -285,7 +285,7 @@ export function applyThinkingToPayload(apiPayload, conn, resolved) {
     // 2.5 及更早则相反，只认 thinkingBudget。
     const config = { ...(apiPayload.generationConfig || {}) };
     const model = String(conn.model || '').toLowerCase();
-    const usesLevel = /gemini-(?:3|4)(?:[.\-]|$)/.test(model);
+    const usesLevel = /gemini[-_ ]?(?:[3-9]|1\d)(?:\.\d+)?/.test(model);
     if (usesLevel) {
       if (resolved.mode === 'off') {
         // 3.x/4.x 没有「完全关闭」档（minimal 都 400），关闭时不注入、交回模型默认
@@ -297,7 +297,8 @@ export function applyThinkingToPayload(apiPayload, conn, resolved) {
         config.thinkingConfig = { thinkingLevel: level };
       }
     } else if (resolved.mode === 'off') {
-      config.thinkingConfig = { thinkingBudget: 0 };
+      // gemini-2.5-pro 不支持 thinkingBudget=0（最小 128）
+      config.thinkingConfig = { thinkingBudget: /2\.5[-_ ]?pro/.test(model) ? 128 : 0 };
     } else {
       const budget = GEMINI_THINKING_BUDGET[resolved.level];
       config.thinkingConfig = { thinkingBudget: Number.isFinite(budget) ? budget : -1 };

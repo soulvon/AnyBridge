@@ -20,6 +20,7 @@
 //   }
 //   if (processor.isDone) { res.write(endOfStreamEnvelope()); res.end(); }
 
+import { parseSSEText } from '../lib/sse-parser.js';
 import {
   buildTextDelta,
   buildThinkingDelta,
@@ -34,35 +35,22 @@ import {
 /**
  * Parse a raw SSE text chunk into an array of typed event objects.
  *
- * Handles multiple events in a single chunk. Each complete event block
- * (terminated by a blank line) is parsed as { event, data }. The `data`
- * field is JSON-decoded when possible; otherwise kept as a raw string.
+ * Handles multiple events in a single chunk. Each event block
+ * is parsed as { event, data }. The `data` field is JSON-decoded
+ * when possible; otherwise kept as a raw string.
  *
  * @param {string} text - Raw SSE text (may contain multiple events)
  * @returns {{ event: string, data: any }[]}
  */
 export function parseSSEChunk(text) {
   const events = [];
-  const lines = text.split('\n');
-  let currentEvent = null;
-  let currentData = '';
-
-  for (const line of lines) {
-    if (line.startsWith('event: ')) {
-      currentEvent = line.slice(7).trim();
-    } else if (line.startsWith('data: ')) {
-      currentData = line.slice(6);
-    } else if (line === '' && currentEvent !== null) {
-      try {
-        events.push({ event: currentEvent, data: JSON.parse(currentData) });
-      } catch {
-        events.push({ event: currentEvent, data: currentData });
-      }
-      currentEvent = null;
-      currentData = '';
-    }
+  for (const evt of parseSSEText(text, { flush: true })) {
+    if (evt.done) continue;
+    const eventName = !evt.hasExplicitEvent && typeof evt.data?.type === 'string'
+      ? evt.data.type
+      : evt.event;
+    events.push({ event: eventName, data: evt.data });
   }
-
   return events;
 }
 
@@ -133,7 +121,10 @@ export class AnthropicStreamProcessor {
    * @returns {Buffer[]} Raw proto buffers — wrap each with wrapEnvelope() before writing
    */
   processEvent(event) {
-    const { event: evtName, data } = event;
+    const data = event?.data;
+    const evtName = (!event?.event || event.event === 'message') && typeof data?.type === 'string'
+      ? data.type
+      : event?.event;
     const chunks = [];
 
     switch (evtName) {

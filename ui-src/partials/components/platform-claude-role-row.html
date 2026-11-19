@@ -1,0 +1,11 @@
+                  <div class="{{rowClass}}">
+                    <div class="claude-role-badge">{{roleLabel}}</div>
+                    <input id="{{nameId}}" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="{{namePlaceholder}}" oninput="{{nameOnInput}}">
+                    <div class="custom-role-select" id="{{selectId}}">
+                      <input type="hidden" id="{{modelId}}">
+                    </div>
+                    <label class="claude-1m-toggle-box" id="{{boxId}}" title="{{oneMTitle}}">
+                      <input type="checkbox" id="{{checkId}}" onchange="{{oneMHandler}}('{{roleKey}}', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>

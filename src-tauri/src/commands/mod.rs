@@ -16,6 +16,7 @@ pub mod cursor_models;
 pub mod eval;
 pub mod extensions;
 pub mod field_restore;
+pub mod google_gemini;
 pub mod housekeeping;
 pub mod ide_config;
 pub mod ide_models;
@@ -28,14 +29,13 @@ pub mod provider_balance;
 pub mod provider_import;
 pub mod proxy;
 pub mod proxy_routes;
+pub mod store_io;
 pub mod system;
 pub mod update;
 pub mod usage_scan;
 pub mod version_probe;
 pub mod windsurf_catalog;
 pub mod workbench_inject;
-
-use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "windows")]
 fn reg_query_current_user_internet_setting(value_name: &str) -> Option<String> {
@@ -215,52 +215,12 @@ pub(crate) fn content_sha256(content: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// 原子写：先写同目录临时文件再 rename 覆盖，避免写入中途崩溃留下截断文件。
-/// Windows 上 rename 可能因杀毒软件/索引服务锁定目标文件而 EPERM，重试 3 次。
-///
-/// 加固点（重构 2026-10-26，无门控直接生效——均为缺陷修复，非语义变更）：
-/// 1. 符号链接保护：目标若是符号链接（dotfiles 用户把配置链接进仓库），
-///    旧实现 rename 会把链接本身替换成普通文件、链接断掉；现在解析到
-///    链接目标后对目标写入，链接保持原样。
-/// 2. 临时文件名唯一化：旧实现 `with_extension("byok-tmp")` 生成固定名，
-///    两个线程并发写同一文件会互相踩（先完成者的 rename 拿走临时文件，
-///    后者 fs::write 直接报错）。现在追加 pid + 纳秒 + 原子序数——
-///    仅纳秒不够：Windows 时钟精度有限，8 线程并发可取到同一纳秒
-///    （实测 flake：concurrent_writes_all_succeed_without_leftover 偶发失败）。
-pub(crate) fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
-    let path = resolve_symlink_target(path);
-    let unique = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or_default();
-    let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
-    let tmp = {
-        let name = path
-            .file_name()
-            .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "file".into());
-        path.with_file_name(format!("{name}.{}.{unique}.{seq}.byok-tmp", std::process::id()))
-    };
-    std::fs::write(&tmp, bytes).map_err(|e| e.to_string())?;
-    let mut last_err = String::new();
-    for i in 0..3u32 {
-        match std::fs::rename(&tmp, &path) {
-            Ok(()) => return Ok(()),
-            Err(e) => {
-                last_err = e.to_string();
-                if i < 2 { std::thread::sleep(std::time::Duration::from_millis(50)); }
-            }
-        }
-    }
-    let _ = std::fs::remove_file(&tmp);
-    Err(last_err)
-}
+pub(crate) use store_io::write_atomic;
 
 #[cfg(test)]
 mod write_atomic_tests {
     use super::*;
+    use std::path::{Path, PathBuf};
 
     fn tmp_dir(name: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -346,33 +306,4 @@ mod write_atomic_tests {
             .map(|m| m.is_symlink())
             .unwrap_or(false)
     }
-}
-
-/// 符号链接解析：目标是符号链接（含多级）时返回最终指向的文件路径，
-/// 否则原样返回。解析中断/悬空链接时返回原路径——按原路径写入与旧行为一致，
-/// 绝不因链接状态异常而阻断写入。
-fn resolve_symlink_target(path: &Path) -> PathBuf {
-    let mut current = path.to_path_buf();
-    for _ in 0..16 {
-        match std::fs::symlink_metadata(&current) {
-            Ok(meta) if meta.is_symlink() => {
-                let link = match std::fs::read_link(&current) {
-                    Ok(l) => l,
-                    Err(_) => return path.to_path_buf(),
-                };
-                let next = if link.is_absolute() {
-                    link
-                } else {
-                    match current.parent() {
-                        Some(parent) => parent.join(link),
-                        None => return path.to_path_buf(),
-                    }
-                };
-                current = next;
-            }
-            _ => return current,
-        }
-    }
-    // 超过 16 层链接视为异常环，退回原路径（保守，不阻断）
-    path.to_path_buf()
 }

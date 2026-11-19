@@ -1,49 +1,16 @@
-// provider-pool.js — 读取 providers.json（全部供应商）+ model-map.json（槽位表），
-// 为路由层提供:按 modelUid 查槽位、按 providerId 解析连接信息。
-//
-// 性能优化：底层走 config-cache.js，进程内缓存 + mtime 失效，
-// 高并发不再每次 readFileSync。
+// provider-pool.js — 只读消费 config-cache.js 提供的 providers / model-map 视图，
+// 为路由层提供:按 modelUid 查槽位、按 providerId 解析连接信息与运行期内存标记（绝不回写 providers.json）。
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { configDir } from './lib/config-dir.js';
-import { getModelMapConfig, getProviders, getSlots, markProvidersDirty } from './config-cache.js';
+import { getModelMapConfig, getProviders, getSlots } from './config-cache.js';
 import { getEquivalentModelUids, normalizeModelUid } from './lib/model-aliases.js';
-
-function providersPath() {
-  return path.join(configDir(), 'providers.json');
-}
-
-function readJson(file) {
-  try {
-    if (!fs.existsSync(file)) return null;
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch (e) {
-    console.error(`[pool] failed to read ${file}: ${e.message}`);
-    return null;
-  }
-}
-
-function writeJsonAtomic(file, data) {
-  const dir = path.dirname(file);
-  fs.mkdirSync(dir, { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
-  // Windows 上目标文件可能被杀毒软件/索引服务短暂锁定，rename 会 EPERM。
-  // 重试 3 次，每次间隔 100ms。
-  let lastErr;
-  for (let i = 0; i < 3; i++) {
-    try {
-      fs.renameSync(tmp, file);
-      return;
-    } catch (e) {
-      lastErr = e;
-      if (i < 2) { const t = Date.now() + 100; while (Date.now() < t) {} }
-    }
-  }
-  try { fs.unlinkSync(tmp); } catch {}
-  throw lastErr;
-}
+import {
+  cleanApiPath as cleanGeminiPath,
+  inferApiFormatFromEndpoint,
+  isVertexEndpoint,
+  looksLikeGoogleOAuthCredential,
+  normalizeGeminiApiPath as normalizeGeminiEndpointPath,
+  resolveGeminiEndpoint,
+} from './lib/google-gemini.js';
 
 function cleanApiPath(value) {
   const raw = String(value || '').trim();
@@ -135,17 +102,8 @@ function normalizeAnthropicApiPath(apiPath) {
   return `${path}/v1/messages`;
 }
 
-function normalizeGeminiApiPath(apiPath, model) {
-  const path = cleanApiPath(apiPath);
-  const lower = path.toLowerCase();
-  const encodedModel = encodeURIComponent(String(model || '').trim());
-  if (lower.endsWith(':generatecontent') || lower.endsWith(':streamgeneratecontent')) return path;
-  if (lower.includes('/v1beta/models/') || lower.includes('/v1/models/')) return `${path}:generateContent`;
-  if (!path) return `/v1beta/models/${encodedModel}:generateContent`;
-  if (lower.endsWith('/v1beta')) return `${path}/models/${encodedModel}:generateContent`;
-  if (lower.endsWith('/v1')) return `${path.slice(0, -3)}/v1beta/models/${encodedModel}:generateContent`;
-  if (lower.endsWith('/models')) return `${path}/${encodedModel}:generateContent`;
-  return `${path}/v1beta/models/${encodedModel}:generateContent`;
+function normalizeGeminiApiPath(host, apiPath, model) {
+  return normalizeGeminiEndpointPath(host, apiPath, model, 'generateContent');
 }
 
 function shouldUseAnthropicBearerAuth(host, apiPath) {
@@ -158,40 +116,45 @@ function inferApiFormatFromPath(apiPath) {
   const path = cleanApiPath(apiPath).toLowerCase();
   if (!path) return null;
   if (path.endsWith('/chat/completions') || path.endsWith('/responses')) return 'openai';
-  if (path.includes('/openai/') || path.includes('/compatible-mode')) return 'openai';
-  if (path.endsWith('/messages') || path.includes('/messages/')) return 'anthropic';
+  if (path.includes('/openai/') || /\/openai(?:$|\?)/.test(path) || path.includes('/endpoints/openapi') || path.includes('/compatible-mode')) return 'openai';
+  if (path.endsWith('/messages') || path.includes('/messages/') || path.includes('/publishers/anthropic/') || path.includes(':rawpredict')) return 'anthropic';
   if (path.includes(':generatecontent')
       || path.includes(':streamgeneratecontent')
-      || path.includes('/v1beta/models/')
+      || path.includes(':counttokens')
+      || path === '/v1beta'
+      || path.includes('/v1beta/')
       || path.includes('/publishers/google/models')) {
     return 'gemini';
   }
   return null;
 }
 
-function inferApiFormatFromHost(host) {
-  const hostname = String(host || '')
-    .replace(/^https?:\/\//i, '')
-    .split('/')[0]
-    .split(':')[0]
-    .toLowerCase();
-  if (hostname === 'api.anthropic.com') return 'anthropic';
-  if (hostname === 'api.openai.com' || hostname.endsWith('.openai.azure.com')) return 'openai';
-  if (hostname === 'generativelanguage.googleapis.com' || hostname === 'aiplatform.googleapis.com') return 'gemini';
-  return null;
+function inferApiFormatFromHost(host, apiPath = null) {
+  return inferApiFormatFromEndpoint(host, apiPath);
 }
 
-// 模型名启发：只作最后兜底（手动 unlock > 显式 apiFormat > 端点/host 推断 > 模型名）。
+// 模型名启发：只作最后兜底（手动 unlock > target apiFormat > 端点/path/host 推断 > provider apiFormat > 模型名）。
 // 启发可能猜错（如 gpt-6-astra-cc-format 实际只支持 messages 契约），
 // 所以运行时永远允许 target.unlock / apiFormat 显式覆盖，猜测结果不否决任何显式配置。
 function inferApiFormatFromModelName(model) {
   const m = String(model || '').toLowerCase();
   if (/claude|opus|sonnet|haiku|fable/.test(m)) return 'anthropic';
+  if (/gemini/.test(m)) return 'gemini';
   if (/gpt|swe|codex/.test(m) || /^o[134]/.test(m)) return 'openai';
   return null;
 }
 
-function inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock, explicitPath, providerPath, host, model }) {
+function inferTargetRouteFormat({
+  targetApiFormat,
+  unlockApiFormat,
+  targetUnlock,
+  providerApiFormat,
+  explicitPath,
+  providerPath,
+  rawHost,
+  host,
+  model,
+}) {
   if (unlockApiFormat) return { format: unlockApiFormat, source: targetUnlock };
   if (targetApiFormat) return { format: targetApiFormat, source: 'target-apiFormat' };
 
@@ -203,8 +166,10 @@ function inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock
   if (providerPathFormat?.error) return providerPathFormat;
   if (providerPathFormat) return { format: providerPathFormat, source: 'provider-apiPath' };
 
-  const hostFormat = inferApiFormatFromHost(host);
+  const hostFormat = inferApiFormatFromHost(rawHost || host, explicitPath || providerPath || null);
   if (hostFormat) return { format: hostFormat, source: 'host' };
+
+  if (providerApiFormat) return { format: providerApiFormat, source: 'provider-apiFormat' };
 
   const modelNameFormat = inferApiFormatFromModelName(model);
   if (modelNameFormat) return { format: modelNameFormat, source: 'model-name-heuristic' };
@@ -270,26 +235,28 @@ export function getInjectedByUid(modelUid) {
   };
 }
 
-// 记忆某个供应商的工具 schema 兼容模式（写回 providers.json）
-// 写完后通过 markProvidersDirty 通知 cache 失效。
-export function rememberProviderToolSchemaCompat(providerId, mode = 'gemini') {
-  try {
-    const file = providersPath();
-    const store = readJson(file) || { providers: [] };
-    if (!Array.isArray(store.providers)) return false;
-    const idx = store.providers.findIndex(p => p && p.id === providerId);
-    if (idx < 0) return false;
-    const p = store.providers[idx];
-    p.capabilities = (p.capabilities && typeof p.capabilities === 'object') ? p.capabilities : {};
-    if (p.capabilities.toolSchemaCompat === mode) return false;
-    p.capabilities.toolSchemaCompat = mode;
-    writeJsonAtomic(file, store);
-    markProvidersDirty();
-    return true;
-  } catch (e) {
-    console.warn(`[pool] remember tool schema compat failed: ${e.message}`);
-    return false;
+// 运行期记忆某个供应商的工具 schema 兼容模式（仅保留在内存，遵从 Rust 唯一写端）
+const MAX_RUNTIME_MARK_ENTRIES = 2000;
+const runtimeToolSchemaCompat = new Map();
+
+function setBoundedRuntimeMap(map, key, val) {
+  if (map.has(key)) map.delete(key);
+  while (map.size >= MAX_RUNTIME_MARK_ENTRIES) {
+    const oldest = map.keys().next().value;
+    if (oldest === undefined) break;
+    map.delete(oldest);
   }
+  map.set(key, val);
+}
+
+export function rememberProviderToolSchemaCompat(providerId, mode = 'gemini') {
+  if (!providerId || !mode) return false;
+  const p = getProviders().get(providerId);
+  if (!p) return false;
+  const current = runtimeToolSchemaCompat.get(providerId) || p.capabilities?.toolSchemaCompat;
+  if (current === mode) return false;
+  setBoundedRuntimeMap(runtimeToolSchemaCompat, providerId, mode);
+  return true;
 }
 
 function normalizeTargetUnlock(value) {
@@ -323,15 +290,61 @@ function providerUnlockEnabled(provider, kind) {
 
 const targetKeyRotation = new Map();
 
-function apiKeyForTarget(target, fallbackKey) {
-  const keys = Array.isArray(target?.apiKeys || target?.api_keys)
-    ? (target.apiKeys || target.api_keys).map(k => String(k || '').trim()).filter(Boolean)
-    : [];
-  if (!keys.length) return fallbackKey;
+function extractKeyPoolEntry(entry) {
+  if (entry && typeof entry === 'object') {
+    const key = String(entry.key ?? entry.apiKey ?? entry.value ?? '').trim();
+    return { key, disabled: entry.enabled === false };
+  }
+  return { key: String(entry || '').trim(), disabled: false };
+}
+
+function collectTargetKeyPool(target, provider) {
+  const seen = new Set();
+  const disabledKeys = new Set();
+  const out = [];
+  const pushKey = (key) => {
+    const s = String(key || '').trim();
+    if (s && !seen.has(s)) {
+      seen.add(s);
+      out.push(s);
+    }
+  };
+  const providerList = Array.isArray(provider?.apiKeys || provider?.api_keys) ? (provider.apiKeys || provider.api_keys) : [];
+  for (const raw of providerList) {
+    const parsed = extractKeyPoolEntry(raw);
+    if (parsed.key && parsed.disabled) disabledKeys.add(parsed.key);
+  }
+  const targetList = Array.isArray(target?.apiKeys || target?.api_keys) ? (target.apiKeys || target.api_keys) : [];
+  for (const raw of targetList) {
+    const parsed = extractKeyPoolEntry(raw);
+    if (parsed.key && !parsed.disabled) pushKey(parsed.key);
+  }
+  const primary = String(provider?.apiKey || '').trim();
+  if (primary && !disabledKeys.has(primary)) pushKey(primary);
+  for (const raw of providerList) {
+    const parsed = extractKeyPoolEntry(raw);
+    if (parsed.key && !parsed.disabled) pushKey(parsed.key);
+  }
+  return out;
+}
+
+export function getApiKeyCandidates(target, providers) {
+  const provider = target?.providerId ? providers?.get?.(target.providerId) : null;
+  const pool = collectTargetKeyPool(target, provider);
+  if (pool.length <= 1) return pool;
+  const rotationKey = `${target?.providerId || target?.provider_id || ''}|${target?.model || ''}`;
+  const start = targetKeyRotation.get(rotationKey) || 0;
+  return pool.map((_, idx) => pool[(start + idx) % pool.length]);
+}
+
+function apiKeyForTarget(target, provider) {
+  const pool = collectTargetKeyPool(target, provider);
+  if (!pool.length) return provider?.apiKey;
+  if (pool.length === 1) return pool[0];
   const rotationKey = `${target.providerId || target.provider_id || ''}|${target.model || ''}`;
   const next = targetKeyRotation.get(rotationKey) || 0;
-  targetKeyRotation.set(rotationKey, (next + 1) % keys.length);
-  return keys[next % keys.length];
+  setBoundedRuntimeMap(targetKeyRotation, rotationKey, (next + 1) % pool.length);
+  return { primary: pool[next % pool.length], orderedPool: pool.map((_, i) => pool[(next + i) % pool.length]) };
 }
 
 // 把一个 target {providerId, model, apiFormat, unlock?} 解析成实际连接信息。
@@ -368,49 +381,94 @@ export function resolveTarget(target, providers) {
     return { error: `${effectiveUnlock === 'codex' ? 'Codex' : 'Claude Code'} 解锁目标不支持覆盖 apiPath；请留空并使用供应商解锁模板 ${cleanApiPath(unlockWireApi)}` };
   }
   const providerPath = p.apiPath || p.api_path || null;
+  const providerApiFormatParsed = normalizeTargetApiFormat(p.apiFormat || p.api_format);
+  const providerApiFormat = typeof providerApiFormatParsed === 'string' ? providerApiFormatParsed : null;
   const modelId = target.model || p.defaultModel;
-  const route = inferTargetRouteFormat({ targetApiFormat, unlockApiFormat, targetUnlock: effectiveUnlock, explicitPath, providerPath, host, model: modelId });
+  const selectedKey = apiKeyForTarget(target, p);
+  const resolvedApiKey = typeof selectedKey === 'object' && selectedKey !== null ? selectedKey.primary : selectedKey;
+  const orderedKeyPool = typeof selectedKey === 'object' && selectedKey !== null
+    ? selectedKey.orderedPool
+    : (resolvedApiKey ? [String(resolvedApiKey)] : []);
+  const route = inferTargetRouteFormat({
+    targetApiFormat,
+    unlockApiFormat,
+    targetUnlock: effectiveUnlock,
+    providerApiFormat,
+    explicitPath,
+    providerPath,
+    rawHost: p.apiHost,
+    host,
+    model: modelId,
+  });
   if (route?.error) return { error: route.error };
   const routeFormat = route.format;
   const configuredPath = (explicitPath || unlockWireApi || providerPath) && (explicitPath || unlockWireApi || providerPath) !== '/'
     ? (explicitPath || unlockWireApi || providerPath)
     : null;
-  const apiPath = unlockWireApi && !explicitPath
-    ? cleanApiPath(unlockWireApi)
-    : (routeFormat === 'openai'
-      ? normalizeOpenAIApiPath(host, configuredPath)
-      : (routeFormat === 'gemini'
-        ? normalizeGeminiApiPath(configuredPath, modelId)
-        : normalizeAnthropicApiPath(configuredPath)));
-  // wireApi=chat 是普通 OpenAI 兼容供应商的提示；平台解锁目标使用自己的 wireApi，不应被覆盖。
-  const routeApiPath = (routeFormat === 'openai' && p.wireApi === 'chat' && !explicitPath && !effectiveUnlock)
-    ? apiPath.replace(/\/responses$/, '/chat/completions')
-    : apiPath;
-  const finalApiPath = joinApiPath(parsedHost.basePath, routeApiPath);
-  // 合并供应商级 + 模型级能力标记
+
+  let resolvedHost = host;
+  let resolvedHostname = parsedHost.hostname;
+  let resolvedProtocol = parsedHost.protocol;
+  let resolvedPort = parsedHost.port;
+  let finalApiPath;
+  let isVertex = false;
+
+  if (routeFormat === 'gemini' && !unlockWireApi) {
+    const endpoint = resolveGeminiEndpoint(p.apiHost, configuredPath, modelId, resolvedApiKey, 'generateContent');
+    resolvedHost = endpoint.hostname;
+    resolvedHostname = endpoint.hostname;
+    resolvedProtocol = endpoint.protocol;
+    resolvedPort = endpoint.port;
+    finalApiPath = endpoint.apiPath;
+    isVertex = endpoint.isVertex;
+  } else {
+    const apiPath = unlockWireApi && !explicitPath
+      ? cleanApiPath(unlockWireApi)
+      : (routeFormat === 'openai'
+        ? (!configuredPath && /\/openai$/i.test(parsedHost.basePath) ? '/chat/completions' : normalizeOpenAIApiPath(host, configuredPath))
+        : (routeFormat === 'gemini'
+          ? normalizeGeminiApiPath(p.apiHost, configuredPath, modelId)
+          : normalizeAnthropicApiPath(configuredPath)));
+    // wireApi=chat 是普通 OpenAI 兼容供应商的提示；平台解锁目标使用自己的 wireApi，不应被覆盖。
+    const routeApiPath = (routeFormat === 'openai' && p.wireApi === 'chat' && !explicitPath && !effectiveUnlock)
+      ? apiPath.replace(/\/responses$/, '/chat/completions')
+      : apiPath;
+    finalApiPath = (routeFormat === 'gemini' && !unlockWireApi)
+      ? routeApiPath
+      : joinApiPath(parsedHost.basePath, routeApiPath);
+    isVertex = routeFormat === 'gemini' && isVertexEndpoint(p.apiHost, finalApiPath);
+  }
+  const hasGoogleOAuth = routeFormat === 'gemini' && looksLikeGoogleOAuthCredential(resolvedApiKey);
+  // 合并供应商级 + 模型级 + 运行期内存能力标记
   const supplierCaps = p.capabilities || {};
+  const memCompat = runtimeToolSchemaCompat.get(p.id);
   const modelCaps = (p.modelCaps || {})[modelId] || {};
-  const hasModelVision = Object.prototype.hasOwnProperty.call(modelCaps, 'vision');
-  const hasModelTools = Object.prototype.hasOwnProperty.call(modelCaps, 'tools');
+  const memCaps = runtimeModelCaps.get(`${p.id}|${modelId}`) || {};
+  const mergedModelCaps = { ...modelCaps, ...memCaps };
+  const hasModelVision = Object.prototype.hasOwnProperty.call(mergedModelCaps, 'vision');
+  const hasModelTools = Object.prototype.hasOwnProperty.call(mergedModelCaps, 'tools');
   const capabilities = {
     ...supplierCaps,
+    ...(memCompat ? { toolSchemaCompat: memCompat } : {}),
     // 模型级覆盖供应商级（vision/tools 是模型能力）。
     // Provider 级 vision=false 可能来自小图探测误判，不能作为图片请求硬拦截依据。
-    vision: hasModelVision ? modelCaps.vision : true,
-    tools: hasModelTools ? modelCaps.tools : supplierCaps.tools,
+    vision: hasModelVision ? mergedModelCaps.vision : true,
+    tools: hasModelTools ? mergedModelCaps.tools : supplierCaps.tools,
   };
-  return {
+  const conn = {
     providerId: p.id,
     providerName: p.name,
-    host,
-    hostname: parsedHost.hostname,
-    protocol: parsedHost.protocol,
-    port: parsedHost.port,
+    host: resolvedHost,
+    hostname: resolvedHostname,
+    protocol: resolvedProtocol,
+    port: resolvedPort,
     apiPath: finalApiPath,
-    apiKey: apiKeyForTarget(target, p.apiKey),
+    apiKey: resolvedApiKey,
     format: routeFormat,
     routeSource: route.source,
-    authScheme: routeFormat === 'openai' || shouldUseAnthropicBearerAuth(host, apiPath) ? 'bearer' : 'x-api-key',
+    authScheme: (routeFormat === 'openai' || hasGoogleOAuth || shouldUseAnthropicBearerAuth(resolvedHost, finalApiPath)) ? 'bearer' : 'x-api-key',
+    isVertex,
+    hasGoogleOAuth,
     model: modelId,
     capabilities,
     unlocks: p.unlocks || {},
@@ -418,62 +476,38 @@ export function resolveTarget(target, providers) {
     wireApi: p.wireApi || '',
     codexChatReasoning: p.codexChatReasoning || null,
   };
+  if (orderedKeyPool.length > 0) {
+    Object.defineProperty(conn, '_apiKeyCandidates', { value: orderedKeyPool, enumerable: false, configurable: true });
+  }
+  return conn;
 }
 
-// 自动更新模型能力标记（使用成功后自动标记）
-// hasVision/hasTools 表示本次请求是否包含图片/工具
-// 性能优化：合并 5s 内的多次标记为一次落盘，避免高频 IO。
-const pendingCapsWrites = new Map(); // key: providerId/modelId -> {vision, tools, timer}
-let capsFlushTimer = null;
-const CAPS_FLUSH_DELAY_MS = 5000;
-
-function scheduleFlushCaps() {
-  if (capsFlushTimer) return;
-  capsFlushTimer = setTimeout(() => {
-    capsFlushTimer = null;
-    const writes = Array.from(pendingCapsWrites.entries());
-    pendingCapsWrites.clear();
-    if (writes.length === 0) return;
-    try {
-      const file = providersPath();
-      const store = readJson(file) || { providers: [] };
-      if (!Array.isArray(store.providers)) return;
-      let anyChanged = false;
-      for (const [key, add] of writes) {
-        const [providerId, modelId] = key.split('|');
-        const idx = store.providers.findIndex(p => p && p.id === providerId);
-        if (idx < 0) continue;
-        const p = store.providers[idx];
-        p.modelCaps = p.modelCaps || {};
-        p.modelCaps[modelId] = p.modelCaps[modelId] || {};
-        if (add.vision && p.modelCaps[modelId].vision !== true) {
-          p.modelCaps[modelId].vision = true; anyChanged = true;
-        }
-        if (add.tools && p.modelCaps[modelId].tools !== true) {
-          p.modelCaps[modelId].tools = true; anyChanged = true;
-        }
-      }
-      if (anyChanged) {
-        writeJsonAtomic(file, store);
-        markProvidersDirty();
-        console.log(`[pool] 批量更新 ${writes.length} 个模型能力标记`);
-      }
-    } catch (e) {
-      console.warn(`[pool] batch update model capabilities failed: ${e.message}`);
-    }
-  }, CAPS_FLUSH_DELAY_MS);
+export function connWithApiKey(conn, nextKey) {
+  const apiKey = String(nextKey || '').trim();
+  if (!conn || !apiKey || apiKey === conn.apiKey) return conn;
+  const hasGoogleOAuth = conn.format === 'gemini' && looksLikeGoogleOAuthCredential(apiKey);
+  const authScheme = (conn.format === 'openai' || hasGoogleOAuth || shouldUseAnthropicBearerAuth(conn.hostname || conn.host, conn.apiPath))
+    ? 'bearer'
+    : 'x-api-key';
+  const updated = { ...conn, apiKey, hasGoogleOAuth, authScheme };
+  if (Array.isArray(conn._apiKeyCandidates)) {
+    Object.defineProperty(updated, '_apiKeyCandidates', { value: conn._apiKeyCandidates, enumerable: false, configurable: true });
+  }
+  return updated;
 }
+
+// 运行期更新模型能力标记（仅维持在内存 Map，绝不回写 providers.json）
+const runtimeModelCaps = new Map();
 
 export function updateModelCapabilities(providerId, modelId, hasVision, hasTools) {
   if (!providerId || !modelId) return false;
   const key = `${providerId}|${modelId}`;
-  const cur = pendingCapsWrites.get(key) || { vision: false, tools: false };
+  const cur = { ...(runtimeModelCaps.get(key) || {}) };
   let changed = false;
-  if (hasVision) { cur.vision = true; changed = true; }
-  if (hasTools) { cur.tools = true; changed = true; }
+  if (hasVision && cur.vision !== true) { cur.vision = true; changed = true; }
+  if (hasTools && cur.tools !== true) { cur.tools = true; changed = true; }
   if (changed) {
-    pendingCapsWrites.set(key, cur);
-    scheduleFlushCaps();
+    setBoundedRuntimeMap(runtimeModelCaps, key, cur);
   }
   return changed;
 }

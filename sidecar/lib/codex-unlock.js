@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { boundedMapSet } from './http-retry.js';
 import { getClaudeCodeCliTools, getClaudeCodeCliVersion } from './claude-code-cli-tools.js';
 import { CLAUDE_CODE_NATIVE_TOOLS } from './claude-code-native-tools-data.js';
 
@@ -92,9 +93,11 @@ export function buildCodexPromptCacheKey(input) {
   if (!seed) return CODEX_SESSION_ID;
   const hash = crypto.createHash('sha256').update(seed).digest('hex');
   let key = CODEX_CACHE_KEYS.get(hash);
-  if (!key) {
+  if (key) {
+    boundedMapSet(CODEX_CACHE_KEYS, hash, key, 2000);
+  } else {
     key = generateUUIDv7();
-    CODEX_CACHE_KEYS.set(hash, key);
+    boundedMapSet(CODEX_CACHE_KEYS, hash, key, 2000);
   }
   return key;
 }

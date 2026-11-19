@@ -1,0 +1,106 @@
+/* ── 网关状态胶囊：前置圆点在两种风格下都不需要（状态由底色 + 文字表达） ── */
+.global-proxy-pill .global-proxy-dot {
+  display: none !important;
+}
+
+/* 仅文字承载状态色 */
+html[data-style="minimal"] .global-proxy-pill.running,
+html[data-style="minimal"] .global-proxy-pill.starting {
+  color: var(--success) !important;
+}
+
+html[data-style="minimal"] .global-proxy-pill.off {
+  color: var(--warn) !important;
+}
+
+html[data-style="minimal"] .global-proxy-pill.error {
+  color: var(--danger) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   扁平风格：状态色统一降饱和
+   原则：用 color-mix 把状态色与当前主题的中性底混合，
+   保留「这是成功/危险/警告」的识别度，但不再出现扎眼的高饱和色块。
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* 「官方」/ 成功类徽章 */
+html[data-style="minimal"] .codex-config-badge.official,
+html[data-style="minimal"] .codex-config-badge-success {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 「当前使用」徽章：中性底 + 绿字 + 收敛的指示点 */
+html[data-style="minimal"] .codex-config-badge-current {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+  box-shadow: none !important;
+}
+
+html[data-style="minimal"] .codex-config-badge-current::before {
+  background: var(--success) !important;
+}
+
+/* 「支持图片理解」等视觉能力标签 */
+html[data-style="minimal"] .tag-vision-pill,
+html[data-style="minimal"] .tag[title*="图片理解"],
+html[data-style="minimal"] .tag[title*="支持图片"] {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 能力微胶囊的开启态 */
+html[data-style="minimal"] .tag-cap-badge.is-active {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 「已汉化」按钮 */
+html[data-style="minimal"] .platform-console-actions .platform-lang-action-btn,
+html[data-style="minimal"] .platform-console-actions .platform-lang-action-btn:hover:not(:disabled) {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--success) !important;
+}
+
+/* 「停止接入」危险按钮 */
+html[data-style="minimal"] .platform-console-actions .platform-stop-proxy,
+html[data-style="minimal"] .platform-console-actions .platform-stop-proxy:hover:not(:disabled) {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--danger) !important;
+}
+
+/* 批量操作条的启用 / 停用按钮 */
+html[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn.success:not(:disabled) {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--success) !important;
+}
+
+html[data-style="minimal"] .model-map-bulk-actions .provider-bulk-btn.warn:not(:disabled) {
+  background: var(--bg-input) !important;
+  border-color: var(--border) !important;
+  color: var(--warn) !important;
+}
+
+/* 能力标签：推理（暖）/ 图片 / 工具，容器中性，仅推理文字带暖色 */
+html[data-style="minimal"] .cb-cap-pill.cb-cap-reason,
+html[data-style="minimal"] .wb-cap-pill.wb-cap-reason {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--warn) !important;
+}
+
+html[data-style="minimal"] .cb-cap-pill.cb-cap-image,
+html[data-style="minimal"] .wb-cap-pill.wb-cap-image,
+html[data-style="minimal"] .cb-cap-pill.cb-cap-tool,
+html[data-style="minimal"] .wb-cap-pill.wb-cap-tool {
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted) !important;
+}

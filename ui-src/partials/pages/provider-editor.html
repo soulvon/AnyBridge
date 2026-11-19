@@ -88,7 +88,7 @@
                       <div class="pf-format-select" id="pfFormatSelect" style="position:relative;">
                         <button type="button" class="pf-format-trigger" id="pfFormatTrigger"
  title="选择 API 格式（默认自动识别）"
- style="display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px 0 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:11px; font-weight:700; cursor:pointer; transition:all 0.15s;" data-action="toggleFormatDropdown" data-pass-event>
+ style="display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 8px 0 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:12px; font-weight:700; cursor:pointer; transition:all 0.15s;" data-action="toggleFormatDropdown" data-pass-event>
                           <span id="pfFormatTriggerLabel">自动识别</span>
                           <svg class="pf-format-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
@@ -97,7 +97,7 @@
                           </svg>
                         </button>
                         <div class="pf-format-dropdown" id="pfFormatDropdown"
-                          style="display:none; position:absolute; top:calc(100% + 4px); right:0; z-index:50; min-width:140px; background:var(--bg-card); border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:4px; flex-direction:column; gap:2px;">
+                          style="display:none; position:absolute; top:calc(100% + 4px); right:0; z-index:50; min-width:154px; background:var(--bg-card); border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:4px; flex-direction:column; gap:2px;">
                           <button type="button" class="pf-format-option auto" data-format="auto"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;auto&quot;]" data-pass-event>
@@ -118,8 +118,8 @@
                           <button type="button" class="pf-format-option" data-format="anthropic"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;anthropic&quot;]" data-pass-event>
-                            <span
-                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#d97706; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">A</span>
+                            <span class="format-badge-sm"
+                              style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:#d97706; color:#fff; font-size:12px; font-weight:800; line-height:1; flex-shrink:0;">A</span>
                             <span style="flex:1;">Anthropic</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
@@ -130,8 +130,8 @@
                           <button type="button" class="pf-format-option" data-format="openai"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;openai&quot;]" data-pass-event>
-                            <span
-                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#10a37f; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">O</span>
+                            <span class="format-badge-sm"
+                              style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:#10a37f; color:#fff; font-size:12px; font-weight:800; line-height:1; flex-shrink:0;">O</span>
                             <span style="flex:1;">OpenAI</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
@@ -142,8 +142,8 @@
                           <button type="button" class="pf-format-option" data-format="gemini"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;gemini&quot;]" data-pass-event>
-                            <span
-                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#4285f4; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">G</span>
+                            <span class="format-badge-sm"
+                              style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:#4285f4; color:#fff; font-size:12px; font-weight:800; line-height:1; flex-shrink:0;">G</span>
                             <span style="flex:1;">Gemini</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"

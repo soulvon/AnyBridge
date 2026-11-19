@@ -1770,7 +1770,7 @@
                       <div class="pf-format-select" id="pfFormatSelect" style="position:relative;">
                         <button type="button" class="pf-format-trigger" id="pfFormatTrigger"
  title="选择 API 格式（默认自动识别）"
- style="display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 8px 0 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:11px; font-weight:700; cursor:pointer; transition:all 0.15s;" data-action="toggleFormatDropdown" data-pass-event>
+ style="display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 8px 0 10px; border-radius:7px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); font-size:12px; font-weight:700; cursor:pointer; transition:all 0.15s;" data-action="toggleFormatDropdown" data-pass-event>
                           <span id="pfFormatTriggerLabel">自动识别</span>
                           <svg class="pf-format-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none"
                             stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"
@@ -1779,7 +1779,7 @@
                           </svg>
                         </button>
                         <div class="pf-format-dropdown" id="pfFormatDropdown"
-                          style="display:none; position:absolute; top:calc(100% + 4px); right:0; z-index:50; min-width:140px; background:var(--bg-card); border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:4px; flex-direction:column; gap:2px;">
+                          style="display:none; position:absolute; top:calc(100% + 4px); right:0; z-index:50; min-width:154px; background:var(--bg-card); border:1px solid var(--border); border-radius:9px; box-shadow:var(--shadow-md); padding:4px; flex-direction:column; gap:2px;">
                           <button type="button" class="pf-format-option auto" data-format="auto"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;auto&quot;]" data-pass-event>
@@ -1800,8 +1800,8 @@
                           <button type="button" class="pf-format-option" data-format="anthropic"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;anthropic&quot;]" data-pass-event>
-                            <span
-                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#d97706; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">A</span>
+                            <span class="format-badge-sm"
+                              style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:#d97706; color:#fff; font-size:12px; font-weight:800; line-height:1; flex-shrink:0;">A</span>
                             <span style="flex:1;">Anthropic</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
@@ -1812,8 +1812,8 @@
                           <button type="button" class="pf-format-option" data-format="openai"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;openai&quot;]" data-pass-event>
-                            <span
-                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#10a37f; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">O</span>
+                            <span class="format-badge-sm"
+                              style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:#10a37f; color:#fff; font-size:12px; font-weight:800; line-height:1; flex-shrink:0;">O</span>
                             <span style="flex:1;">OpenAI</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
@@ -1824,8 +1824,8 @@
                           <button type="button" class="pf-format-option" data-format="gemini"
  
  style="display:flex; align-items:center; gap:8px; width:100%; padding:7px 10px; border:none; background:transparent; color:var(--text-primary); font-size:12px; font-weight:600; text-align:left; border-radius:6px; cursor:pointer;" data-action="pickApiFormat" data-args="[&quot;gemini&quot;]" data-pass-event>
-                            <span
-                              style="display:inline-flex; align-items:center; justify-content:center; width:13px; height:13px; border-radius:3px; background:#4285f4; color:#fff; font-size:8px; font-weight:800; flex-shrink:0;">G</span>
+                            <span class="format-badge-sm"
+                              style="display:inline-flex; align-items:center; justify-content:center; width:18px; height:18px; border-radius:5px; background:#4285f4; color:#fff; font-size:12px; font-weight:800; line-height:1; flex-shrink:0;">G</span>
                             <span style="flex:1;">Gemini</span>
                             <svg class="pf-format-check" width="12" height="12" viewBox="0 0 24 24" fill="none"
                               stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"
@@ -2066,9 +2066,9 @@
                   <span class="slot-editor-card-title">选择 IDE 模型槽位</span>
                   <div style="display:flex; align-items:center; gap:6px;">
                     <span class="brand-tag" id="slotCatalogCount"
-                      style="padding: 2px 8px; font-size: 10px; font-weight:700;">0 可用</span>
+                      style="padding: 2px 8px; font-size: 12px; font-weight:700;">0 可用</span>
                     <button id="btn-refresh-models" class="btn-ghost accent"
-                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 24px; font-size: 11px; font-weight: 600;"
+                      style="padding: 0 10px; border-radius: 6px; display: flex; align-items: center; gap: 4px; height: 26px; font-size: 12px; font-weight: 600;"
                       title="从 IDE 账号拉取最新模型列表（API 刷新）。若需与 IDE 下拉框一致，请启动网关后重启 IDE 并打开一次模型选择器以抓取 captured 清单。" data-action="refreshIdeModels">
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -2081,16 +2081,16 @@
                 <div id="slotCatalogScopeTabs"
                   style="display:flex;align-items:center;gap:6px;padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-card);flex-wrap:wrap;flex:0 0 auto;">
                   <button class="slot-scope-tab" data-scope="all"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="all">全部
                     <span id="slotScopeAllCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="account"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="account">当前账号
                     <span id="slotScopeAccountCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="extended"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="extended">内置槽位
                     <span id="slotScopeExtendedCount">0</span></button>
                   <button class="slot-scope-tab" data-scope="bound"
-                    style="height:26px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
+                    style="height:28px;padding:0 10px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:700;cursor:pointer;" data-action="setSlotCatalogScope" data-arg="bound">已绑定
                     <span id="slotScopeBoundCount">0</span></button>
                 </div>
                 <!-- 槽位搜索栏 -->
@@ -2099,7 +2099,7 @@
                   <input type="text" id="slotCatalogSearch" placeholder="搜索槽位名或 modelUid"
                     style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="filterSlotCatalog" data-events="input">
                   <select id="slotCatalogSort"
-                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;cursor:pointer;" data-assign="slotCatalogSort" data-action="filterSlotCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
@@ -2145,11 +2145,11 @@
                         style="padding:0 6px; font-size:12px; border-radius:8px; width:92px; height:32px; text-align:center; flex:0 0 auto;">
                       <div id="slot-context-presets" style="display:flex; gap:4px; align-items:center;">
                         <button type="button" id="btn-slot-context-recommend" class="slot-ctx-preset" data-action="applyRecommendedSlotContextWindow"
-                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
+                          style="height:32px;padding:0 8px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;" title="按映射模型推荐上下文（与 CodeBuddy 同源）">推荐</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[200000]"
-                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" title="200,000 tokens">200K</button>
+                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;" title="200,000 tokens">200K</button>
                         <button type="button" class="slot-ctx-preset" data-action="setSlotContextPreset" data-args="[1000000]"
-                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:11px;font-weight:600;cursor:pointer;" title="1,000,000 tokens">1M</button>
+                          style="height:32px;padding:0 7px;border-radius:7px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer;" title="1,000,000 tokens">1M</button>
                       </div>
                     </div>
                   </div>
@@ -2162,7 +2162,7 @@
                   <input type="text" id="mappingModelSearch" placeholder="搜索已配置模型或供应商"
                     style="padding:8px 12px; border-radius:8px; font-size:12px; flex:1; min-width:0; border:1px solid var(--border); background:var(--bg-input); outline:none; transition:all 0.2s;" data-action="renderMappingModelCatalog" data-events="input">
                   <select id="mappingCatalogSort"
-                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:11px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
+                    style="height:32px;padding:0 8px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);border-radius:8px;font-size:12px;outline:none;cursor:pointer;" data-assign="mappingCatalogSort" data-action="renderMappingModelCatalog" data-events="change">
                     <option value="name-asc">名称 A→Z</option>
                     <option value="name-desc">名称 Z→A</option>
                   </select>
@@ -2320,7 +2320,7 @@
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
               <div>
                 <div class="card-title" style="font-size:15px;font-weight:750;"><span class="dot"></span> 显示名设置</div>
-                <div style="font-size:11.5px;color:var(--text-muted);margin-top:4px;">决定 Windsurf / Devin 下拉列表中看到的模型名字。</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">决定 Windsurf / Devin 下拉列表中看到的模型名字。</div>
               </div>
               <button class="btn-ghost"
                 style="border:none;background:transparent;cursor:pointer;font-size:18px;color:var(--text-muted);line-height:1;padding:4px 8px;border-radius:6px;" data-action="closeModelMapSettings">×</button>
@@ -2354,7 +2354,7 @@
                       style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;" data-action="onModalSimpleLabelInput" data-events="input">
                   </div>
                 </div>
-                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
+                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">
                   常用组合：前缀填 <code>(BYOK)</code>；后缀填 <code>({provider})</code> 自动替换为当前供应商名。
                 </div>
               </div>
@@ -2372,7 +2372,7 @@
                       <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
                         <span>显示思考档位</span>
                       </span>
-                      <span style="font-size:11px;color:var(--text-muted);">在模型名后追加实际生效档位（例如：<code>High</code>、<code>Medium</code>）</span>
+                      <span style="font-size:12px;color:var(--text-muted);">在模型名后追加实际生效档位（例如：<code>High</code>、<code>Medium</code>）</span>
                     </div>
                   </label>
                   <label class="settings-option-item" id="opt-row-slotuid">
@@ -2381,7 +2381,7 @@
                       <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
                         <span>显示原始槽位名</span>
                       </span>
-                      <span style="font-size:11px;color:var(--text-muted);">在前部标明占用的官方槽位（例如：<code>gemini-3.7-flash-high &gt; gpt-5.6-sol</code>）</span>
+                      <span style="font-size:12px;color:var(--text-muted);">在前部标明占用的官方槽位（例如：<code>gemini-3.7-flash-high &gt; gpt-5.6-sol</code>）</span>
                     </div>
                   </label>
                   <label class="settings-option-item" id="opt-row-context">
@@ -2390,7 +2390,7 @@
                       <span style="font-size:12.5px;font-weight:650;color:var(--text-primary);display:inline-flex;align-items:center;gap:6px;">
                         <span>显示上下文窗口</span>
                       </span>
-                      <span style="font-size:11px;color:var(--text-muted);">在模型名旁标注配置的上下文大小（例如：<code>[1M]</code>、<code>[200K]</code>）</span>
+                      <span style="font-size:12px;color:var(--text-muted);">在模型名旁标注配置的上下文大小（例如：<code>[1M]</code>、<code>[200K]</code>）</span>
                     </div>
                   </label>
                 </div>
@@ -2400,12 +2400,12 @@
               <details id="label-template-advanced" ontoggle="onLabelTemplateAdvancedToggle()" class="settings-section-card" style="padding:12px 16px;">
                 <summary style="cursor:pointer;font-size:12.5px;font-weight:700;color:var(--text-secondary);display:flex;align-items:center;justify-content:space-between;">
                   <span>高级：自己写显示格式（点按胶囊快速填入）</span>
-                  <span style="font-size:11px;color:var(--accent);font-weight:600;">展开组合</span>
+                  <span style="font-size:12px;color:var(--accent);font-weight:600;">展开组合</span>
                 </summary>
                 <div style="margin-top:12px;display:flex;flex-direction:column;gap:11px;">
                   <!-- 常用推荐预设胶囊 -->
                   <div>
-                    <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">常用预设格式（点击一键替换）：</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">常用预设格式（点击一键替换）：</div>
                     <div class="chip-bar">
                       <button type="button" class="chip-btn preset-chip" data-action="applyPresetTemplate" data-arg="{prefix} {label} ({provider})">默认标准</button>
                       <button type="button" class="chip-btn preset-chip" data-action="applyPresetTemplate" data-arg="{prefix} {label} {effort} [{context}] ({provider})">带档位与上下文</button>
@@ -2416,7 +2416,7 @@
 
                   <!-- 模板输入框 -->
                   <div style="display:flex;flex-direction:column;gap:4px;">
-                    <div style="font-size:11px;font-weight:600;color:var(--text-muted);">自定义模板字符串：</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--text-muted);">自定义模板字符串：</div>
                     <input type="text" id="model-label-template-modal" placeholder="{prefix} {label} ({provider})"
                       style="width:100%;padding:9px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);box-shadow:var(--shadow-sm);"
                       data-action="onModalAdvancedLabelTemplateInput" data-events="input">
@@ -2424,7 +2424,7 @@
 
                   <!-- 点按插入字段胶囊群 -->
                   <div>
-                    <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">点按胶囊快速插入到当前光标：</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--text-muted);margin-bottom:6px;">点按胶囊快速插入到当前光标：</div>
                     <div class="chip-bar">
                       <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{prefix}">+ {prefix} 前缀</button>
                       <button type="button" class="chip-btn" data-action="insertTemplateToken" data-arg="{label}">+ {label} 显示名</button>
@@ -2438,7 +2438,7 @@
 
                   <!-- 标点胶囊 -->
                   <div class="chip-bar" style="gap:4px;">
-                    <span style="font-size:11px;color:var(--text-muted);margin-right:2px;">常用符号:</span>
+                    <span style="font-size:12px;color:var(--text-muted);margin-right:2px;">常用符号:</span>
                     <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg="(">(</button>
                     <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg=")">)</button>
                     <button type="button" class="chip-btn" style="padding:2px 7px;" data-action="insertTemplateToken" data-arg="[">[</button>
@@ -2454,7 +2454,7 @@
               <div class="settings-section-card" style="background:var(--bg-card);">
                 <div class="settings-section-title">
                   <span style="font-size:12px;font-weight:700;color:var(--text-primary);">实时效果预览</span>
-                  <span id="label-template-preview-subtitle" style="font-size:10.5px;color:var(--text-muted);">基于当前已配置模型实时呈现</span>
+                  <span id="label-template-preview-subtitle" style="font-size:12px;color:var(--text-muted);">基于当前已配置模型实时呈现</span>
                 </div>
                 <div id="label-template-preview"
                   style="display:flex;flex-direction:column;gap:6px;padding:8px;background:var(--bg-input);border-radius:9px;border:1px solid var(--border);">
@@ -2488,7 +2488,7 @@
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
               <div>
                 <div class="card-title"><span class="dot"></span> 模型命名</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">
                   保存命名规则,客户端看到的 model ID 会实时套用规则(不改原始 ID,不会叠加)。旧 ID 请求也仍然可用。
                 </div>
                 <label style="display:flex;align-items:center;gap:7px;margin-top:8px;cursor:pointer;user-select:none;">
@@ -2515,7 +2515,7 @@
  style="width:100%;padding:10px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-input);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);" data-action="onProxyRouteRenameInput" data-events="input">
                 </label>
               </div>
-                <div style="font-size:11px;color:var(--text-muted);line-height:1.5;">
+                <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">
                   保存规则后立即生效:客户端请求里的 model 字段将看到改名后的 ID,旧 ID 也仍然可用。改规则不会叠加——规则是全局模板,改一次就替换前一次。
               </div>
 
@@ -2526,7 +2526,7 @@
                   <input type="text" id="proxyRouteRenameTemplate" placeholder="{prefix}{provider}-{model}{suffix}"
  style="width:100%;padding:8px 12px;border-radius:8px;font-size:12px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);outline:none;box-sizing:border-box;font-family:var(--font-mono);"
  data-action="onProxyRouteRenameTemplateInput" data-events="input">
-                  <div style="font-size:10px;color:var(--text-muted);line-height:1.5;">
+                  <div style="font-size:12px;color:var(--text-muted);line-height:1.5;">
                     展开高级模式后,前缀/后缀 input 失效,新 ID 完全由模板决定。可用字段: {prefix} {model} {provider} {suffix}。
                   </div>
                 </div>
@@ -2535,12 +2535,12 @@
               <div>
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
                   <div style="font-size:12px;font-weight:700;color:var(--text-primary);">实际效果</div>
-                  <div id="proxyRouteRenameStats" style="font-size:11px;color:var(--text-muted);"></div>
+                  <div id="proxyRouteRenameStats" style="font-size:12px;color:var(--text-muted);"></div>
                 </div>
                 <div id="proxyRouteRenamePreview"
-                  style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;background:var(--bg-input);border:1px dashed var(--border);border-radius:8px;font-size:11px;max-height:260px;overflow-y:auto;">
+                  style="display:flex;flex-direction:column;gap:4px;padding:8px 10px;background:var(--bg-input);border:1px dashed var(--border);border-radius:8px;font-size:12px;max-height:260px;overflow-y:auto;">
                 </div>
-                <div id="proxyRouteRenameError" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(220,80,80,0.12);color:#c44;font-size:11px;line-height:1.5;">
+                <div id="proxyRouteRenameError" style="display:none;margin-top:8px;padding:8px 10px;border-radius:8px;background:rgba(220,80,80,0.12);color:#c44;font-size:12px;line-height:1.5;">
                 </div>
               </div>
             </div>
@@ -2571,7 +2571,7 @@
             <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
               <div>
                 <div class="card-title"><span class="dot"></span> 网关增强</div>
-                <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
+                <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">配置手动增强能力和第三方图片理解故障转移链。</div>
               </div>
               <div style="display:flex;align-items:center;gap:8px;">
                 <button class="btn-primary"
@@ -2598,14 +2598,14 @@
                   <!-- Panel: Vision -->
                   <div class="proxy-enhancement-pane active" data-enhancement-pane="vision">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">模型增强</strong><small style="font-size:10px;color:var(--text-muted);">给不支持图片理解的模型添加图片理解的功能；官方模型不支持图片时自动启用</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">模型增强</strong><small style="font-size:12px;color:var(--text-muted);">给不支持图片理解的模型添加图片理解的功能；官方模型不支持图片时自动启用</small></span>
                       <span class="toggle-switch"><input id="enhancement-imageFallback" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;imageFallback&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
 
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px;">
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">图片理解输出长度</span>
-                        <small style="font-size:10px;color:var(--text-muted);">限制视觉模型输出描述的最大 token，复杂截图建议 2048 以上。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">图片理解输出长度</span>
+                        <small style="font-size:12px;color:var(--text-muted);">限制视觉模型输出描述的最大 token，复杂截图建议 2048 以上。</small>
                         <select id="enhancement-visionMaxTokens" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;visionMaxTokens&quot;]" data-pass-this>
                           <option value="1024">省钱 · 1024</option>
                           <option value="2048">标准 · 2048</option>
@@ -2614,8 +2614,8 @@
                         </select>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">图片理解上下文</span>
-                        <small style="font-size:10px;color:var(--text-muted);">控制发送给视觉模型的文本上下文，越多越贵且隐私暴露越多；不会额外调用总结模型。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">图片理解上下文</span>
+                        <small style="font-size:12px;color:var(--text-muted);">控制发送给视觉模型的文本上下文，越多越贵且隐私暴露越多；不会额外调用总结模型。</small>
                         <select id="enhancement-visionContextMode" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementSelect" data-events="change" data-args="[&quot;visionContextMode&quot;]" data-pass-this>
                           <option value="current">当前消息</option>
                           <option value="summary">最近前文 + 当前消息</option>
@@ -2623,8 +2623,8 @@
                         </select>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">多图处理方式</span>
-                        <small style="font-size:10px;color:var(--text-muted);">逐张最稳；批量适合对比；分批适合很多张图。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">多图处理方式</span>
+                        <small style="font-size:12px;color:var(--text-muted);">逐张最稳；批量适合对比；分批适合很多张图。</small>
                         <select id="enhancement-visionMultiImageMode" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateVisionMultiImageMode" data-events="change" data-pass-this>
                           <option value="single">逐张识别</option>
                           <option value="batch">多图一次识别</option>
@@ -2632,13 +2632,13 @@
                         </select>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">分批大小</span>
-                        <small style="font-size:10px;color:var(--text-muted);">仅“多图分批识别”生效，每批发送几张图片。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">分批大小</span>
+                        <small style="font-size:12px;color:var(--text-muted);">仅“多图分批识别”生效，每批发送几张图片。</small>
                         <input id="enhancement-visionBatchSize" type="number" min="1" step="1" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;visionBatchSize&quot;]" data-pass-this>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);grid-column:1 / -1;">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">上下文字符上限</span>
-                        <small style="font-size:10px;color:var(--text-muted);">完整/压缩前文模式下的显式上限，超出会在发给视觉模型前截断并标注。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">上下文字符上限</span>
+                        <small style="font-size:12px;color:var(--text-muted);">完整/压缩前文模式下的显式上限，超出会在发给视觉模型前截断并标注。</small>
                         <input id="enhancement-visionContextMaxChars" type="number" min="500" step="500" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;visionContextMaxChars&quot;]" data-pass-this>
                       </label>
                     </div>
@@ -2647,7 +2647,7 @@
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                         <div>
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">图片理解模型</div>
-                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移，名称显示为"供应商名 - 模型名"。</div>
+                          <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移，名称显示为"供应商名 - 模型名"。</div>
                         </div>
                         <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="toggleVisionModelPicker">+ 添加模型</button>
                       </div>
@@ -2657,18 +2657,18 @@
                   <!-- Panel: Search -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="search">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">为内置模型添加联网搜索</strong><small style="font-size:10px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">为内置模型添加联网搜索</strong><small style="font-size:12px;color:var(--text-muted);">优先使用 Gemini / Grok / OpenAI 原生搜索；无内置搜索时由 AnyBridge 搜索源接管。</small></span>
                       <span class="toggle-switch"><input id="enhancement-webSearchEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;webSearchEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:12px;">
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大搜索结果数</span>
-                        <small style="font-size:10px;color:var(--text-muted);">每次 web_search 回填给模型的结果条数。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">最大搜索结果数</span>
+                        <small style="font-size:12px;color:var(--text-muted);">每次 web_search 回填给模型的结果条数。</small>
                         <input id="enhancement-webSearchMaxResults" type="number" min="1" step="1" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;webSearchMaxResults&quot;]" data-pass-this>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大搜索轮次</span>
-                        <small style="font-size:10px;color:var(--text-muted);">防止模型反复搜索；超限会返回明确错误。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">最大搜索轮次</span>
+                        <small style="font-size:12px;color:var(--text-muted);">防止模型反复搜索；超限会返回明确错误。</small>
                         <input id="enhancement-webSearchMaxRounds" type="number" min="1" step="1" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;webSearchMaxRounds&quot;]" data-pass-this>
                       </label>
                     </div>
@@ -2676,7 +2676,7 @@
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
                         <div>
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">搜索源</div>
-                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移；所有失败会显式暴露给模型和日志。</div>
+                          <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">按列表顺序故障转移；所有失败会显式暴露给模型和日志。</div>
                         </div>
                         <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="toggleSearchSourcePicker">+ 添加搜索源</button>
                       </div>
@@ -2688,7 +2688,7 @@
                   <div class="proxy-enhancement-pane" data-enhancement-pane="general">
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
                       <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">模型自动路由</strong><small style="font-size:10px;color:var(--text-muted);">主备模型按顺序切换</small></span>
+                        <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">模型自动路由</strong><small style="font-size:12px;color:var(--text-muted);">主备模型按顺序切换</small></span>
                         <span class="toggle-switch"><input id="enhancement-autoRouting" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;autoRouting&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                       </label>
                     </div>
@@ -2696,34 +2696,34 @@
                   <!-- Panel: Retry -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="retry">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">请求重试</strong><small style="font-size:10px;color:var(--text-muted);">5xx / 429 / 网络错误时按配置重试</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">请求重试</strong><small style="font-size:12px;color:var(--text-muted);">5xx / 429 / 网络错误时按配置重试</small></span>
                       <span class="toggle-switch"><input id="enhancement-retry" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;retry&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
 
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大重试次数</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">最大重试次数</span>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-retryMaxRetries" type="number" min="0" step="1" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryMaxRetries"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryMaxRetries"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryMaxRetries" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryMaxRetries" data-stop>重置</button>
                         </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">基础等待 (ms)</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">基础等待 (ms)</span>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-retryBaseMs" type="number" min="1" step="100" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryBaseMs"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryBaseMs"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryBaseMs" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryBaseMs" data-stop>重置</button>
                         </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">单次等待上限 (ms)</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">单次等待上限 (ms)</span>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-retryCapMs" type="number" min="1" step="100" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryCapMs"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryCapMs"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryCapMs" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryCapMs" data-stop>重置</button>
                         </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">最大总耗时 (秒)</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">最大总耗时 (秒)</span>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-retryTotalSeconds" type="number" min="1" step="1" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["retryTotalSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["retryTotalSeconds"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-retryTotalSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="retryTotalSeconds" data-stop>重置</button>
@@ -2732,20 +2732,20 @@
                     </div>
 
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin:14px 0 10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">智能重试</strong><small style="font-size:10px;color:var(--text-muted);">Anthropic 上游返回可恢复错误时，修复请求体后重发</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">智能重试</strong><small style="font-size:12px;color:var(--text-muted);">Anthropic 上游返回可恢复错误时，修复请求体后重发</small></span>
                       <span class="toggle-switch"><input id="enhancement-selfHeal-enabled" type="checkbox" data-action="toggleSelfHeal" data-events="change" data-args="[&quot;enabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;">
                       <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">签名自愈</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">签名自愈</span>
                         <span class="toggle-switch"><input id="enhancement-selfHeal-signature" type="checkbox" data-action="toggleSelfHeal" data-events="change" data-args="[&quot;signature&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                       </label>
                       <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">预算自愈</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">预算自愈</span>
                         <span class="toggle-switch"><input id="enhancement-selfHeal-budget" type="checkbox" data-action="toggleSelfHeal" data-events="change" data-args="[&quot;budget&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                       </label>
                       <label style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">媒体自愈</span>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">媒体自愈</span>
                         <span class="toggle-switch"><input id="enhancement-selfHeal-media" type="checkbox" data-action="toggleSelfHeal" data-events="change" data-args="[&quot;media&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                       </label>
                     </div>
@@ -2753,8 +2753,8 @@
                   <!-- Panel: Failover -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="failover">
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">首字节超时 (秒)</span>
-                      <small style="font-size:10px;color:var(--text-muted);">上游这么久还没返回第一个字节，就判定这个目标失败并切换下一个。带大量工具历史的中转站实测可达 85-90 秒，不建议低于 90。</small>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">首字节超时 (秒)</span>
+                      <small style="font-size:12px;color:var(--text-muted);">上游这么久还没返回第一个字节，就判定这个目标失败并切换下一个。带大量工具历史的中转站实测可达 85-90 秒，不建议低于 90。</small>
                       <div style="display:flex;align-items:center;gap:8px;">
                         <input id="enhancement-failoverTtfbSeconds" type="number" min="1" step="10" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["failoverTtfbSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["failoverTtfbSeconds"],"passThis":true}}'>
                         <button type="button" class="btn-ghost secondary" id="enhancement-reset-failoverTtfbSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="failoverTtfbSeconds" data-stop>重置</button>
@@ -2762,61 +2762,61 @@
                     </label>
 
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">失败目标冷却</strong><small style="font-size:10px;color:var(--text-muted);">某个目标确认失败后，一段时间内不再选它，直接打下一个</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">失败目标冷却</strong><small style="font-size:12px;color:var(--text-muted);">某个目标确认失败后，一段时间内不再选它，直接打下一个</small></span>
                       <span class="toggle-switch"><input id="enhancement-cooldownEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;cooldownEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
 
                     <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;">
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">瞬时错误冷却 (秒)</span>
-                        <small style="font-size:10px;color:var(--text-muted);">5xx / 超时 / 网络错误的首次冷却；反复失败每次翻倍，到上限封顶。0 = 不冷却。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">瞬时错误冷却 (秒)</span>
+                        <small style="font-size:12px;color:var(--text-muted);">5xx / 超时 / 网络错误的首次冷却；反复失败每次翻倍，到上限封顶。0 = 不冷却。</small>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-cooldownTransientSeconds" type="number" min="0" step="10" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["cooldownTransientSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["cooldownTransientSeconds"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-cooldownTransientSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="cooldownTransientSeconds" data-stop>重置</button>
                         </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">冷却上限 (秒)</span>
-                        <small style="font-size:10px;color:var(--text-muted);">翻倍后的封顶值，也就是持续失败的节点最长会被跳过多久。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">冷却上限 (秒)</span>
+                        <small style="font-size:12px;color:var(--text-muted);">翻倍后的封顶值，也就是持续失败的节点最长会被跳过多久。</small>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-cooldownMaxSeconds" type="number" min="1" step="60" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["cooldownMaxSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["cooldownMaxSeconds"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-cooldownMaxSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="cooldownMaxSeconds" data-stop>重置</button>
                         </div>
                       </label>
                       <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                        <span style="font-size:11px;font-weight:800;color:var(--text-primary);">不可用冷却 (秒)</span>
-                        <small style="font-size:10px;color:var(--text-muted);">401 / 403 / 模型不存在，一次失败即按此值冷却。0 = 不冷却。</small>
+                        <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">不可用冷却 (秒)</span>
+                        <small style="font-size:12px;color:var(--text-muted);">401 / 403 / 模型不存在，一次失败即按此值冷却。0 = 不冷却。</small>
                         <div style="display:flex;align-items:center;gap:8px;">
                           <input id="enhancement-cooldownAuthSeconds" type="number" min="0" step="60" style="flex:1;min-width:0;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-actions='{"input":{"action":"onEnhancementNumberInput","args":["cooldownAuthSeconds"],"passThis":true},"change":{"action":"updateEnhancementNumber","args":["cooldownAuthSeconds"],"passThis":true}}'>
                           <button type="button" class="btn-ghost secondary" id="enhancement-reset-cooldownAuthSeconds" style="display:none;height:32px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;cursor:pointer;" data-action="resetSingleEnhancement" data-arg="cooldownAuthSeconds" data-stop>重置</button>
                         </div>
                       </label>
                     </div>
-                    <small style="display:block;font-size:10px;color:var(--text-muted);margin-top:10px;">429 限流和超长上下文这类请求自身的问题不会冷却目标；若全部节点都在冷却期内，则直接报错，不再盲目重试。</small>
+                    <small style="display:block;font-size:12px;color:var(--text-muted);margin-top:10px;">429 限流和超长上下文这类请求自身的问题不会冷却目标；若全部节点都在冷却期内，则直接报错，不再盲目重试。</small>
                   </div>
                   <!-- Panel: Prompt Injection -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="prompt">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">提示词注入</strong><small style="font-size:10px;color:var(--text-muted);">在 system prompt 前注入自定义内容</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">提示词注入</strong><small style="font-size:12px;color:var(--text-muted);">在 system prompt 前注入自定义内容</small></span>
                       <span class="toggle-switch"><input id="enhancement-systemPromptPrefixEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;systemPromptPrefixEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">系统提示词前缀</span>
-                      <small style="font-size:10px;color:var(--text-muted);">注入到所有请求的 system prompt 之前，用换行分隔。留空则不注入。</small>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">系统提示词前缀</span>
+                      <small style="font-size:12px;color:var(--text-muted);">注入到所有请求的 system prompt 之前，用换行分隔。留空则不注入。</small>
                       <textarea id="enhancement-systemPromptPrefix" rows="6" placeholder="例如：你是一个专业的编程助手，请用中文回答。" style="width:100%;padding:8px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;resize:vertical;font-family:inherit;" data-action="updateEnhancementText" data-events="change" data-args="[&quot;systemPromptPrefix&quot;]" data-pass-this></textarea>
                     </label>
                   </div>
                   <!-- Panel: Custom Headers -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="headers">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">自定义请求头</strong><small style="font-size:10px;color:var(--text-muted);">注入自定义请求头和响应头</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">自定义请求头</strong><small style="font-size:12px;color:var(--text-muted);">注入自定义请求头和响应头</small></span>
                       <span class="toggle-switch"><input id="enhancement-customHeadersEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;customHeadersEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <div style="margin-bottom:14px;">
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
                         <div>
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">请求头</div>
-                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">注入到发往上游 API 的请求头</div>
+                          <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">注入到发往上游 API 的请求头</div>
                         </div>
                         <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="addHeaderPair" data-arg="customHeaders">+ 添加</button>
                       </div>
@@ -2826,7 +2826,7 @@
                       <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;">
                         <div>
                           <div style="font-size:12px;font-weight:800;color:var(--text-primary);">响应头</div>
-                          <div style="font-size:10px;color:var(--text-muted);margin-top:3px;">注入到返回给客户端的响应头</div>
+                          <div style="font-size:12px;color:var(--text-muted);margin-top:3px;">注入到返回给客户端的响应头</div>
                         </div>
                         <button class="btn-ghost accent" style="height:30px;padding:0 12px;border-radius:8px;font-size:12px;font-weight:700;" data-action="addHeaderPair" data-arg="responseHeaders">+ 添加</button>
                       </div>
@@ -2836,11 +2836,11 @@
                   <!-- Panel: Tool Filter -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="tools">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">工具过滤</strong><small style="font-size:10px;color:var(--text-muted);">过滤、限制工具调用</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">工具过滤</strong><small style="font-size:12px;color:var(--text-muted);">过滤、限制工具调用</small></span>
                       <span class="toggle-switch"><input id="enhancement-toolFilterEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;toolFilterEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">工具过滤模式</span>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">工具过滤模式</span>
                       <select id="enhancement-toolFilterMode" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementSelect" data-events="change" data-args="[&quot;toolFilterMode&quot;]" data-pass-this>
                         <option value="">不过滤</option>
                         <option value="allow">白名单（仅允许列表中的工具）</option>
@@ -2848,38 +2848,38 @@
                       </select>
                     </label>
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">工具名称列表</span>
-                      <small style="font-size:10px;color:var(--text-muted);">用英文逗号分隔，如：code_interpreter, web_search</small>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">工具名称列表</span>
+                      <small style="font-size:12px;color:var(--text-muted);">用英文逗号分隔，如：code_interpreter, web_search</small>
                       <input id="enhancement-toolFilterList" type="text" placeholder="tool_a, tool_b" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateToolFilterList" data-events="change" data-pass-this>
                     </label>
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">强制 tool_choice</span>
-                      <small style="font-size:10px;color:var(--text-muted);">覆盖请求中的 tool_choice 参数。留空则不覆盖。可选值：auto / none / required</small>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">强制 tool_choice</span>
+                      <small style="font-size:12px;color:var(--text-muted);">覆盖请求中的 tool_choice 参数。留空则不覆盖。可选值：auto / none / required</small>
                       <input id="enhancement-forceToolChoice" type="text" placeholder="auto" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementText" data-events="change" data-args="[&quot;forceToolChoice&quot;]" data-pass-this>
                     </label>
                   </div>
                   <!-- Panel: Advanced -->
                   <div class="proxy-enhancement-pane" data-enhancement-pane="advanced">
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">请求参数覆盖</strong><small style="font-size:10px;color:var(--text-muted);">覆盖请求中的参数值</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">请求参数覆盖</strong><small style="font-size:12px;color:var(--text-muted);">覆盖请求中的参数值</small></span>
                       <span class="toggle-switch"><input id="enhancement-paramOverridesEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;paramOverridesEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">参数列表</span>
-                      <small style="font-size:10px;color:var(--text-muted);">每行一个，格式：key=value。值用 JSON 格式，如：temperature=0 或 max_tokens=4096</small>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">参数列表</span>
+                      <small style="font-size:12px;color:var(--text-muted);">每行一个，格式：key=value。值用 JSON 格式，如：temperature=0 或 max_tokens=4096</small>
                       <textarea id="enhancement-paramOverrides" rows="5" placeholder="temperature=0&#10;max_tokens=4096" style="width:100%;padding:8px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;resize:vertical;font-family:inherit;" data-action="updateParamOverrides" data-events="change" data-pass-this></textarea>
                     </label>
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">速率限制</strong><small style="font-size:10px;color:var(--text-muted);">每分钟最大请求数</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">速率限制</strong><small style="font-size:12px;color:var(--text-muted);">每分钟最大请求数</small></span>
                       <span class="toggle-switch"><input id="enhancement-rateLimitEnabled" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;rateLimitEnabled&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                     <label style="display:flex;flex-direction:column;gap:6px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);margin-bottom:10px;">
-                      <span style="font-size:11px;font-weight:800;color:var(--text-primary);">RPM (每分钟请求数)</span>
-                      <small style="font-size:10px;color:var(--text-muted);">0 表示不限制</small>
+                      <span style="font-size:12.5px;font-weight:800;color:var(--text-primary);">RPM (每分钟请求数)</span>
+                      <small style="font-size:12px;color:var(--text-muted);">0 表示不限制</small>
                       <input id="enhancement-rateLimitRpm" type="number" min="0" step="1" style="width:100%;height:32px;padding:0 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-size:12px;outline:none;" data-action="updateEnhancementNumber" data-events="change" data-args="[&quot;rateLimitRpm&quot;]" data-pass-this>
                     </label>
                     <label style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border:1px solid var(--border);border-radius:9px;background:var(--bg-input);">
-                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:12px;color:var(--text-primary);">请求日志</strong><small style="font-size:10px;color:var(--text-muted);">记录请求和响应到文件，方便调试</small></span>
+                      <span style="display:flex;flex-direction:column;gap:3px;min-width:0;"><strong style="font-size:13px;color:var(--text-primary);">请求日志</strong><small style="font-size:12px;color:var(--text-muted);">记录请求和响应到文件，方便调试</small></span>
                       <span class="toggle-switch"><input id="enhancement-requestLogging" type="checkbox" data-action="toggleEnhancement" data-events="change" data-args="[&quot;requestLogging&quot;]" data-pass-this><span class="toggle-slider"></span></span>
                     </label>
                   </div>
@@ -3175,7 +3175,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="proxyLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Windsurf 界面汉化</div>
-                  <div id="proxyLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">官方语言包 + 专有词库 · 升级后自动保持</div>
+                  <div id="proxyLangModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">官方语言包 + 专有词库 · 升级后自动保持</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeProxyLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -3189,7 +3189,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">当前状态：</span>
-                  <span id="proxyLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                  <span id="proxyLangModalStatusBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
@@ -3204,12 +3204,12 @@
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                  <button type="button" class="btn-ghost" data-action="clearProxyLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                  <button type="button" class="btn-ghost" data-action="clearProxyLangLog" style="font-size: 12px; padding: 2px 10px; height: 26px; border-radius: 6px;">清空日志</button>
                 </div>
-                <pre id="proxyLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                <pre id="proxyLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 48px;">
+              <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 48px;">
                 官方语言包负责 VS Code 界面，内置 800+ 条词库负责客户端专有界面。重启后生效，可一键还原。装新版后需重新汉化。
               </div>
             </div>
@@ -3868,9 +3868,9 @@
             </div>
 
             <div class="proxy-console-tabs" role="tablist" aria-label="网关配置">
-              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" data-action="activateProxyPanel" data-arg="overview" onclick="window.activateProxyPanel && window.activateProxyPanel('overview')" aria-selected="true">接入</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" data-action="activateProxyPanel" data-arg="routes" onclick="window.activateProxyPanel && window.activateProxyPanel('routes')" aria-selected="false">路由</button>
-              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" data-action="activateProxyPanel" data-arg="enhancement" onclick="window.activateProxyPanel && window.activateProxyPanel('enhancement')" aria-selected="false">增强</button>
+              <button type="button" class="proxy-console-tab active" data-proxy-panel="overview" data-action="activateProxyPanel" data-arg="overview" aria-selected="true">接入</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="routes" data-action="activateProxyPanel" data-arg="routes" aria-selected="false">路由</button>
+              <button type="button" class="proxy-console-tab" data-proxy-panel="enhancement" data-action="activateProxyPanel" data-arg="enhancement" aria-selected="false">增强</button>
             </div>
 
             <div class="proxy-console-section active" data-proxy-section="overview">
@@ -3953,7 +3953,7 @@
                         <h2>已接入智能体</h2>
                         <p>检测本机客户端与网关分流状态</p>
                       </div>
-                      <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11.5px; height: 26px; padding: 0 8px;">管理智能体 →</button>
+                      <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 12px; height: 28px; padding: 0 10px;">管理智能体 →</button>
                     </div>
 
                     <div class="gateway-takeover-list">
@@ -3965,7 +3965,7 @@
                             <div class="gateway-ti-detail">已接管 · 流量走本地网关转发与自愈</div>
                           </div>
                         </div>
-                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 12px; height: 26px; padding: 0 10px;">查看配置</button>
                       </div>
 
                       <div class="gateway-takeover-item">
@@ -3976,7 +3976,7 @@
                             <div class="gateway-ti-detail">独立模型表支持 · 免全局重命名干扰</div>
                           </div>
                         </div>
-                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 11px; height: 24px; padding: 0 8px;">查看配置</button>
+                        <button type="button" class="btn-ghost accent" data-action="navigateTo" data-arg="models" style="font-size: 12px; height: 26px; padding: 0 10px;">查看配置</button>
                       </div>
 
                       <div class="gateway-takeover-item">
@@ -3987,7 +3987,7 @@
                             <div class="gateway-ti-detail">填入上述 Base URL 与 Key 即可直接接入</div>
                           </div>
                         </div>
-                        <button type="button" class="btn-ghost" data-action="setProxyPresetTab" data-arg="cursor" style="font-size: 11px; height: 24px; padding: 0 8px;">获取配置</button>
+                        <button type="button" class="btn-ghost" data-action="setProxyPresetTab" data-arg="cursor" style="font-size: 12px; height: 26px; padding: 0 10px;">获取配置</button>
                       </div>
                     </div>
                   </section>
@@ -4148,7 +4148,7 @@
             <div class="gateway-drawer-head">
               <div>
                 <div style="font-size: 14.5px; font-weight: 700; color: var(--text-primary);">网关诊断与审计</div>
-                <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">实时捕获的请求调用链路与底层运行日志</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">实时捕获的请求调用链路与底层运行日志</div>
               </div>
               <button type="button" class="btn-ghost" data-action="toggleGatewayDrawer" data-args="[false]" style="height: 28px; padding: 0 10px; font-size: 12px;">关闭</button>
             </div>
@@ -4164,7 +4164,7 @@
               <div class="gateway-tl-entry">
                 <div class="gateway-tl-header">
                   <span class="gateway-tl-title">POST /v1/chat/completions</span>
-                  <span class="proxy-tag-ok" style="font-size: 11px; padding: 1px 6px; border-radius: 4px; font-weight: 600;">200 OK</span>
+                  <span class="proxy-tag-ok" style="font-size: 12px; padding: 2px 7px; border-radius: 4px; font-weight: 600;">200 OK</span>
                 </div>
                 <div class="gateway-tl-sub" id="drawerRecentReqMeta">最近请求分析就绪</div>
                 <div class="gateway-tl-step ok">
@@ -4651,7 +4651,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="cursorTagStyleModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">供应商展示方式</div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">定义模型在 Cursor 下拉列表中的呈现形式与包裹符号</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">定义模型在 Cursor 下拉列表中的呈现形式与包裹符号</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeCursorTagStyleModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -4668,7 +4668,7 @@
                   <input type="radio" name="cursorTagMainModeRadio" value="text" style="cursor: pointer; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex-shrink: 0;">
                   <div style="flex: 1; min-width: 0;">
                     <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">文本标注形式</div>
-                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">融入模型名称，打钩居末，支持前置与后置</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">融入模型名称，打钩居末，支持前置与后置</div>
                   </div>
                 </label>
 
@@ -4678,9 +4678,9 @@
                   <div style="flex: 1; min-width: 0;">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                       <span style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">原生徽章形式</span>
-                      <span style="font-size: 10.5px; color: var(--text-muted); background: var(--bg-input); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border);">默认</span>
+                      <span style="font-size: 12px; color: var(--text-muted); background: var(--bg-input); padding: 2px 7px; border-radius: 4px; border: 1px solid var(--border);">默认</span>
                     </div>
-                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">Cursor 官方右侧蓝色 Badge 样式</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">Cursor 官方右侧蓝色 Badge 样式</div>
                   </div>
                 </label>
 
@@ -4689,7 +4689,7 @@
                   <input type="radio" name="cursorTagMainModeRadio" value="none" style="cursor: pointer; width: 16px; height: 16px; margin: 0; accent-color: var(--accent); flex-shrink: 0;">
                   <div style="flex: 1; min-width: 0;">
                     <div style="font-size: 13.5px; font-weight: 700; color: var(--text-primary);">纯净极简形式</div>
-                    <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">不显示供应商标签，列表极简纯净</div>
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.45;">不显示供应商标签，列表极简纯净</div>
                   </div>
                 </label>
               </div>
@@ -4701,17 +4701,17 @@
                 <div>
                   <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                     <span style="font-size: 12px; font-weight: 700; color: var(--text-secondary);">Cursor 选中效果预览</span>
-                    <span style="font-size: 11px; color: var(--text-muted);">实时渲染</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">实时渲染</span>
                   </div>
                   
                   <!-- 模拟器外框：仿 Cursor 现代深灰/白底下拉项 -->
                   <div id="cursorSimulationContainer" style="background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; min-height: 48px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-family: var(--font-mono); box-shadow: 0 1px 3px rgba(0,0,0,0.04); box-sizing: border-box; transition: all 0.2s ease;">
                     <div id="cursorSimulationLeft" style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                      <div style="width: 20px; height: 20px; border-radius: 5px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; flex-shrink: 0;">✦</div>
+                      <div style="width: 22px; height: 22px; border-radius: 5px; background: rgba(37, 99, 235, 0.1); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; flex-shrink: 0;">✦</div>
                       <span id="cursorSimulationModelName" style="color: var(--text-primary); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">[CPA] Gemini 3.8 Flash</span>
                     </div>
                     <div id="cursorSimulationRight" style="display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                      <span id="cursorSimulationBadge" style="display: none; background: #2563eb; color: #ffffff; font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px; font-family: var(--font-sans); letter-spacing: 0.2px;">CPA</span>
+                      <span id="cursorSimulationBadge" style="display: none; background: #2563eb; color: #ffffff; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 5px; font-family: var(--font-sans); letter-spacing: 0.2px;">CPA</span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;">
                         <polyline points="20 6 9 17 4 12"></polyline>
                       </svg>
@@ -4798,7 +4798,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="cursorEditModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.2;">编辑 Cursor 模型</div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">修改模型在 Cursor 列表中呈现的名称与调用参数</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">修改模型在 Cursor 列表中呈现的名称与调用参数</div>
                 </div>
               </div>
               <button class="btn-ghost icon-btn" data-action="closeCursorEditModal" aria-label="关闭" style="width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">✕</button>
@@ -4821,26 +4821,26 @@
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                       </button>
                     </div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                    <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
                       供应商：<span id="cursorEditProviderName" style="color: var(--text-secondary); font-weight: 600;">--</span> · 路由：<span id="cursorEditRouteUidShort" style="font-family: var(--font-mono);">--</span>
                     </div>
                   </div>
                 </div>
                 <div style="flex-shrink: 0;">
-                  <span class="tag" style="background: rgba(37, 99, 235, 0.1); color: var(--accent); font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 5px;">OpenAI 兼容</span>
+                  <span class="tag" style="background: rgba(37, 99, 235, 0.1); color: var(--accent); font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 5px;">OpenAI 兼容</span>
                 </div>
               </div>
 
               <!-- 分组 1: 基本呈现设置 -->
               <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
                 <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-                  <span class="cb-edit-section-tag" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(37, 99, 235, 0.1); color: var(--accent);">基础</span>
-                  <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">显示与启用</span>
+                  <span class="cb-edit-section-tag" style="font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: rgba(37, 99, 235, 0.1); color: var(--accent);">基础</span>
+                  <span class="cb-edit-section-title" style="font-size: 12.5px; font-weight: 700; color: var(--text-primary);">显示与启用</span>
                 </div>
                 <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label for="cursorEditDisplayName" style="font-size: 12px; font-weight: 650; color: var(--text-secondary);">
-                      显示名称 <span style="font-size: 11px; color: var(--text-muted); font-weight: normal;">（Cursor 列表下拉选项中展示的文字）</span>
+                      显示名称 <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">（Cursor 列表下拉选项中展示的文字）</span>
                     </label>
                     <input type="text" id="cursorEditDisplayName" placeholder="例如：Claude 3.5 Sonnet / Gemini 3.8 Flash" style="height: 36px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-input); font-size: 13px; color: var(--text-primary); outline: none;">
                   </div>
@@ -4848,7 +4848,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);">
                     <div>
                       <div style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">向 Cursor 暴露模型</div>
-                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">关闭后该模型将从 Cursor 列表中隐藏</div>
+                      <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">关闭后该模型将从 Cursor 列表中隐藏</div>
                     </div>
                     <label class="toggle-switch" title="切换启用状态">
                       <input type="checkbox" id="cursorEditEnabled">
@@ -4859,7 +4859,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; background: var(--bg-input); border-radius: 8px; border: 1px solid var(--border);">
                     <div>
                       <div style="font-size: 12.5px; font-weight: 650; color: var(--text-primary);">第三方图片理解</div>
-                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">在发送图片时使用网关增强中配置的视觉模型解析图片</div>
+                      <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">在发送图片时使用网关增强中配置的视觉模型解析图片</div>
                     </div>
                     <label class="toggle-switch" title="切换第三方图片理解">
                       <input type="checkbox" id="cursorEditThirdPartyVision">
@@ -4872,8 +4872,8 @@
               <!-- 分组 2: Cursor 模型调用参数覆写 -->
               <div class="cb-edit-section" style="border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; background: var(--bg-card);">
                 <div class="cb-edit-section-header" style="margin-bottom: 12px; display: flex; align-items: center; gap: 6px;">
-                  <span class="cb-edit-section-tag optional" style="font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981;">可选</span>
-                  <span class="cb-edit-section-title" style="font-size: 12px; font-weight: 700; color: var(--text-primary);">模型参数配置</span>
+                  <span class="cb-edit-section-tag optional" style="font-size: 12px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: rgba(16, 185, 129, 0.1); color: #10b981;">可选</span>
+                  <span class="cb-edit-section-title" style="font-size: 12.5px; font-weight: 700; color: var(--text-primary);">模型参数配置</span>
                 </div>
                 <div class="cb-edit-fields-grid" style="display: flex; flex-direction: column; gap: 12px;">
                   <div style="display: flex; flex-direction: column; gap: 6px;">
@@ -5210,7 +5210,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="cursorLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Cursor 界面汉化</div>
-                  <div id="cursorLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">官方语言包 + 专有词库 · 升级后自动保持</div>
+                  <div id="cursorLangModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">官方语言包 + 专有词库 · 升级后自动保持</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeCursorLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -5224,7 +5224,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">当前状态：</span>
-                  <span id="cursorLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                  <span id="cursorLangModalStatusBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
@@ -5239,12 +5239,12 @@
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                  <button type="button" class="btn-ghost" data-action="clearCursorLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                  <button type="button" class="btn-ghost" data-action="clearCursorLangLog" style="font-size: 12px; padding: 2px 10px; height: 26px; border-radius: 6px;">清空日志</button>
                 </div>
-                <pre id="cursorLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                <pre id="cursorLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+              <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
                 官方语言包负责 VS Code 界面，内置词库负责 Cursor 专有界面。重启后生效，可一键还原。装新版后需重新汉化。
               </div>
             </div>
@@ -5271,7 +5271,7 @@
           </div>
 
           <div class="cb-add-layout">
-            <!-- 左列：供应商列表 (复用标准 cb-add-sidebar) -->
+            <!-- 左列：供应商列表 -->
             <aside class="cb-add-sidebar glass-card">
               <div class="cb-add-search">
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
@@ -5313,6 +5313,7 @@
               <div class="cb-add-provider-list" id="cursor-add-provider-list"></div>
             </aside>
 
+
             <!-- 右列：模型列表与 Cursor 定制选项 -->
             <section class="cb-add-main">
               <div class="glass-card cb-add-models-card">
@@ -5334,32 +5335,32 @@
                     </button>
                   </div>
                 </div>
-                <!-- 模型条目容器 (复用标准条状卡片) -->
                 <div class="cb-add-models-body" id="cursor-add-models-list-page">
                   <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
                 </div>
               </div>
 
+
               <!-- 底部卡片：完全对齐 CodeBuddy / WorkBuddy 的 cb-add-caps-card 结构 -->
               <div class="glass-card cb-add-caps-card">
                 <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
                   <div class="cb-add-caps-title" style="margin: 0;">自动适配特性</div>
-                  <details style="font-size: 11.5px; cursor: pointer;">
+                  <details style="font-size: 12px; cursor: pointer;">
                     <summary style="color: var(--accent); font-weight: 600; user-select: none; outline: none;">
                       高级命名规则 (可选展开)
                     </summary>
                     <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; cursor: default;" onclick="event.stopPropagation()">
                       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <div class="cb-edit-field">
-                          <label for="cursor-add-prefix" style="white-space: nowrap; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示名前缀</label>
+                          <label for="cursor-add-prefix" style="white-space: nowrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示名前缀</label>
                           <input type="text" id="cursor-add-prefix" class="field-input" placeholder="例如：[BYOK]" oninput="onCursorAddNamingRuleChange()">
                         </div>
                         <div class="cb-edit-field">
-                          <label for="cursor-add-suffix" style="white-space: nowrap; font-size: 11.5px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示后缀</label>
+                          <label for="cursor-add-suffix" style="white-space: nowrap; font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; display: block;">显示后缀</label>
                           <input type="text" id="cursor-add-suffix" class="field-input" placeholder="例如：(PRO)" oninput="onCursorAddNamingRuleChange()">
                         </div>
                       </div>
-                      <div style="font-size: 11px; color: var(--text-muted); background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
+                      <div style="font-size: 12px; color: var(--text-muted); background: var(--bg-input); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border);">
                         命名预览：<strong id="cursor-add-naming-preview" style="color: var(--accent); font-family: var(--font-mono);">gpt-5.4</strong>
                       </div>
                     </div>
@@ -5384,7 +5385,6 @@
                   </div>
                 </div>
               </div>
-
             </section>
           </div>
         </div>
@@ -5475,12 +5475,11 @@
                   </svg>
                   <span>保存配置</span>
                 </button>
-                <button class="btn-ghost accent" id="claude-code-config-save-switch-btn" data-action="saveClaudeCodeConfigEditor" data-args="[true]">
-                  <span>保存并切换</span>
-                </button>
+                <button class="btn-ghost accent" id="claude-code-config-save-switch-btn" data-action="saveClaudeCodeConfigEditor" data-args="[true]"><span>保存并切换</span></button>
               </div>
             </div>
           </div>
+
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
@@ -5525,6 +5524,7 @@
               <div class="cb-add-provider-list" id="claude-add-provider-list"></div>
             </aside>
 
+
             <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
             <section class="cb-add-main codex-add-main">
               <input type="hidden" id="claude-code-config-edit-id">
@@ -5533,11 +5533,12 @@
 
               <!-- 卡片 1：基础连接信息 -->
               <div class="glass-card" style="padding: 16px 20px;">
-                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center;">
+                <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
                   <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
                     <span>基础连接信息</span>
                   </div>
+                  
                 </div>
 
                 <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
@@ -5557,7 +5558,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
                     <button type="button" class="btn-ghost" id="claude-code-config-sync-token-btn"
-                      data-action="syncClaudeCodeConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      data-action="syncClaudeCodeConfigTokenFromSource" style="padding: 2px 10px; height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
@@ -5577,6 +5578,7 @@
                   </div>
                 </div>
               </div>
+
 
               <!-- 卡片 2：模型角色映射（CC Switch 规范） -->
               <div class="glass-card cb-add-models-card claude-code-role-card" style="flex: 0 0 auto; overflow: visible !important; position: relative; z-index: 50;">
@@ -5615,44 +5617,39 @@
                       <span style="text-align: center;">声明 1M</span>
                     </div>
 
-                    <!-- 1. Sonnet (主力) -->
-                    <div class="claude-role-row">
-                      <div class="claude-role-badge">Sonnet</div>
-                      <input id="claude-model-name-sonnet" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 3.7 Sonnet" oninput="onClaudeRoleFieldInput()">
-                      <div class="custom-role-select" id="claude-role-select-sonnet">
-                        <input type="hidden" id="claude-model-id-sonnet">
-                      </div>
-                      <label class="claude-1m-toggle-box" id="claude-1m-box-sonnet" title="勾选后实际请求模型将携带 [1M] 上下文标识">
-                        <input type="checkbox" id="claude-1m-sonnet" onchange="onClaude1mCheckboxChanged('sonnet', this.checked)">
-                        <span>1M</span>
-                      </label>
+                  <div class="claude-role-row">
+                    <div class="claude-role-badge">Sonnet</div>
+                    <input id="claude-model-name-sonnet" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 3.7 Sonnet" oninput="onClaudeRoleFieldInput()">
+                    <div class="custom-role-select" id="claude-role-select-sonnet">
+                      <input type="hidden" id="claude-model-id-sonnet">
                     </div>
-
-                    <!-- 2. Opus (推理) -->
-                    <div class="claude-role-row">
-                      <div class="claude-role-badge">Opus</div>
-                      <input id="claude-model-name-opus" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 4.7 Opus" oninput="onClaudeRoleFieldInput()">
-                      <div class="custom-role-select" id="claude-role-select-opus">
-                        <input type="hidden" id="claude-model-id-opus">
-                      </div>
-                      <label class="claude-1m-toggle-box" id="claude-1m-box-opus" title="勾选后实际请求模型将携带 [1M] 上下文标识">
-                        <input type="checkbox" id="claude-1m-opus" onchange="onClaude1mCheckboxChanged('opus', this.checked)">
-                        <span>1M</span>
-                      </label>
+                    <label class="claude-1m-toggle-box" id="claude-1m-box-sonnet" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                      <input type="checkbox" id="claude-1m-sonnet" onchange="onClaude1mCheckboxChanged('sonnet', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
+                  <div class="claude-role-row">
+                    <div class="claude-role-badge">Opus</div>
+                    <input id="claude-model-name-opus" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude 4.7 Opus" oninput="onClaudeRoleFieldInput()">
+                    <div class="custom-role-select" id="claude-role-select-opus">
+                      <input type="hidden" id="claude-model-id-opus">
                     </div>
-
-                    <!-- 3. Fable (长程任务) -->
-                    <div class="claude-role-row">
-                      <div class="claude-role-badge">Fable</div>
-                      <input id="claude-model-name-fable" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude Fable 5.1" oninput="onClaudeRoleFieldInput()">
-                      <div class="custom-role-select" id="claude-role-select-fable">
-                        <input type="hidden" id="claude-model-id-fable">
-                      </div>
-                      <label class="claude-1m-toggle-box" id="claude-1m-box-fable" title="勾选后实际请求模型将携带 [1M] 上下文标识">
-                        <input type="checkbox" id="claude-1m-fable" onchange="onClaude1mCheckboxChanged('fable', this.checked)">
-                        <span>1M</span>
-                      </label>
+                    <label class="claude-1m-toggle-box" id="claude-1m-box-opus" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                      <input type="checkbox" id="claude-1m-opus" onchange="onClaude1mCheckboxChanged('opus', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
+                  <div class="claude-role-row">
+                    <div class="claude-role-badge">Fable</div>
+                    <input id="claude-model-name-fable" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如 Claude Fable 5.1" oninput="onClaudeRoleFieldInput()">
+                    <div class="custom-role-select" id="claude-role-select-fable">
+                      <input type="hidden" id="claude-model-id-fable">
                     </div>
+                    <label class="claude-1m-toggle-box" id="claude-1m-box-fable" title="勾选后实际请求模型将携带 [1M] 上下文标识">
+                      <input type="checkbox" id="claude-1m-fable" onchange="onClaude1mCheckboxChanged('fable', this.checked)">
+                      <span>1M</span>
+                    </label>
+                  </div>
 
                     <!-- 4. Haiku (轻量快速) -->
                     <div class="claude-role-row">
@@ -5684,7 +5681,7 @@
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <div style="display: flex; align-items: center; justify-content: space-between;">
                       <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">默认兜底模型 (ANTHROPIC_MODEL)</label>
-                      <span style="font-size: 11px; color: var(--text-muted);">当终端未匹配具体角色时使用的默认模型</span>
+                      <span style="font-size: 12px; color: var(--text-muted);">当终端未匹配具体角色时使用的默认模型</span>
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 76px; gap: 12px; align-items: center;">
                       <div class="custom-role-select" id="claude-role-select-fallback">
@@ -5759,7 +5756,7 @@
                 </div>
               </div>
 
-              <!-- 卡片 4：实际配置文件内容（大模态弹窗） -->
+              <!-- 实际配置文件查看器（大模态弹窗） -->
               <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
@@ -5776,6 +5773,7 @@
                   <span>查看配置文件</span>
                 </button>
               </div>
+
             </section>
           </div>
         </div>
@@ -5874,7 +5872,7 @@
                   </div>
                   <div>
                     <div class="modal-title" id="claudeLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Claude Desktop 界面汉化</div>
-                    <div id="claudeLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">界面语言切换 · 升级后自动保持</div>
+                    <div id="claudeLangModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">界面语言切换 · 升级后自动保持</div>
                   </div>
                 </div>
                 <button type="button" class="btn-ghost icon-btn" data-action="closeClaudeLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -5888,7 +5886,7 @@
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="color: var(--text-muted);">当前状态：</span>
-                    <span id="claudeLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                    <span id="claudeLangModalStatusBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
                   </div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="color: var(--text-muted);">词库版本：</span>
@@ -5903,12 +5901,12 @@
                 <div>
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                     <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                    <button type="button" class="btn-ghost" data-action="clearClaudeLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                    <button type="button" class="btn-ghost" data-action="clearClaudeLangLog" style="font-size: 12px; padding: 2px 10px; height: 26px; border-radius: 6px;">清空日志</button>
                   </div>
-                  <pre id="claudeLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                  <pre id="claudeLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
                 </div>
 
-                <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+                <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
                   写入简体中文语言包并切换界面语言。重启后生效，可一键还原。装新版后需重新汉化。
                 </div>
               </div>
@@ -5942,12 +5940,11 @@
                   </svg>
                   <span>保存配置</span>
                 </button>
-                <button class="btn-ghost accent" id="claude-desktop-config-save-switch-btn" data-action="saveClaudeDesktopConfigEditor" data-args="[true]">
-                  <span>保存并切换</span>
-                </button>
+                <button class="btn-ghost accent" id="claude-desktop-config-save-switch-btn" data-action="saveClaudeDesktopConfigEditor" data-args="[true]"><span>保存并切换</span></button>
               </div>
             </div>
           </div>
+
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
@@ -5992,6 +5989,7 @@
               <div class="cb-add-provider-list" id="claude-desktop-config-source-list"></div>
             </aside>
 
+
             <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
             <section class="cb-add-main codex-add-main">
               <input type="hidden" id="claude-desktop-config-edit-id">
@@ -6025,14 +6023,14 @@
                   <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">请求地址</label>
                   <input id="claude-desktop-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="http://127.0.0.1:7450/v1"
                     data-action="syncClaudeDesktopRawConfigFromFields" data-events="input">
-                  <span style="font-size: 11.5px; color: var(--text-muted);">填写兼容 Claude API 的服务端点地址，不要以斜杠结尾</span>
+                  <span style="font-size: 12px; color: var(--text-muted);">填写兼容 Claude API 的服务端点地址，不要以斜杠结尾</span>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 6px;">
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key</label>
                     <button type="button" class="btn-ghost" id="claude-desktop-config-sync-token-btn"
-                      data-action="syncClaudeDesktopConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      data-action="syncClaudeDesktopConfigTokenFromSource" style="padding: 2px 10px; height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
@@ -6087,7 +6085,6 @@
                     <span style="text-align: center;">声明支持 1M</span>
                   </div>
 
-                  <!-- 1. Sonnet (主力) -->
                   <div class="claude-desktop-role-row">
                     <div class="claude-role-badge">Sonnet</div>
                     <input id="claude-desktop-config-sonnet-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：Claude Opus 4.8 或 DeepSeek" oninput="syncClaudeDesktopRawConfigFromFields()">
@@ -6099,8 +6096,6 @@
                       <span>1M</span>
                     </label>
                   </div>
-
-                  <!-- 2. Opus (深度推理) -->
                   <div class="claude-desktop-role-row">
                     <div class="claude-role-badge">Opus</div>
                     <input id="claude-desktop-config-opus-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：Claude Opus 5" oninput="syncClaudeDesktopRawConfigFromFields()">
@@ -6112,8 +6107,6 @@
                       <span>1M</span>
                     </label>
                   </div>
-
-                  <!-- 3. Fable (扩展模型) -->
                   <div class="claude-desktop-role-row">
                     <div class="claude-role-badge">Fable</div>
                     <input id="claude-desktop-config-fable-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：DeepSeek V4 Pro" oninput="syncClaudeDesktopRawConfigFromFields()">
@@ -6125,8 +6118,6 @@
                       <span>1M</span>
                     </label>
                   </div>
-
-                  <!-- 4. Haiku (轻量快速) -->
                   <div class="claude-desktop-role-row">
                     <div class="claude-role-badge">Haiku</div>
                     <input id="claude-desktop-config-haiku-name" class="field-input" style="height: 36px; padding: 0 10px; font-size: 12.5px;" placeholder="例如：Claude Fable 5" oninput="syncClaudeDesktopRawConfigFromFields()">
@@ -6141,7 +6132,7 @@
                 </div>
               </div>
 
-              <!-- 卡片 3：实际配置文件内容（大模态弹窗） -->
+              <!-- 实际配置文件查看器（大模态弹窗） -->
               <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; z-index: 1;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
@@ -6158,6 +6149,7 @@
                   <span>查看配置文件</span>
                 </button>
               </div>
+
             </section>
           </div>
         </div>
@@ -6255,9 +6247,11 @@
                   </svg>
                   <span>保存配置</span>
                 </button>
+                
               </div>
             </div>
           </div>
+
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
@@ -6302,6 +6296,7 @@
               <div class="cb-add-provider-list" id="codex-add-provider-list"></div>
             </aside>
 
+
             <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
             <section class="cb-add-main codex-add-main">
               <input type="hidden" id="codex-config-edit-id">
@@ -6309,7 +6304,7 @@
               <input type="hidden" id="codex-config-model">
               <textarea id="codex-config-models" class="codex-config-models-input" style="display:none;" aria-hidden="true" tabindex="-1"></textarea>
 
-              <!-- 卡片 1：基础连接信息（全新高质感设计） -->
+              <!-- 卡片 1：基础连接信息 -->
               <div class="glass-card" style="padding: 16px 20px;">
                 <div style="font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between;">
                   <div style="display: flex; align-items: center; gap: 8px;">
@@ -6322,11 +6317,13 @@
                 <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
-                    <input id="codex-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：AnyRouter" data-action="syncCodexRawConfigFromFields" data-events="input">
+                    <input id="codex-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：AnyRouter"
+                      data-action="syncCodexRawConfigFromFields" data-events="input">
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">Base URL (API 端点)</label>
-                    <input id="codex-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.example.com/v1" data-action="syncCodexRawConfigFromFields" data-events="input">
+                    <input id="codex-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.example.com/v1"
+                      data-action="syncCodexRawConfigFromFields" data-events="input">
                   </div>
                 </div>
 
@@ -6334,7 +6331,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
                     <button type="button" class="btn-ghost" id="codex-config-sync-token-btn"
-                      data-action="syncCodexConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      data-action="syncCodexConfigTokenFromSource" style="padding: 2px 10px; height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
@@ -6342,7 +6339,8 @@
                     </button>
                   </div>
                   <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
-                    <input id="codex-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off" data-action="syncCodexRawConfigFromFields" data-events="input">
+                    <input id="codex-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off"
+                      data-action="syncCodexRawConfigFromFields" data-events="input">
                     <button type="button" class="codex-password-toggle-btn" id="codex-config-api-key-toggle"
                       data-action="toggleCodexKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -6354,9 +6352,10 @@
                 </div>
               </div>
 
-              <!-- 卡片 2：模型管理（一体化整体设计） -->
-              <div class="glass-card cb-add-models-card" style="flex: 0 0 auto;">
-                <div class="cb-add-models-head" style="padding: 14px 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border);">
+
+              <!-- 卡片 2：模型管理 -->
+              <div class="glass-card cb-add-models-card">
+                <div class="cb-add-models-head" style="padding: 14px 20px;">
                   <div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <span style="display: inline-block; width: 3px; height: 14px; background: var(--accent); border-radius: 2px;"></span>
@@ -6365,17 +6364,17 @@
                     <div class="cb-add-models-sub" id="codex-config-model-status">选择供应商后拉取模型列表</div>
                   </div>
                   <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetCodexModelCatalog" data-args="[true]" title="全选模型加入目录">全选</button>
-                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetCodexModelCatalog" data-args="[false]" title="清空目录选择">清空</button>
-                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetCodexDefaultModel" data-arg="clear" title="清除当前默认模型标记">清空默认</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 28px; font-size: 12px;" data-action="batchSetCodexModelCatalog" data-args="[true]" title="全选模型加入目录">全选</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 28px; font-size: 12px;" data-action="batchSetCodexModelCatalog" data-args="[false]" title="清空目录选择">清空</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 28px; font-size: 12px;" data-action="batchSetCodexDefaultModel" data-arg="clear" title="清除当前默认模型标记">清空默认</button>
                     <span style="display: inline-block; width: 1px; height: 14px; background: var(--border); margin: 0 4px;"></span>
-                    <button type="button" class="btn-ghost accent" id="codex-config-fetch-models-btn" data-action="fetchCodexConfigModels" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;">
+                    <button type="button" class="btn-ghost accent" id="codex-config-fetch-models-btn" data-action="fetchCodexConfigModels" style="padding: 2px 10px; height: 28px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
                       <span>拉取模型</span>
                     </button>
-                    <button type="button" class="btn-ghost secondary" data-action="addCodexModelEntry" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
+                    <button type="button" class="btn-ghost secondary" data-action="addCodexModelEntry" style="padding: 2px 10px; height: 28px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
@@ -6387,7 +6386,9 @@
                 <div class="codex-config-model-list" id="codex-config-model-list" style="max-height: 400px; min-height: 120px; overflow-y: auto; padding: 12px 20px;">
                   <div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>
                 </div>
+                
               </div>
+
 
               <!-- 卡片 3：运行与适配选项（全新现代 Toggle 卡片网格 + 分段控制器） -->
               <div class="glass-card" style="padding: 16px 20px;">
@@ -6445,7 +6446,7 @@
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding-top: 14px; border-top: 1px solid var(--border);">
                   <div style="display: flex; align-items: center; gap: 10px;">
                     <span style="font-size: 13px; font-weight: 700; color: var(--text-secondary);">接口协议</span>
-                    <span style="font-size: 11.5px; color: var(--text-muted);">决定本地网关请求供应商时使用的端点协议</span>
+                    <span style="font-size: 12px; color: var(--text-muted);">决定本地网关请求供应商时使用的端点协议</span>
                   </div>
                   <div class="codex-protocol-segmented">
                     <label class="codex-segment-item">
@@ -6482,10 +6483,10 @@
                     <summary class="platform-collapse-summary" style="font-weight: 700; font-size: 13px; color: var(--text-primary);">
                       <div style="display: flex; align-items: center; gap: 8px;">
                         <span>Codex 子代理设置</span>
-                        <span class="codex-agents-count-pill" style="font-weight: normal; font-size: 11px;">已配置 <b id="codex-agents-count">0</b></span>
+                        <span class="codex-agents-count-pill" style="font-weight: normal; font-size: 12px;">已配置 <b id="codex-agents-count">0</b></span>
                       </div>
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">多智能体并发与调用</span>
+                        <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">多智能体并发与调用</span>
                         <svg class="platform-collapse-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
@@ -6519,7 +6520,7 @@
                     <summary class="platform-collapse-summary" style="font-weight: 700; font-size: 13px; color: var(--text-primary);">
                       <span>Reasoning 推理参数配置</span>
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="font-size: 11.5px; color: var(--text-muted); font-weight: normal;">Thinking 与 Effort 参数注入 (Chat 模式专用)</span>
+                        <span style="font-size: 12px; color: var(--text-muted); font-weight: normal;">Thinking 与 Effort 参数注入 (Chat 模式专用)</span>
                         <svg class="platform-collapse-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="9 18 15 12 9 6"></polyline>
                         </svg>
@@ -6566,7 +6567,7 @@
                 </div>
               </div>
 
-              <!-- 卡片 5：实际配置文件查看器（大模态弹窗） -->
+              <!-- 实际配置文件查看器（大模态弹窗） -->
               <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
@@ -6583,6 +6584,7 @@
                   <span>查看配置文件</span>
                 </button>
               </div>
+
             </section>
           </div>
         </div>
@@ -6619,7 +6621,7 @@
                   <span class="proxy-btn-text" id="antigravity-main-btn-text">一键接入</span>
                 </span>
               </button>
-              <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsole">刷新状态</button>
+              <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsoleAction" data-pass-this>刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
               <!-- 汉化放最右（用户指定）：独立于网关接入的能力 -->
               <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
@@ -6653,7 +6655,7 @@
                   </svg>
                   添加模型
                 </button>
-                <button class="btn-ghost accent platform-model-btn-icon" title="刷新模型列表" aria-label="刷新模型列表" data-action="antigravityRefreshConsole">
+                <button class="btn-ghost accent platform-model-btn-icon" id="antigravityRefreshModelsBtn" title="刷新模型列表" aria-label="刷新模型列表" data-action="antigravityRefreshConsoleAction" data-pass-this>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                     stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="23 4 23 10 17 10"></polyline>
@@ -6793,7 +6795,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="antigravitySettingsModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 接入策略</div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">长记忆上下文压缩与配额模拟选项</div>
+                  <div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">长记忆上下文压缩与配额模拟选项</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravitySettingsModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -6801,7 +6803,7 @@
             <div class="modal-body" style="padding: 22px 24px; background: var(--bg-card); display: flex; flex-direction: column; gap: 16px;">
               <div>
                 <label style="display:block; font-size:13px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">长记忆上下文压缩阈值</label>
-                <p style="font-size:11.5px; color:var(--text-muted); margin-bottom:8px;">推迟 Antigravity 官方过早裁剪历史摘要的时机，避免长对话丢失代码细节。</p>
+                <p style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">推迟 Antigravity 官方过早裁剪历史摘要的时机，避免长对话丢失代码细节。</p>
                 <select id="modal-antigravity-context-window" class="field-input" style="width:100%; height:36px;">
                   <option value="131072">128K</option>
                   <option value="262144" selected>256K（推荐）</option>
@@ -6813,7 +6815,7 @@
                 <label style="display:flex; align-items:center; justify-content:space-between;">
                   <div>
                     <span style="font-size:13px; font-weight:700; color:var(--text-primary); display:block;">官方配额健康伪装</span>
-                    <span style="font-size:11.5px; color:var(--text-muted);">自动模拟 Google One AI Credits 配额，防止官方接口报 503 阻断。</span>
+                    <span style="font-size:12px; color:var(--text-muted);">自动模拟 Google One AI Credits 配额，防止官方接口报 503 阻断。</span>
                   </div>
                   <label class="switch">
                     <input type="checkbox" id="modal-antigravity-mock-credits" checked>
@@ -6856,7 +6858,8 @@
               <label class="codex-config-field" style="margin-bottom: 12px;">
                 <span>接口协议格式</span>
                 <select id="antigravity-config-api-format" class="field-input">
-                  <option value="openai" selected>OpenAI 兼容</option>
+                  <option value="">跟随源供应商</option>
+                  <option value="openai">OpenAI 兼容</option>
                   <option value="anthropic">Anthropic 消息格式</option>
                   <option value="gemini">Google Gemini 原生</option>
                 </select>
@@ -6900,7 +6903,7 @@
                 </div>
                 <div>
                   <div class="modal-title" id="antigravityLangModalTitle" style="font-size: 15px; font-weight: 750; color: var(--text-primary); line-height: 1.25;">Antigravity 界面汉化</div>
-                  <div id="antigravityLangModalSubtitle" style="font-size: 11.5px; color: var(--text-muted); margin-top: 3px;">界面词库注入 · 升级后自动保持</div>
+                  <div id="antigravityLangModalSubtitle" style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">界面词库注入 · 升级后自动保持</div>
                 </div>
               </div>
               <button type="button" class="btn-ghost icon-btn" data-action="closeAntigravityLangModal" aria-label="关闭" style="width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: var(--text-muted); transition: all 0.15s ease;">✕</button>
@@ -6915,7 +6918,7 @@
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">当前状态：</span>
-                  <span id="antigravityLangModalStatusBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
+                  <span id="antigravityLangModalStatusBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: rgba(16, 185, 129, 0.1); color: #10b981;">检测中</span>
                 </div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="color: var(--text-muted);">词库版本：</span>
@@ -6934,7 +6937,7 @@
                     <div style="font-weight: 650; color: var(--text-primary);">设置页与 Agent 面板</div>
                     <div id="antigravityLangCdpHint" style="color: var(--text-muted); margin-top: 3px; line-height: 1.5;">这部分由客户端内嵌网页渲染，需要以汉化模式启动后运行期注入。</div>
                   </div>
-                  <span id="antigravityLangCdpBadge" class="status-badge" style="padding: 2px 8px; border-radius: 999px; font-size: 11px; background: var(--bg-glass-elevated, rgba(255,255,255,0.06)); color: var(--text-muted); flex-shrink: 0;">检测中</span>
+                  <span id="antigravityLangCdpBadge" class="status-badge" style="padding: 2px 10px; border-radius: 999px; font-size: 12px; background: var(--bg-glass-elevated, rgba(255,255,255,0.06)); color: var(--text-muted); flex-shrink: 0;">检测中</span>
                 </div>
                 <button type="button" class="btn-ghost" id="antigravityLangCdpBtn" data-action="handleAntigravityCdpAction" style="margin-top: 10px; height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">以汉化模式重启 IDE</button>
               </div>
@@ -6943,12 +6946,12 @@
               <div>
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text-primary);">执行进度与日志</span>
-                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 11px; padding: 2px 8px; height: 22px; border-radius: 4px;">清空日志</button>
+                  <button type="button" class="btn-ghost" data-action="clearAntigravityLangLog" style="font-size: 12px; padding: 2px 10px; height: 26px; border-radius: 6px;">清空日志</button>
                 </div>
-                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 11.5px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
+                <pre id="antigravityLangLogBox" style="margin: 0; background: var(--bg-primary); color: var(--text-secondary); font-family: var(--font-mono); padding: 12px 14px; border-radius: 8px; font-size: 12px; line-height: 1.65; height: 140px; min-height: 140px; max-height: 140px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid var(--border); box-sizing: border-box;"></pre>
               </div>
 
-              <div style="font-size: 11px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
+              <div style="font-size: 12px; color: var(--text-muted); line-height: 1.45; min-height: 32px;">
                 界面文案汉化，代码区与模型思考内容不会误译。重启后生效，可一键还原。装新版后需重新汉化。
               </div>
             </div>
@@ -7017,6 +7020,7 @@
               <div class="cb-add-provider-list" id="antigravity-add-provider-list"></div>
             </aside>
 
+
             <!-- 右列：模型列表 -->
             <section class="cb-add-main">
               <div class="glass-card cb-add-models-card">
@@ -7042,6 +7046,7 @@
                   <div class="cb-add-models-empty">请从左侧选择一个供应商</div>
                 </div>
               </div>
+
             </section>
           </div>
         </div>
@@ -7311,7 +7316,6 @@
           </div>
 
           <div class="cb-add-layout">
-            <!-- 左列：供应商列表 -->
             <aside class="cb-add-sidebar glass-card">
               <div class="cb-add-search">
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" fill="none" stroke-width="2"
@@ -7353,7 +7357,6 @@
               <div class="cb-add-provider-list" id="cb-add-provider-list"></div>
             </aside>
 
-            <!-- 右列：模型列表 -->
             <section class="cb-add-main">
               <div class="glass-card cb-add-models-card">
                 <div class="cb-add-models-head">
@@ -7364,8 +7367,7 @@
                   <div style="display:flex; gap:8px;">
                     <button class="btn-ghost accent" data-action="cbAddSelectAll">全选</button>
                     <button class="btn-ghost secondary" data-action="cbAddSelectNone">全不选</button>
-                    <button class="btn-primary" id="cb-add-confirm-page"
- disabled data-action="confirmAddCodeBuddyModelsPage">
+                    <button class="btn-primary" id="cb-add-confirm-page" disabled data-action="confirmAddCodeBuddyModelsPage">
                       <svg viewBox="0 0 24 24"
                         style="width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;">
                         <path d="M20 6L9 17l-5-5" />
@@ -7400,7 +7402,6 @@
             </section>
           </div>
         </div>
-
         <!-- ═══════ PAGE: PLATFORM · OPENCODE ═══════ -->
         <div class="page" id="page-platform-opencode" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell opencode-manager-shell">
@@ -7478,12 +7479,11 @@
                   </svg>
                   <span>保存配置</span>
                 </button>
-                <button class="btn-ghost accent" id="opencode-config-save-switch-btn" data-action="saveOpenCodeConfigEditor" data-args="[true]">
-                  <span>保存并加入</span>
-                </button>
+                <button class="btn-ghost accent" id="opencode-config-save-switch-btn" data-action="saveOpenCodeConfigEditor" data-args="[true]"><span>保存并加入</span></button>
               </div>
             </div>
           </div>
+
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
@@ -7528,6 +7528,7 @@
               <div class="cb-add-provider-list" id="opencode-add-provider-list"></div>
             </aside>
 
+
             <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
             <section class="cb-add-main codex-add-main">
               <input type="hidden" id="opencode-config-edit-id">
@@ -7561,7 +7562,7 @@
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
                     <button type="button" class="btn-ghost" id="opencode-config-sync-token-btn"
-                      data-action="syncOpenCodeConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      data-action="syncOpenCodeConfigTokenFromSource" style="padding: 2px 10px; height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
@@ -7581,6 +7582,7 @@
                   </div>
                 </div>
               </div>
+
 
               <!-- 卡片 2：模型管理 -->
               <div class="glass-card cb-add-models-card" style="flex: 0 0 auto;">
@@ -7614,7 +7616,7 @@
                 </div>
               </div>
 
-              <!-- 卡片 3：实际配置文件内容（大模态弹窗） -->
+              <!-- 实际配置文件查看器（大模态弹窗） -->
               <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
@@ -7631,6 +7633,7 @@
                   <span>查看配置文件</span>
                 </button>
               </div>
+
             </section>
           </div>
         </div>
@@ -7921,7 +7924,6 @@
             </section>
           </div>
         </div>
-
         <!-- ═══════ PAGE: PLATFORM · WORKBUDDY ═══════ -->
         <div class="page" id="page-platform-workbuddy" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="platform-console-head glass-card platform-hero-card">
@@ -8441,7 +8443,6 @@
             </section>
           </div>
         </div>
-
         <!-- ═══════ PAGE: PLATFORM · GROK ═══════ -->
         <div class="page" id="page-platform-grok" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="codex-manager-shell grok-manager-shell">
@@ -8518,12 +8519,11 @@
                   </svg>
                   <span>保存配置</span>
                 </button>
-                <button class="btn-ghost accent" data-action="saveGrokConfigEditor" data-args="[true]">
-                  <span>保存并生效</span>
-                </button>
+                <button class="btn-ghost accent" data-action="saveGrokConfigEditor" data-args="[true]"><span>保存并生效</span></button>
               </div>
             </div>
           </div>
+
 
           <div class="cb-add-layout">
             <!-- 左列：供应商列表 -->
@@ -8568,10 +8568,13 @@
               <div class="cb-add-provider-list" id="grok-add-provider-list"></div>
             </aside>
 
+
             <!-- 右列：主工作区（全量垂直滚动，展示完所有设置项） -->
             <section class="cb-add-main codex-add-main">
               <input type="hidden" id="grok-config-edit-id">
               <input type="hidden" id="grok-config-source-id">
+              <input type="hidden" id="grok-config-model">
+              <textarea id="grok-config-models" class="codex-config-models-input" style="display:none;" aria-hidden="true" tabindex="-1"></textarea>
 
               <!-- 卡片 1：基础连接信息 -->
               <div class="glass-card" style="padding: 16px 20px;">
@@ -8586,11 +8589,13 @@
                 <div style="display: grid; grid-template-columns: minmax(180px, 1fr) minmax(240px, 1.4fr); gap: 14px; margin-bottom: 14px;">
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">配置名称</label>
-                    <input id="grok-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：DeepSeek" data-action="syncGrokRawConfigFromFields" data-events="input">
+                    <input id="grok-config-name" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="例如：DeepSeek"
+                      data-action="syncGrokRawConfigFromFields" data-events="input">
                   </div>
                   <div style="display: flex; flex-direction: column; gap: 6px;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">Base URL (API 端点)</label>
-                    <input id="grok-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.deepseek.com/v1" data-action="syncGrokRawConfigFromFields" data-events="input">
+                    <input id="grok-config-base-url" class="field-input" style="height: 36px; padding: 0 12px; font-size: 13px;" placeholder="https://api.deepseek.com/v1"
+                      data-action="syncGrokRawConfigFromFields" data-events="input">
                   </div>
                 </div>
 
@@ -8598,33 +8603,29 @@
                   <div style="display: flex; align-items: center; justify-content: space-between;">
                     <label style="font-size: 12.5px; font-weight: 700; color: var(--text-secondary);">API Key (访问凭证)</label>
                     <button type="button" class="btn-ghost" id="grok-config-sync-token-btn"
-                      data-action="syncGrokConfigTokenFromSource" style="padding: 2px 8px; height: 24px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
+                      data-action="syncGrokConfigTokenFromSource" style="padding: 2px 10px; height: 26px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;" title="从关联的来源供应商拉取最新令牌和地址">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
-                      <span>同步来源</span>
+                      <span>同步来源令牌</span>
                     </button>
                   </div>
                   <div class="codex-input-password-wrap" style="position: relative; width: 100%;">
-                    <input id="grok-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off" data-action="syncGrokRawConfigFromFields" data-events="input">
+                    <input id="grok-config-api-key" class="field-input" type="password" style="height: 36px; padding: 0 40px 0 12px; font-size: 13px; width: 100%; box-sizing: border-box;" placeholder="sk-..." autocomplete="off"
+                      data-action="syncGrokRawConfigFromFields" data-events="input">
                     <button type="button" class="codex-password-toggle-btn" id="grok-config-api-key-toggle"
-                      data-action="togglePasswordVisibility" data-args='["grok-config-api-key", "grok-config-api-key-toggle"]' title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
-                      <svg class="eye-open" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      data-action="toggleGrokKeyVisibility" title="显示或隐藏 API Key" aria-label="显示或隐藏 API Key" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: transparent; border: none; cursor: pointer; color: var(--text-muted); display: flex; align-items: center; justify-content: center; width: 26px; height: 26px;">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
                         <circle cx="12" cy="12" r="3"></circle>
-                      </svg>
-                      <svg class="eye-closed" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="m2 2 20 20"></path>
-                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"></path>
-                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"></path>
-                        <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"></path>
                       </svg>
                     </button>
                   </div>
                 </div>
               </div>
 
-              <!-- 卡片 2：模型管理（多模型注册到 ~/.grok/config.toml） -->
+
+              <!-- 卡片 2：模型管理 -->
               <div class="glass-card cb-add-models-card">
                 <div class="cb-add-models-head" style="padding: 14px 20px;">
                   <div>
@@ -8635,17 +8636,17 @@
                     <div class="cb-add-models-sub" id="grok-config-model-status">勾选要注册的模型，标「默认」的作为 Grok 启动模型</div>
                   </div>
                   <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetGrokModelCatalog" data-args="[true]" title="全选模型加入目录">全选</button>
-                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetGrokModelCatalog" data-args="[false]" title="清空目录选择">清空</button>
-                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 26px; font-size: 11.5px;" data-action="batchSetGrokDefaultModel" data-arg="clear" title="清除当前默认模型标记">清空默认</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 28px; font-size: 12px;" data-action="batchSetGrokModelCatalog" data-args="[true]" title="全选模型加入目录">全选</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 28px; font-size: 12px;" data-action="batchSetGrokModelCatalog" data-args="[false]" title="清空目录选择">清空</button>
+                    <button type="button" class="btn-ghost" style="padding: 2px 8px; height: 28px; font-size: 12px;" data-action="batchSetGrokDefaultModel" data-arg="clear" title="清除当前默认模型标记">清空默认</button>
                     <span style="display: inline-block; width: 1px; height: 14px; background: var(--border); margin: 0 4px;"></span>
-                    <button type="button" class="btn-ghost accent" id="grok-config-fetch-models-btn" data-action="fetchGrokConfigModels" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px;">
+                    <button type="button" class="btn-ghost accent" id="grok-config-fetch-models-btn" data-action="fetchGrokConfigModels" style="padding: 2px 10px; height: 28px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
                       </svg>
                       <span>拉取模型</span>
                     </button>
-                    <button type="button" class="btn-ghost secondary" data-action="addGrokModelEntry" style="padding: 2px 10px; height: 26px; font-size: 11.5px; display: inline-flex; align-items: center; gap: 4px;">
+                    <button type="button" class="btn-ghost secondary" data-action="addGrokModelEntry" style="padding: 2px 10px; height: 28px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px;">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
                         <line x1="5" y1="12" x2="19" y2="12" />
@@ -8657,8 +8658,9 @@
                 <div class="codex-config-model-list" id="grok-config-model-list" style="max-height: 400px; min-height: 120px; overflow-y: auto; padding: 12px 20px;">
                   <div class="codex-config-model-empty">还没有模型，点击右上角拉取或手动添加。</div>
                 </div>
-                <p style="font-size: 11.5px; color: var(--text-muted); padding: 0 20px 14px; margin: 0; line-height: 1.6;">勾选的模型会各自写入一段配置注册进 Grok，之后用 /model 或 Ctrl+M 直接切换；「默认」决定 Grok 启动模型。上下文窗口决定自动压缩时机——留空按模型自动推荐，请按供应商实际值在「编辑」里确认。</p>
+                <p style="font-size: 12px; color: var(--text-muted); padding: 0 20px 14px; margin: 0; line-height: 1.6;">勾选的模型会各自写入一段配置注册进 Grok，之后用 /model 或 Ctrl+M 直接切换；「默认」决定 Grok 启动模型。上下文窗口决定自动压缩时机——留空按模型自动推荐，请按供应商实际值在「编辑」里确认。</p>
               </div>
+
 
               <!-- 卡片 3：子代理模型（可选覆盖） -->
               <div class="glass-card" style="padding: 16px 20px;">
@@ -8669,7 +8671,7 @@
                   </div>
                   <button type="button" class="btn-ghost" data-action="addGrokSubagentRow" style="height: 28px; padding: 0 10px; font-size: 12px;">添加类型</button>
                 </div>
-                <p style="font-size: 11.5px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.6;">Grok 派生探索、规划等子代理时各自独立计费与占用上下文。留「继承主模型」表示跟随主会话模型（默认行为），不做任何覆盖。</p>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 0 0 12px; line-height: 1.6;">Grok 派生探索、规划等子代理时各自独立计费与占用上下文。留「继承主模型」表示跟随主会话模型（默认行为），不做任何覆盖。</p>
                 <div id="grok-subagent-rows" style="display: flex; flex-direction: column; gap: 10px;"></div>
               </div>
 
@@ -8700,7 +8702,7 @@
                 </div>
               </div>
 
-              <!-- 卡片 4：实际配置文件内容（大模态弹窗） -->
+              <!-- 实际配置文件查看器（大模态弹窗） -->
               <div class="glass-card" style="padding: 16px 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
                   <span style="display: inline-block; width: 3px; height: 16px; background: var(--accent); border-radius: 2px;"></span>
@@ -8717,6 +8719,7 @@
                   <span>查看配置文件</span>
                 </button>
               </div>
+
             </section>
           </div>
         </div>
@@ -8914,8 +8917,7 @@
 
           <p class="platform-hint" style="margin:0 4px;">
             配置文件路径（<span id="pi-config-scope-label">用户级</span>）：<code
-              id="pi-config-path-label">~/.pi/agent/models.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="pi" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，默认模型写入
-            <code>~/.pi/agent/settings.json</code>。保存后自动备份原文件，原有 provider 与其它设置会保留。
+              id="pi-config-path-label">~/.pi/agent/models.json</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="pi" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，默认模型写入 <code>~/.pi/agent/settings.json</code>。保存后自动备份原文件，原有 provider 与其它设置会保留。
           </p>
         </div>
         <!-- ═══════ PAGE: PLATFORM · PI · 添加模型（独立页面） ═══════ -->
@@ -9016,7 +9018,7 @@
             </section>
           </div>
         </div>
-        <!-- ═══════ PAGE: PLATFORM · PI ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · HERMES ═══════ -->
         <div class="page" id="page-platform-hermes" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="platform-console-head glass-card platform-hero-card">
             <div class="platform-console-titlebar">
@@ -9213,7 +9215,7 @@
               id="hermes-config-path-label">~/.hermes/config.yaml</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="hermes" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，默认模型写入同一文件的 model 段。保存后自动备份原文件，其余配置与注释会保留。
           </p>
         </div>
-        <!-- ═══════ PAGE: PLATFORM · PI · 添加模型（独立页面） ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · HERMES · 添加模型（独立页面） ═══════ -->
         <div class="page" id="page-platform-hermes-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">
             <div class="platform-console-titlebar">
@@ -9311,7 +9313,7 @@
             </section>
           </div>
         </div>
-        <!-- ═══════ PAGE: PLATFORM · PI ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · DEEPSEEK HARNESS ═══════ -->
         <div class="page" id="page-platform-deepseek-harness" role="tabpanel" aria-labelledby="tab-platforms">
           <section class="platform-console-head glass-card platform-hero-card">
             <div class="platform-console-titlebar">
@@ -9508,7 +9510,7 @@
               id="dsh-config-path-label">~/.dsh/settings.yaml</code><button type="button" class="platform-config-inline-link" data-action="openPlatformRealConfigModal" data-arg="deepseek-harness" title="查看并编辑配置文件原文"><span>查看配置</span><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></button>，密钥写入 <code>~/.dsh/.credentials.yaml</code>。保存后自动备份原文件，其余配置会保留。
           </p>
         </div>
-        <!-- ═══════ PAGE: PLATFORM · PI · 添加模型（独立页面） ═══════ -->
+        <!-- ═══════ PAGE: PLATFORM · DEEPSEEK HARNESS · 添加模型（独立页面） ═══════ -->
         <div class="page" id="page-platform-deepseek-harness-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">
             <div class="platform-console-titlebar">

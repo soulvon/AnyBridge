@@ -39,7 +39,7 @@ function setupDom() {
 const feedbackSrc = readScript('ui/assets/scripts/ui/feedback.js');
 
 function buildCpaActions() {
-  const src = readScript('ui/assets/scripts/65-extensions.js');
+  const src = readScript('ui/assets/scripts/extensions/cpa-cards.js');
   const factory = new Function(
     'EXTENSION_TRANSIENT_STATUSES',
     'openExtensionDetail',
@@ -94,7 +94,7 @@ test('扩展中心 CPA 主按钮：空闲态不带 spinner', () => {
 
 test('切换配置 toast：左侧已有 spinner 时标题不再叠加第二个', () => {
   const doc = setupDom();
-  const src = readScript('ui/assets/scripts/55-platforms.js');
+  const src = readScript('ui/assets/scripts/platforms/switch_flow.js');
   const factory = new Function(
     '_switchFlowState',
     '_switchProgressPlatform',

@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mitmCertRejected, TLS_CLIENT_CERT_REJECTED_EVENT } from './tls-diagnostics.js';
+import {
+  isPreHandshakeDisconnect,
+  mitmCertRejected,
+  TLS_CLIENT_CERT_REJECTED_EVENT,
+} from './tls-diagnostics.js';
 
 describe('mitmCertRejected', () => {
   it('recognises every certificate-trust alert number', () => {
@@ -48,5 +52,19 @@ describe('mitmCertRejected', () => {
 
   it('keeps the event string the desktop parses', () => {
     assert.equal(TLS_CLIENT_CERT_REJECTED_EVENT, 'ANYBRIDGE_EVENT:TLS_CLIENT_CERT_REJECTED');
+  });
+});
+
+describe('isPreHandshakeDisconnect', () => {
+  it('flags ECONNRESET / EPIPE that happen before TLS handshake completes', () => {
+    assert.equal(isPreHandshakeDisconnect({ code: 'ECONNRESET' }, false), true);
+    assert.equal(isPreHandshakeDisconnect({ code: 'EPIPE' }, false), true);
+  });
+
+  it('does not flag post-handshake resets or unrelated errors', () => {
+    assert.equal(isPreHandshakeDisconnect({ code: 'ECONNRESET' }, true), false);
+    assert.equal(isPreHandshakeDisconnect({ code: 'EPIPE' }, true), false);
+    assert.equal(isPreHandshakeDisconnect({ code: 'ERR_SSL_TLSV1_ALERT_UNKNOWN_CA' }, false), false);
+    assert.equal(isPreHandshakeDisconnect(null, false), false);
   });
 });

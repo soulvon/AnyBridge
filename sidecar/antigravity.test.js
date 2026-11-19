@@ -5,6 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 
+import { invalidate as invalidateConfigCache } from './config-cache.js';
+
 import {
   isAntigravityPath,
   getAntigravityMethod,
@@ -18,6 +20,9 @@ import {
   mockAntigravityAdminControls,
   mockAntigravityUserSettings,
   isAntigravityBypassMetricsPath,
+  antigravityAuthScopeKey,
+  singleflight,
+  clearAntigravityCache,
 } from './lib/antigravity-handler.js';
 import { __localProxyTest, handleLocalProxyRequest } from './local-proxy.js';
 
@@ -294,6 +299,38 @@ test('Antigravity request normalization: nested request payload', () => {
 });
 
 test('Antigravity HTTP 端点模拟: fetchAvailableModels & loadCodeAssist', async () => {
+  // 严格隔离 BYOK_CONFIG_DIR（避免读取宿主机真实 hybrid/providers.json 或向真实 ag-handshake.log 写日志）
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'anybridge-ag-http-'));
+  const previousConfigDir = process.env.BYOK_CONFIG_DIR;
+  process.env.BYOK_CONFIG_DIR = tmpDir;
+  invalidateConfigCache('all');
+  clearAntigravityCache();
+
+  fs.writeFileSync(
+    path.join(tmpDir, 'byok-config.json'),
+    JSON.stringify({ values: { LOCAL_PROXY_KEY: 'test-ag-proxy-key' } }),
+    'utf8',
+  );
+  fs.writeFileSync(
+    path.join(tmpDir, 'providers.json'),
+    JSON.stringify({
+      antigravityMode: 'pure',
+      antigravityConfigs: [
+        {
+          id: 'test-ag-cfg',
+          name: 'Test BYOK Model',
+          defaultModel: 'test/byok-model',
+          models: ['test/byok-model'],
+          sourceProviderName: 'TestProvider',
+          enabled: true,
+          injectModels: true,
+        },
+      ],
+      platforms: { antigravity: { providerId: 'test-ag-cfg' } },
+    }),
+    'utf8',
+  );
+
   // 创建模拟本地网关 HTTP 服务
   const server = http.createServer((req, res) => {
     handleLocalProxyRequest(req, res);
@@ -393,6 +430,11 @@ test('Antigravity HTTP 端点模拟: fetchAvailableModels & loadCodeAssist', asy
     assert.deepEqual(unknownJson, {});
   } finally {
     server.close();
+    clearAntigravityCache();
+    invalidateConfigCache('all');
+    if (previousConfigDir === undefined) delete process.env.BYOK_CONFIG_DIR;
+    else process.env.BYOK_CONFIG_DIR = previousConfigDir;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
 
@@ -521,3 +563,42 @@ test('Antigravity 自定义模型到 OpenAI 上游请求体双向转换', () => 
   assert.equal(openAIBody.temperature, 0.7);
   assert.equal(openAIBody.stream, false);
 });
+
+test('Antigravity hybrid 账号分桶键: 不同 Token 产生不同指纹且不泄露明文', () => {
+  assert.equal(antigravityAuthScopeKey(undefined), 'anon');
+  assert.equal(antigravityAuthScopeKey({ headers: {} }), 'anon');
+
+  const tokenA = 'ya29.secret-account-alpha-token';
+  const tokenB = 'ya29.secret-account-beta-token';
+  const keyA1 = antigravityAuthScopeKey({ headers: { authorization: `Bearer ${tokenA}` } });
+  const keyA2 = antigravityAuthScopeKey({ headers: { Authorization: `Bearer ${tokenA}` } });
+  const keyB = antigravityAuthScopeKey({ headers: { authorization: `Bearer ${tokenB}` } });
+
+  assert.equal(keyA1, keyA2, 'header 大小写不敏感');
+  assert.notEqual(keyA1, 'anon');
+  assert.notEqual(keyA1, keyB, '不同账号 token 必须落入不同缓存桶');
+  assert.equal(keyA1.includes('secret-account'), false, '缓存键不得泄露明文 token');
+  assert.equal(keyB.includes('secret-account'), false, '缓存键不得泄露明文 token');
+});
+
+test('Antigravity singleflight 分桶隔离: hybrid 切号后不得命中前一账号的官方模型缓存', async () => {
+  clearAntigravityCache();
+  let fetchCount = 0;
+  const fetchForReq = (req) => singleflight(`official_models_response:${antigravityAuthScopeKey(req)}`, 30000, async () => {
+    fetchCount += 1;
+    return { models: { [`account-${fetchCount}`]: { model: 'MODEL_GOOGLE_GEMINI_2_5_PRO' } } };
+  });
+
+  const reqA = { headers: { authorization: 'Bearer tok-account-a' } };
+  const reqB = { headers: { authorization: 'Bearer tok-account-b' } };
+
+  const resA1 = await fetchForReq(reqA);
+  const resA2 = await fetchForReq(reqA);
+  const resB1 = await fetchForReq(reqB);
+
+  assert.equal(fetchCount, 2, '同号命中缓存，切到不同 Authorization 时必须重新拉取而非串用旧号缓存');
+  assert.deepEqual(resA1, resA2);
+  assert.notDeepEqual(resA1, resB1);
+  clearAntigravityCache();
+});
+

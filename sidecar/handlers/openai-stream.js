@@ -20,6 +20,7 @@
 //   - Tool calls are `function_call` type output items
 //   - Session/prompt caching built-in (2h keep-alive)
 
+import { parseSSEText } from '../lib/sse-parser.js';
 import {
   buildTextDelta,
   buildThinkingDelta,
@@ -39,23 +40,14 @@ import {
  */
 export function parseOpenAISSEChunk(text) {
   const events = [];
-  const lines = text.split('\n');
-
-  for (const line of lines) {
-    if (!line.startsWith('data: ')) continue;
-    const payload = line.slice(6).trim();
-    if (payload === '[DONE]') {
+  for (const evt of parseSSEText(text, { flush: true })) {
+    if (evt.done) {
       events.push({ done: true, type: 'done', data: null });
       continue;
     }
-    try {
-      const data = JSON.parse(payload);
-      events.push({ done: false, type: data.type || '', data });
-    } catch {
-      // Skip malformed JSON
-    }
+    if (evt.jsonError || !evt.data || typeof evt.data !== 'object') continue;
+    events.push({ done: false, type: evt.data.type || '', data: evt.data });
   }
-
   return events;
 }
 

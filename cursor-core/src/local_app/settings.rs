@@ -66,17 +66,8 @@ fn read() -> Result<BTreeMap<String, Value>> {
 }
 
 fn write_to(path: &Path, settings: &BTreeMap<String, Value>) -> Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let data = serde_json::to_vec_pretty(settings)?;
-    let temp = path.with_extension("json.tmp");
-    fs::write(&temp, [data.as_slice(), b"\n"].concat())?;
-    if path.exists() {
-        fs::remove_file(path)?;
-    }
-    fs::rename(temp, path)?;
-    Ok(())
+    crate::fs_atomic::write_atomic(path, &[data.as_slice(), b"\n"].concat())
 }
 
 fn write(settings: &BTreeMap<String, Value>) -> Result<()> {

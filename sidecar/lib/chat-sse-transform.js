@@ -8,6 +8,7 @@
 // 三个转换器统一接口：write(event) → chunk[]，flush() → chunk[]，getUsage() → usage|null。
 
 import crypto from 'node:crypto';
+import { buildGeminiSignatureScope, createGeminiPartCallTracker } from './gemini-thought-signature.js';
 
 function chunkBase(id, created, model) {
   return { id, object: 'chat.completion.chunk', created, model };
@@ -54,6 +55,17 @@ export function createChatSSEFromResponses(model, id, created) {
                 },
                 finish_reason: null,
               }],
+            });
+          }
+          break;
+        }
+        case 'response.reasoning.delta':
+        case 'response.reasoning_summary_text.delta':
+        case 'response.reasoning_text.delta': {
+          if (event.delta) {
+            out.push({
+              ...chunkBase(id, created, model),
+              choices: [{ index: 0, delta: { reasoning_content: event.delta }, finish_reason: null }],
             });
           }
           break;
@@ -123,7 +135,11 @@ export function createChatSSEFromAnthropic(model, id, created) {
           const u = event.message?.usage;
           if (u) {
             const prompt = Number(u.input_tokens) || 0;
+            const cacheRead = Number(u.cache_read_input_tokens) || 0;
+            const cacheCreation = Number(u.cache_creation_input_tokens) || 0;
             usage = { prompt_tokens: prompt, completion_tokens: 0, total_tokens: prompt };
+            if (cacheRead > 0) usage.prompt_tokens_details = { cached_tokens: cacheRead };
+            if (cacheCreation > 0) usage.cache_creation_input_tokens = cacheCreation;
           }
           break;
         }
@@ -160,6 +176,11 @@ export function createChatSSEFromAnthropic(model, id, created) {
               ...chunkBase(id, created, model),
               choices: [{ index: 0, delta: { content: delta.text }, finish_reason: null }],
             });
+          } else if (delta.type === 'thinking_delta' && delta.thinking) {
+            out.push({
+              ...chunkBase(id, created, model),
+              choices: [{ index: 0, delta: { reasoning_content: delta.thinking }, finish_reason: null }],
+            });
           } else if (delta.type === 'input_json_delta') {
             const toolIndex = toolIndexByBlock[blockIndex];
             if (toolIndex != null && delta.partial_json) {
@@ -185,6 +206,10 @@ export function createChatSSEFromAnthropic(model, id, created) {
             usage.completion_tokens = outTokens;
             usage.total_tokens = usage.prompt_tokens + outTokens;
           }
+          const cacheRead = Number(event.usage?.cache_read_input_tokens) || 0;
+          const cacheCreation = Number(event.usage?.cache_creation_input_tokens) || 0;
+          if (usage && cacheRead > 0) usage.prompt_tokens_details = { cached_tokens: cacheRead };
+          if (usage && cacheCreation > 0) usage.cache_creation_input_tokens = cacheCreation;
           break;
         }
         case 'message_stop': {
@@ -256,8 +281,9 @@ export function createChatSSEPassthrough(model, id, created) {
 // 实测（2026-11-12，Vertex gemini-3.8-flash）：streamGenerateContent?alt=sse 的每个 data
 // 是「增量片段」（各事件文本互不重叠），不是累计快照——直接下发即可，不能再做 diff。
 // thought:true 的片段不发给客户端；functionCall 按 name+args 去重（同一调用可能重复出现）。
-export function createChatSSEFromGemini(model, id, created) {
+export function createChatSSEFromGemini(model, id, created, scope = '') {
   const sentCalls = new Set();
+  const callTracker = createGeminiPartCallTracker(scope);
   let nextToolIndex = 0;
   let usage = null;
   let finishReason = 'stop';
@@ -277,6 +303,12 @@ export function createChatSSEFromGemini(model, id, created) {
   return {
     write(event) {
       if (!event || typeof event !== 'object') return [];
+      if (event.error && !Array.isArray(event.candidates)) {
+        const msg = typeof event.error === 'string'
+          ? event.error
+          : (event.error.message || event.error.status || JSON.stringify(event.error));
+        throw new Error(String(msg || 'Gemini upstream stream error'));
+      }
       const out = [];
       const candidate = Array.isArray(event.candidates) ? event.candidates[0] : null;
       const parts = candidate?.content?.parts || [];
@@ -288,10 +320,11 @@ export function createChatSSEFromGemini(model, id, created) {
       if (text) out.push(textChunk(text));
 
       for (const part of parts) {
-        const call = part?.functionCall || part?.function_call;
-        if (!call?.name) continue;
+        const extracted = callTracker.consume(part, () => randomCallId());
+        if (!extracted) continue;
+        const { call, id: callId, upstreamId } = extracted;
         const argsText = JSON.stringify(call.args || {});
-        const key = `${call.name}|${argsText}`;
+        const key = upstreamId ? `id:${upstreamId}` : `${call.name}|${argsText}`;
         if (sentCalls.has(key)) continue;
         sentCalls.add(key);
         const toolIndex = nextToolIndex;
@@ -303,7 +336,7 @@ export function createChatSSEFromGemini(model, id, created) {
             delta: {
               tool_calls: [{
                 index: toolIndex,
-                id: call.id || randomCallId(),
+                id: callId,
                 type: 'function',
                 function: { name: call.name, arguments: argsText },
               }],
@@ -340,7 +373,7 @@ export function createChatSSEFromGemini(model, id, created) {
 
 // 按上游形态选择转换器。
 export function createChatSSEConverter(conn, model, id, created) {
-  if (conn?.format === 'gemini') return createChatSSEFromGemini(model, id, created);
+  if (conn?.format === 'gemini') return createChatSSEFromGemini(model, id, created, buildGeminiSignatureScope(conn));
   if (conn?.format === 'anthropic') return createChatSSEFromAnthropic(model, id, created);
   const path = String(conn?.apiPath || '').toLowerCase();
   if (path.includes('/responses') || conn?.unlockKind === 'codex') return createChatSSEFromResponses(model, id, created);

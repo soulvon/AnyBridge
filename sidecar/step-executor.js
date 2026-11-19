@@ -6,6 +6,7 @@ import { readFile, mkdir, readdir, rm } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join, resolve, isAbsolute } from 'path';
 import { spawn } from 'child_process';
+import { StringDecoder } from 'node:string_decoder';
 
 // ── Parse deploy.md into structured steps ──
 // Returns: { strategies: { source: { prerequisites, envVars, steps }, docker: { ... } } }
@@ -224,16 +225,22 @@ async function execCommand(cmdText, options = {}) {
 
         let stdout = '';
         let stderr = '';
+        const outDecoder = new StringDecoder('utf8');
+        const errDecoder = new StringDecoder('utf8');
         const timer = setTimeout(() => {
+          stdout += outDecoder.end();
+          stderr += errDecoder.end();
           child.kill('SIGTERM');
           res({ stdout, stderr: stderr + '\n[TIMEOUT]', exitCode: -1 });
         }, timeout);
 
-        child.stdout.on('data', (d) => { stdout += d.toString(); });
-        child.stderr.on('data', (d) => { stderr += d.toString(); });
+        child.stdout.on('data', (d) => { stdout += outDecoder.write(d); });
+        child.stderr.on('data', (d) => { stderr += errDecoder.write(d); });
 
         child.on('close', (code) => {
           clearTimeout(timer);
+          stdout += outDecoder.end();
+          stderr += errDecoder.end();
           res({ stdout, stderr, exitCode: code ?? -1 });
         });
 

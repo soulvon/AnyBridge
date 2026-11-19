@@ -244,9 +244,7 @@ fn start_impl(app: AppHandle, state: &CursorCoreState) -> Result<(), String> {
             return Err(format!("AnyBridge CA 尚未就绪: {}", certificate.message));
         }
         crate::commands::proxy::ensure_proxy_service_ready(&app)?;
-        let key = crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
-            .filter(|value| !value.trim().is_empty())
-            .ok_or("AnyBridge 内置供应商 Key 尚未生成")?;
+        let key = crate::commands::config::ensure_local_proxy_key()?;
         let config_dir = crate::commands::config::config_dir_path();
         let routes = config_dir.join("proxy-routes.json");
         let cursor_models = config_dir.join("cursor-models.json");
@@ -496,9 +494,7 @@ pub fn cursor_preflight(app: AppHandle, state: State<CursorCoreState>) -> Result
     if count == 0 {
         return Err("至少需要一个启用的 Cursor 内置模型".into());
     }
-    crate::commands::config::read_config_value("LOCAL_PROXY_KEY")
-        .filter(|value| !value.trim().is_empty())
-        .ok_or("AnyBridge 内置供应商 Key 尚未生成")?;
+    crate::commands::config::ensure_local_proxy_key()?;
     let certificate = crate::commands::cert_install::check_ca_status();
     if !certificate.san_current || !(certificate.current_user || certificate.local_machine) {
         return Err(format!("AnyBridge CA 尚未就绪: {}", certificate.message));

@@ -19,6 +19,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { configDir } from './lib/config-dir.js';
 import { clearAll as clearTargetCooldowns } from './lib/provider-cooldown.js';
+import { clearAntigravityCache } from './lib/antigravity-handler.js';
+import { inferApiFormatFromEndpoint, isOfficialGoogleGeminiNativeOnlyEndpoint } from './lib/google-gemini.js';
 
 function positiveInt(value, fallback, min = 0) {
   const n = parseInt(value, 10);
@@ -40,35 +42,47 @@ const cache = {
   codexProxyRoutes: { mtimeMs: 0, data: null, loadedAt: 0, dirty: true },
 };
 
-function readJsonSafe(file) {
+function readJsonStatus(file) {
   try {
-    if (!fs.existsSync(file)) return null;
+    if (!fs.existsSync(file)) return { missing: true };
     const stat = fs.statSync(file);
     const raw = fs.readFileSync(file, 'utf8');
-    return { stat, json: JSON.parse(raw) };
+    return { missing: false, stat, json: JSON.parse(raw) };
   } catch (e) {
     console.error(`[config-cache] failed to read ${file}: ${e.message}`);
-    return null;
+    return { missing: false, error: e };
   }
 }
 
-function loadEntry(entry, file, transform) {
+function loadEntry(entry, file, transform, { clearAntigravityOnChange = false } = {}) {
   const now = Date.now();
-  if (!entry.dirty && (now - entry.loadedAt) < TTL_MS && entry.data) return entry.data;
-  const r = readJsonSafe(file);
-  if (!r) {
+  if (!entry.dirty && (now - entry.loadedAt) < TTL_MS && entry.data !== null) return entry.data;
+  const r = readJsonStatus(file);
+  if (r.missing) {
+    const changed = entry.mtimeMs !== 0;
     entry.mtimeMs = 0;
     entry.loadedAt = now;
     entry.data = transform ? transform(null) : null;
     entry.dirty = false;
+    if (changed && clearAntigravityOnChange) clearAntigravityCache();
     return entry.data;
   }
-  // mtime 命中 + 未过期 → 跳过 parse
-  if (entry.data && r.stat.mtimeMs === entry.mtimeMs) {
+  if (r.error) {
+    // 坏盘/半写入解析失败：若有上一次有效快照，保留不覆写，防止毒化缓存
+    entry.loadedAt = now;
+    entry.dirty = false;
+    if (entry.data !== null) return entry.data;
+    entry.mtimeMs = 0;
+    entry.data = transform ? transform(null) : null;
+    return entry.data;
+  }
+  // mtime 命中 + 未标脏 → 跳过转换
+  if (!entry.dirty && entry.data !== null && r.stat.mtimeMs === entry.mtimeMs) {
     entry.loadedAt = now;
     entry.dirty = false;
     return entry.data;
   }
+  const changed = entry.mtimeMs !== r.stat.mtimeMs || entry.dirty;
   // 配置真的被改过：旧的冷却记录可能已经不成立（比如换掉了坏掉的 key），
   // 否则用户改完配置还得干等冷却结束。
   if (entry.mtimeMs !== 0 && r.stat.mtimeMs !== entry.mtimeMs) clearTargetCooldowns();
@@ -76,14 +90,18 @@ function loadEntry(entry, file, transform) {
   entry.loadedAt = now;
   entry.data = transform ? transform(r.json) : r.json;
   entry.dirty = false;
+  if (changed && clearAntigravityOnChange) clearAntigravityCache();
   return entry.data;
 }
 
 function loadProxyRoutesEntry(entry, file, label = 'proxy routes') {
   const now = Date.now();
+  if (!entry.dirty && (now - entry.loadedAt) < TTL_MS && entry.data) return entry.data;
   if (!fs.existsSync(file)) {
-    if (entry.mtimeMs !== 0 && entry.data?.fileExists) {
+    const removed = entry.mtimeMs !== 0 && entry.data?.fileExists;
+    if (removed) {
       console.info(`[config-cache] ${label} reloaded: file removed`);
+      clearAntigravityCache();
     }
     entry.mtimeMs = 0;
     entry.loadedAt = now;
@@ -93,26 +111,30 @@ function loadProxyRoutesEntry(entry, file, label = 'proxy routes') {
   }
   try {
     const stat = fs.statSync(file);
-    if (entry.data && stat.mtimeMs === entry.mtimeMs) {
+    if (!entry.dirty && entry.data && !entry.data.loadError && stat.mtimeMs === entry.mtimeMs) {
       entry.loadedAt = now;
       entry.dirty = false;
       return entry.data;
     }
     const previousMtime = entry.mtimeMs;
+    const wasDirty = entry.dirty;
     const raw = fs.readFileSync(file, 'utf8');
+    entry.data = transformProxyRoutes(JSON.parse(raw));
     entry.mtimeMs = stat.mtimeMs;
     entry.loadedAt = now;
-    entry.data = transformProxyRoutes(JSON.parse(raw));
     entry.dirty = false;
-    if (previousMtime !== stat.mtimeMs) {
+    if (previousMtime !== stat.mtimeMs || wasDirty) {
+      clearAntigravityCache();
       console.info(`[config-cache] ${label} reloaded`);
     }
     return entry.data;
   } catch (e) {
     console.error(`[config-cache] failed to read ${file}: ${e.message}`);
     entry.loadedAt = now;
-    entry.data = { fileExists: true, loadError: e.message || String(e), version: 1, defaultModelId: '', routes: [] };
     entry.dirty = false;
+    // 保留上一次有效路由快照，不让瞬时半写入把整份路由表清零
+    if (entry.data && !entry.data.loadError) return entry.data;
+    entry.data = { fileExists: true, loadError: e.message || String(e), version: 1, defaultModelId: '', routes: [] };
     return entry.data;
   }
 }
@@ -125,42 +147,116 @@ function loadCodexProxyRoutesEntry() {
   return loadProxyRoutesEntry(cache.codexProxyRoutes, CODEX_PROXY_ROUTES_PATH(), 'codex proxy routes');
 }
 
-function transformProviders(json) {
-  const list = (json && Array.isArray(json.providers)) ? json.providers : [];
+function mergeSourceProviderEntry(config, baseProviders, { forcedApiFormat = '', isAntigravity = false } = {}) {
+  const hasSourceId = Boolean(String(config?.sourceProviderId || '').trim());
+  const source = hasSourceId ? (baseProviders.get(config.sourceProviderId) || null) : null;
+  const sourceMissingOrDisabled = hasSourceId && (!source || source.enabled === false);
+
+  const normalizeFmt = (v) => {
+    const f = String(v || '').trim().toLowerCase();
+    return f === 'openai' || f === 'anthropic' || f === 'gemini' ? f : '';
+  };
+
+  let entry;
+  if (source) {
+    const {
+      apiHost: _sh,
+      apiPath: _sp,
+      apiKey: _sk,
+      apiKeys: _sks,
+      apiFormat: _sf,
+      wireApi: _sw,
+      unlocks: _su,
+      codexChatReasoning: _scr,
+      capabilities: _scap,
+      modelCaps: _smc,
+      headers: _shd,
+      baseUrl: _sbu,
+      url: _surl,
+      ...configOwnFields
+    } = config;
+    const effectiveKeys = Array.isArray(source.apiKeys) && source.apiKeys.length > 0
+      ? [...source.apiKeys]
+      : (Array.isArray(config.apiKeys) ? [...config.apiKeys] : undefined);
+    entry = {
+      ...source,
+      ...configOwnFields,
+      apiHost: source.apiHost || '',
+      apiKey: source.apiKey || '',
+      ...(effectiveKeys ? { apiKeys: effectiveKeys } : {}),
+      ...(source.apiPath !== undefined ? { apiPath: source.apiPath } : {}),
+      enabled: !sourceMissingOrDisabled && config.enabled !== false,
+    };
+    if (source.apiPath === undefined) delete entry.apiPath;
+  } else {
+    entry = {
+      ...config,
+      enabled: sourceMissingOrDisabled ? false : (config.enabled !== false),
+    };
+  }
+
+  if (forcedApiFormat) {
+    entry.apiFormat = forcedApiFormat;
+  } else if (isAntigravity) {
+    const effectiveHost = entry.apiHost || '';
+    const effectivePath = entry.apiPath ?? undefined;
+    const overrideFormat = normalizeFmt(config.apiFormatOverride);
+    const sourceFormat = source ? normalizeFmt(source.apiFormat) : '';
+    const legacyFormat = normalizeFmt(config.apiFormat);
+    const inferredFormat = inferApiFormatFromEndpoint(effectiveHost, effectivePath);
+    const effectiveFormat = isOfficialGoogleGeminiNativeOnlyEndpoint(effectiveHost, effectivePath)
+      ? 'gemini'
+      : (source
+          ? (overrideFormat || sourceFormat || inferredFormat || legacyFormat || undefined)
+          : (overrideFormat || legacyFormat || inferredFormat || undefined));
+    if (effectiveFormat) entry.apiFormat = effectiveFormat;
+    else delete entry.apiFormat;
+  }
+
+  entry.capabilities = {
+    text: true,
+    stream: true,
+    ...(source?.capabilities && typeof source.capabilities === 'object' ? source.capabilities : {}),
+    ...(!source && config.capabilities && typeof config.capabilities === 'object' ? config.capabilities : {}),
+  };
+  entry.modelCaps = {
+    ...(source?.modelCaps && typeof source.modelCaps === 'object' ? source.modelCaps : {}),
+    ...(!source && config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {}),
+  };
+  return entry;
+}
+
+function transformProvidersBundle(json) {
+  const raw = json && typeof json === 'object' ? json : {};
+  const list = Array.isArray(raw.providers) ? raw.providers : [];
+  const baseProviders = new Map();
   const m = new Map();
   for (const p of list) {
-    if (p && p.id) m.set(p.id, p);
+    if (p && p.id) {
+      baseProviders.set(p.id, p);
+      m.set(p.id, p);
+    }
   }
-  const codexConfigs = (json && Array.isArray(json.codexConfigs)) ? json.codexConfigs : [];
-  for (const config of codexConfigs) {
+
+  for (const config of (Array.isArray(raw.codexConfigs) ? raw.codexConfigs : [])) {
     if (!config || !config.id) continue;
-    m.set(config.id, {
-      ...config,
-      apiFormat: 'openai',
-      enabled: true,
-      capabilities: {
-        text: true,
-        stream: true,
-        ...(config.capabilities && typeof config.capabilities === 'object' ? config.capabilities : {}),
-      },
-      modelCaps: config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {},
-    });
+    m.set(config.id, mergeSourceProviderEntry(config, baseProviders, { forcedApiFormat: 'openai' }));
   }
-  const antigravityConfigs = (json && Array.isArray(json.antigravityConfigs)) ? json.antigravityConfigs : [];
-  for (const config of antigravityConfigs) {
+
+  for (const config of (Array.isArray(raw.antigravityConfigs) ? raw.antigravityConfigs : [])) {
     if (!config || !config.id) continue;
-    m.set(config.id, {
-      ...config,
-      apiFormat: config.apiFormat || 'openai',
-      enabled: config.enabled !== false,
-      capabilities: {
-        text: true,
-        stream: true,
-        ...(config.capabilities && typeof config.capabilities === 'object' ? config.capabilities : {}),
-      },
-      modelCaps: config.modelCaps && typeof config.modelCaps === 'object' ? config.modelCaps : {},
-    });
+    m.set(config.id, mergeSourceProviderEntry(config, baseProviders, { isAntigravity: true }));
   }
+
+  // 所有其余带 sourceProviderId 的平台配置数组，实时合并主供应商并继承多密钥与启停态
+  for (const [key, val] of Object.entries(raw)) {
+    if (key === 'providers' || key === 'codexConfigs' || key === 'antigravityConfigs' || !Array.isArray(val)) continue;
+    for (const config of val) {
+      if (!config || !config.id || !config.sourceProviderId) continue;
+      m.set(config.id, mergeSourceProviderEntry(config, baseProviders));
+    }
+  }
+
   if (!m.has('anybridge-local-proxy')) {
     const port = Number(process.env.API_PORT || 7450);
     const key = process.env.API_KEY || '';
@@ -176,7 +272,7 @@ function transformProviders(json) {
       meta: { builtin: true, localProxy: true }
     });
   }
-  return m;
+  return { map: m, json: raw };
 }
 
 function transformSlots(json) {
@@ -279,6 +375,22 @@ function transformModelMap(json) {
   };
 }
 
+function normalizeTargetApiKeys(rawKeys) {
+  if (!Array.isArray(rawKeys)) return [];
+  const out = [];
+  for (const item of rawKeys) {
+    if (item && typeof item === 'object') {
+      if (item.enabled === false) continue;
+      const key = String(item.key ?? item.apiKey ?? item.value ?? '').trim();
+      if (key) out.push(key);
+    } else {
+      const key = String(item || '').trim();
+      if (key) out.push(key);
+    }
+  }
+  return out;
+}
+
 function normalizeProxyRouteTarget(target) {
   const rawApiFormat = String(target?.apiFormat || target?.api_format || '').trim();
   return {
@@ -287,9 +399,7 @@ function normalizeProxyRouteTarget(target) {
     apiFormat: rawApiFormat.toLowerCase() === 'auto' ? '' : rawApiFormat,
     apiPath: String(target?.apiPath || target?.api_path || '').trim(),
     unlock: String(target?.unlock || '').trim(),
-    apiKeys: Array.isArray(target?.apiKeys || target?.api_keys)
-      ? (target.apiKeys || target.api_keys).map(k => String(k || '').trim()).filter(Boolean)
-      : [],
+    apiKeys: normalizeTargetApiKeys(target?.apiKeys || target?.api_keys),
   };
 }
 
@@ -355,15 +465,19 @@ function transformProxyRoutes(json) {
 }
 
 export function getProviders() {
-  return loadEntry(cache.providers, PROVIDERS_PATH(), transformProviders);
+  return loadEntry(cache.providers, PROVIDERS_PATH(), transformProvidersBundle, { clearAntigravityOnChange: true }).map;
+}
+
+export function getProvidersJson() {
+  return loadEntry(cache.providers, PROVIDERS_PATH(), transformProvidersBundle, { clearAntigravityOnChange: true }).json;
 }
 
 export function getSlots() {
-  return loadEntry(cache.slots, SLOTS_PATH(), transformSlots);
+  return loadEntry(cache.slots, SLOTS_PATH(), transformSlots, { clearAntigravityOnChange: true });
 }
 
 export function getModelMapConfig() {
-  return loadEntry(cache.modelMap, SLOTS_PATH(), transformModelMap);
+  return loadEntry(cache.modelMap, SLOTS_PATH(), transformModelMap, { clearAntigravityOnChange: true });
 }
 
 export function getProxyRoutes() {
@@ -382,12 +496,22 @@ export function invalidate(what = 'all') {
   }
   if (what === 'all' || what === 'proxyRoutes') cache.proxyRoutes.dirty = true;
   if (what === 'all' || what === 'codexProxyRoutes') cache.codexProxyRoutes.dirty = true;
+  if (what === 'all' || what === 'providers' || what === 'proxyRoutes' || what === 'slots') {
+    clearAntigravityCache();
+  }
 }
 
-export function markProvidersDirty() { cache.providers.dirty = true; }
+export function markProvidersDirty() {
+  cache.providers.dirty = true;
+  clearAntigravityCache();
+}
 export function markSlotsDirty() {
   cache.slots.dirty = true;
   cache.modelMap.dirty = true;
+  clearAntigravityCache();
 }
-export function markProxyRoutesDirty() { cache.proxyRoutes.dirty = true; }
+export function markProxyRoutesDirty() {
+  cache.proxyRoutes.dirty = true;
+  clearAntigravityCache();
+}
 export function markCodexProxyRoutesDirty() { cache.codexProxyRoutes.dirty = true; }

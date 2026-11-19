@@ -29,12 +29,11 @@ fn stashed_now_json(raw_text: &str, entry_applied: &Stashed) -> Stashed {
             }
         }
         Stashed::Str(applied) => {
-            // 字符串值可能在原文里带引号，剥离后比较
-            let stripped = raw_text.trim_matches('"');
-            if stripped == applied.as_str() {
-                Stashed::Str(applied.clone())
-            } else {
-                Stashed::Str(raw_text.to_string())
+            match serde_json::from_str::<Json>(raw_text) {
+                Ok(Json::String(parsed)) if parsed == *applied => Stashed::Str(applied.clone()),
+                Ok(Json::String(parsed)) => Stashed::Str(parsed),
+                Ok(other) => Stashed::from_json_any(&other).unwrap_or(Stashed::Absent),
+                Err(_) => Stashed::Str(raw_text.to_string()),
             }
         }
         scalar_applied => {
@@ -359,4 +358,94 @@ fn toml_remove_at(doc: &mut toml_edit::DocumentMut, path: &[String]) -> Result<(
 /// TOML Item 的字符串化（String 值提取；其它类型 None）。
 fn toml_item_string(item: &toml_edit::Item) -> Option<String> {
     item.as_str().map(|s| s.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn isolated_dir(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "anybridge-field-restore-{name}-{}-{nanos}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn stashed_now_json_treats_escaped_strings_as_semantically_equal() {
+        let logical = "line1\nquote=\"hi\"\\slash\\u{0041}";
+        let json_literal = serde_json::to_string(logical).unwrap();
+        assert_eq!(
+            stashed_now_json(&json_literal, &Stashed::Str(logical.to_string())),
+            Stashed::Str(logical.to_string())
+        );
+
+        // 即使 JSON 文本里写的是 \u0041 这种等价转义，也必须判为与 "A" 相等
+        let unicode_escaped = r#""prefix \u0041 \"q\" \\tail""#;
+        let unicode_logical = "prefix A \"q\" \\tail";
+        assert_eq!(
+            stashed_now_json(unicode_escaped, &Stashed::Str(unicode_logical.to_string())),
+            Stashed::Str(unicode_logical.to_string())
+        );
+    }
+
+    #[test]
+    fn restore_json_fields_handles_escaped_original_and_skips_user_modified_escaped_value() {
+        let dir = isolated_dir("escaped");
+        let cfg = dir.join("settings.json");
+        let stash = dir.join("stash");
+        let orig_val = "C:\\Users\\demo\\bin\\run.exe --msg=\"hello\"\nnext";
+        let applied_val = "http://127.0.0.1:8317/\"v1\"\\n";
+        let user_edited_escaped = "C:\\Custom\\Path\\\"mine\"";
+
+        std::fs::write(
+            &cfg,
+            serde_json::to_string_pretty(&serde_json::json!({
+                "cmd": applied_val,
+                "manual": user_edited_escaped,
+                "untouched": 42
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let key = StashKey {
+            platform: "test_escaped",
+            file: "settings.json",
+        };
+        agent_stash::record_apply(
+            &stash,
+            &key,
+            &[
+                agent_stash::FieldPlan {
+                    path: vec!["cmd".to_string()],
+                    current: Stashed::Str(orig_val.to_string()),
+                    new: Stashed::Str(applied_val.to_string()),
+                },
+                agent_stash::FieldPlan {
+                    path: vec!["manual".to_string()],
+                    current: Stashed::Str("orig-manual".to_string()),
+                    new: Stashed::Str("applied-manual".to_string()),
+                },
+            ],
+        )
+        .unwrap();
+
+        let restored = restore_json_fields_via_stash(&cfg, &key, &stash, "TestEscaped").unwrap();
+        assert!(restored);
+        let parsed: Json =
+            serde_json::from_str(&std::fs::read_to_string(&cfg).unwrap()).unwrap();
+        assert_eq!(parsed["cmd"].as_str(), Some(orig_val));
+        assert_eq!(parsed["manual"].as_str(), Some(user_edited_escaped));
+        assert_eq!(parsed["untouched"].as_i64(), Some(42));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -1,0 +1,488 @@
+/* ═══════ TOKENS — 浅色基线（默认主题，暖沙/工作台共用底盘） ═══════ */
+:root {
+  --bg-primary: #EFF2F6;
+  --bg-secondary: #E4E9F0;
+  --bg-card: #FFFFFF;
+  --bg-hero: linear-gradient(155deg, #F6F8FB 0%, #EFF2F6 52%, #E8EDF4 100%);
+  --bg-glass: rgba(255, 255, 255, 0.86);
+  --bg-input: rgba(15, 23, 42, 0.048);
+  --bg-hover: rgba(15, 23, 42, 0.072);
+
+  --scrollbar-thumb: rgba(100, 116, 139, 0.42);
+  --scrollbar-track: transparent;
+
+  --accent: #0F5C9E;
+  --accent-hover: #0A487D;
+  --accent-secondary: #0D9488;
+  --accent-warm: #D97706;
+  --accent-light: rgba(15, 92, 158, 0.09);
+  --accent-glow: rgba(15, 92, 158, 0.18);
+  --accent-rgb: 15, 92, 158;
+  --accent-secondary-rgb: 13, 148, 136;
+  --accent-bright-rgb: 45, 188, 162;
+
+  --topbar-bg: linear-gradient(180deg, rgba(245, 248, 252, 0.98) 0%, rgba(235, 241, 248, 0.95) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(250, 252, 255, 0.85), rgba(232, 239, 247, 0.7));
+  --topbar-border: rgba(var(--accent-rgb), 0.1);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 8px 24px -24px rgba(17, 24, 39, 0.25);
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 10px 18px -13px rgba(8, 126, 93, 0.74);
+  --brand-frame-bg: linear-gradient(145deg, rgba(255, 255, 255, 0.94), rgba(235, 239, 244, 0.9));
+  --brand-frame-border: rgba(116, 128, 143, 0.22);
+  --logo-node-1: #2B9FD7;
+  --logo-node-2: #52D4BD;
+  --logo-node-3: #29B6C8;
+
+  --sidebar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.16)), var(--bg-glass);
+  --sidebar-border: var(--border);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.52) inset;
+  --sidebar-icon-bg: #FFFFFF;
+  --sidebar-icon-border: rgba(17, 24, 39, 0.08);
+  --sidebar-icon-shadow: 0 1px 2px rgba(17, 24, 39, 0.06);
+  --sidebar-item-color: var(--text-secondary);
+  --sidebar-item-hover-bg: var(--bg-hover);
+  --sidebar-item-hover-color: var(--text-primary);
+  --sidebar-active-bg: var(--accent-light);
+  --sidebar-active-border: rgba(var(--accent-rgb), 0.18);
+  --sidebar-active-color: var(--accent);
+  --sidebar-active-shadow: var(--shadow-sm);
+  --success: #11875D;
+  --success-dim: rgba(17, 135, 93, 0.11);
+  --danger: #D43D3D;
+  --danger-dim: rgba(212, 61, 61, 0.11);
+  --warn: #D97706;
+  --accent-warm-dim: rgba(217, 119, 6, 0.11);
+
+  --text-primary: #111827;
+  --text-secondary: #344054;
+  --text-muted: #667085;
+  --text-dim: #667085;
+  --text-inverse: #FFFFFF;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(15, 23, 42, 0.085);
+  --border-strong: rgba(15, 23, 42, 0.165);
+  --table-th-bg: #F7F9FC;
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.82) inset,
+    0 1px 2px rgba(15, 23, 42, 0.045);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.85) inset,
+    0 4px 12px -2px rgba(15, 23, 42, 0.065),
+    0 1px 3px rgba(15, 23, 42, 0.045);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.92) inset,
+    0 1px 2px rgba(15, 23, 42, 0.035),
+    0 4px 12px -3px rgba(15, 23, 42, 0.065);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.96) inset,
+    0 2px 4px rgba(15, 23, 42, 0.045),
+    0 10px 22px -6px rgba(15, 23, 42, 0.11);
+
+  --font-sans: 'Inter', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC', 'Segoe UI', sans-serif;
+  --font-body: var(--font-sans);
+  --font-cjk: 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', 'Source Han Sans SC', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'SFMono-Regular', Consolas, 'Microsoft YaHei UI', 'Microsoft YaHei', monospace;
+
+  --font-xs: 12px;
+  --font-sm: 13px;
+  --font-base: 14px;
+  --font-md: 15px;
+  --font-lg: 17px;
+  --font-xl: 20px;
+
+  --radius-xs: 5px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-pill: 100px;
+
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-fast: 120ms;
+  --duration-normal: 200ms;
+}
+
+/* ═══════ TOKENS — 深色基线（所有深色主题共用底盘） ═══════ */
+[data-scheme="dark"] {
+  --bg-primary: #0E1319;
+  --bg-secondary: #151D25;
+  --bg-card: #19222C;
+  --bg-hero: linear-gradient(155deg, #0E1319 0%, #131B24 52%, #10171F 100%);
+  --bg-glass: rgba(25, 34, 44, 0.90);
+  --bg-input: rgba(255, 255, 255, 0.058);
+  --bg-hover: rgba(255, 255, 255, 0.088);
+
+  --scrollbar-thumb: rgba(148, 163, 184, 0.36);
+  --scrollbar-track: transparent;
+
+  --accent: #5AB0E6;
+  --accent-hover: #87C9F2;
+  --accent-secondary: #37C7A5;
+  --accent-light: rgba(90, 176, 230, 0.16);
+  --accent-glow: rgba(90, 176, 230, 0.28);
+  --accent-rgb: 90, 176, 230;
+  --accent-secondary-rgb: 55, 199, 165;
+  --accent-bright-rgb: 55, 199, 165;
+
+  --topbar-bg: linear-gradient(180deg, rgba(38, 48, 58, 0.98) 0%, rgba(28, 38, 47, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(35, 45, 55, 0.9), rgba(20, 30, 38, 0.9));
+  --topbar-border: rgba(120, 170, 210, 0.16);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.06) inset, 0 10px 24px -22px rgba(0, 0, 0, 0.82);
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 10px 18px -13px rgba(8, 126, 93, 0.74);
+  --logo-node-1: #4FB8E8;
+  --logo-node-2: #6FE3CE;
+  --logo-node-3: #3FC9DA;
+
+  --sidebar-bg: linear-gradient(180deg, rgba(28, 38, 47, 0.98), rgba(21, 30, 38, 0.98)), #151E26;
+  --sidebar-border: rgba(255, 255, 255, 0.095);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.045) inset, 16px 0 34px -36px rgba(0, 0, 0, 0.72);
+  --sidebar-icon-bg: #FFFFFF;
+  --sidebar-icon-border: rgba(255, 255, 255, 0.12);
+  --sidebar-icon-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --sidebar-item-color: #B4C0CC;
+  --sidebar-item-hover-bg: rgba(var(--accent-rgb), 0.075);
+  --sidebar-item-hover-color: var(--text-primary);
+  --sidebar-active-bg: linear-gradient(135deg, rgba(var(--accent-rgb), 0.18), rgba(var(--accent-secondary-rgb), 0.10)), rgba(255, 255, 255, 0.035);
+  --sidebar-active-border: rgba(var(--accent-rgb), 0.36);
+  --sidebar-active-color: #9AD8FF;
+  --sidebar-active-shadow: 0 12px 26px -22px rgba(var(--accent-rgb), 0.72), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  --success: #48C78E;
+  --success-dim: rgba(72, 199, 142, 0.14);
+  --danger: #FF6B6B;
+  --danger-dim: rgba(255, 107, 107, 0.14);
+  --warn: #F5A524;
+
+  --text-primary: #F4F7FB;
+  --text-secondary: #C5CED8;
+  --text-muted: #A2AEBB;
+  --text-dim: #A2AEBB;
+  --text-inverse: #0B1117;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --table-th-bg: rgba(255, 255, 255, 0.06);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 3px rgba(0, 0, 0, 0.28);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 20px rgba(0, 0, 0, 0.34);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.22),
+    0 6px 14px -4px rgba(0, 0, 0, 0.45);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 2px 4px rgba(0, 0, 0, 0.28),
+    0 10px 22px -6px rgba(90, 176, 230, 0.20);
+}
+
+/* ═══════ TOKENS — 暖沙 Claude（浅色主题覆盖） ═══════ */
+[data-theme="claude"] {
+  --bg-primary: #F2EBE0;
+  --bg-secondary: #E8DFD0;
+  --bg-card: rgba(253, 250, 244, 0.95);
+  --bg-hero: linear-gradient(135deg, #FAF6EE 0%, #F2EADF 48%, #E9DFD0 100%);
+  --bg-glass: rgba(253, 250, 244, 0.8);
+  --bg-input: rgba(58, 46, 34, 0.055);
+  --bg-hover: rgba(58, 46, 34, 0.075);
+
+  --accent: #C15F3C;
+  --accent-hover: #A34B2B;
+  --accent-secondary: #6F8A5B;
+  --accent-warm: #C08A2E;
+  --accent-light: rgba(193, 95, 60, 0.11);
+  --accent-glow: rgba(193, 95, 60, 0.22);
+  --accent-rgb: 193, 95, 60;
+  --accent-secondary-rgb: 111, 138, 91;
+  --accent-bright-rgb: 222, 170, 100;
+
+  --topbar-bg: linear-gradient(180deg, rgba(243, 233, 218, 0.98) 0%, rgba(234, 222, 204, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(253, 250, 244, 0.85), rgba(240, 232, 219, 0.7));
+  --topbar-border: rgba(150, 92, 46, 0.24);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.55) inset, 0 12px 26px -18px rgba(96, 62, 30, 0.38);
+  --pill-running-bg: linear-gradient(135deg, #E08A4F, #C15F3C);
+  --pill-running-shadow: 0 10px 18px -13px rgba(150, 74, 40, 0.74);
+  --brand-frame-bg: linear-gradient(145deg, rgba(255, 253, 248, 0.95), rgba(240, 232, 219, 0.92));
+  --brand-frame-border: rgba(140, 110, 80, 0.25);
+  --logo-node-1: #D97757;
+  --logo-node-2: #E3B23C;
+  --logo-node-3: #C15F3C;
+
+  --sidebar-bg: linear-gradient(180deg, #EBE1D2 0%, #E2D5C3 100%);
+  --sidebar-border: rgba(150, 92, 46, 0.20);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.5) inset;
+  --sidebar-icon-bg: #FAF6EE;
+  --sidebar-icon-border: rgba(140, 110, 80, 0.22);
+  --sidebar-icon-shadow: 0 1px 3px rgba(74, 55, 34, 0.10);
+  --sidebar-item-color: #524A3F;
+  --sidebar-item-hover-bg: rgba(193, 95, 60, 0.08);
+  --sidebar-item-hover-color: #2B2620;
+  --sidebar-active-bg: rgba(193, 95, 60, 0.12);
+  --sidebar-active-border: rgba(193, 95, 60, 0.28);
+  --sidebar-active-color: #C15F3C;
+  --sidebar-active-shadow: 0 1px 2px rgba(74, 55, 34, 0.08);
+  --success: #517F5D;
+  --success-dim: rgba(81, 127, 93, 0.12);
+  --danger: #B4463C;
+  --danger-dim: rgba(180, 70, 60, 0.11);
+  --warn: #B1771C;
+  --accent-warm-dim: rgba(192, 138, 46, 0.12);
+
+  --text-primary: #2B2620;
+  --text-secondary: #524A3F;
+  --text-muted: #857A6B;
+  --text-dim: #857A6B;
+  --text-inverse: #FFFFFF;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(43, 38, 32, 0.10);
+  --border-strong: rgba(43, 38, 32, 0.20);
+  --table-th-bg: rgba(193, 95, 60, 0.06);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.8) inset,
+    0 1px 2px rgba(74, 55, 34, 0.07);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.82) inset,
+    0 6px 16px rgba(74, 55, 34, 0.10),
+    0 1px 3px rgba(74, 55, 34, 0.07);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 1px 2px rgba(74, 55, 34, 0.05),
+    0 6px 14px -4px rgba(74, 55, 34, 0.12);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.95) inset,
+    0 2px 4px rgba(74, 55, 34, 0.06),
+    0 10px 22px -6px rgba(193, 95, 60, 0.20);
+}
+
+/* ═══════ TOKENS — 霓虹 EVA（深色主题覆盖：深空曜黑 + 电光靛紫 + 赛博薄荷青翠点睛） ═══════ */
+[data-theme="eva"] {
+  /* 底盘：深空紫黑（比原版更偏紫，去掉冷灰蓝感） */
+  --bg-primary: #07060E;
+  --bg-secondary: #0F0C1A;
+  --bg-card: rgba(20, 16, 33, 0.96);
+  --bg-hero: linear-gradient(135deg, #07060E 0%, #15102B 52%, #0A0814 100%);
+  --bg-glass: rgba(19, 15, 31, 0.88);
+  --bg-input: rgba(255, 255, 255, 0.055);
+  --bg-hover: rgba(157, 78, 221, 0.14);
+
+  /* 主色：初号机紫罗兰 + 霓虹青（紫青对撞是 EVA 的核心语言） */
+  --accent: #9D4EDD;
+  --accent-hover: #C084FC;
+  --accent-secondary: #22D3EE;
+  --accent-warm: #FF8A3D;
+  --accent-light: rgba(157, 78, 221, 0.18);
+  --accent-glow: rgba(157, 78, 221, 0.32);
+  --accent-rgb: 157, 78, 221;
+  --accent-secondary-rgb: 34, 211, 238;
+  --accent-bright-rgb: 34, 211, 238;
+
+  --topbar-bg: linear-gradient(180deg, rgba(19, 15, 32, 0.98) 0%, rgba(9, 7, 16, 0.96) 100%);
+  --topbar-segment-bg: linear-gradient(180deg, rgba(31, 24, 50, 0.92), rgba(17, 13, 28, 0.92));
+  --topbar-border: rgba(255, 255, 255, 0.08);
+  --topbar-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 26px -20px rgba(0, 0, 0, 0.85);
+  --pill-running-bg: linear-gradient(135deg, #22D3EE, #0891B2);
+  --pill-running-shadow: 0 10px 18px -13px rgba(34, 211, 238, 0.60);
+  --logo-node-1: #C084FC;
+  --logo-node-2: #22D3EE;
+  --logo-node-3: #4ADE80;
+
+  --sidebar-bg: linear-gradient(180deg, #06050B 0%, #0A0813 100%);
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-shadow: 1px 0 0 rgba(255, 255, 255, 0.04) inset;
+  --sidebar-icon-bg: #F8F9FA;
+  --sidebar-icon-border: rgba(255, 255, 255, 0.14);
+  --sidebar-icon-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --sidebar-item-color: #8B84A8;
+  --sidebar-item-hover-bg: rgba(157, 78, 221, 0.10);
+  --sidebar-item-hover-color: #FFFFFF;
+  --sidebar-active-bg: rgba(157, 78, 221, 0.20);
+  --sidebar-active-border: rgba(157, 78, 221, 0.45);
+  --sidebar-active-color: #FFFFFF;
+  --sidebar-active-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --success: #34D399;
+  --success-dim: rgba(52, 211, 153, 0.14);
+  --danger: #F87171;
+  --danger-dim: rgba(248, 113, 113, 0.14);
+  --warn: #FBBF24;
+  --accent-warm-dim: rgba(251, 191, 36, 0.14);
+
+  --text-primary: #FFFFFF;
+  --text-secondary: #D6D1E8;
+  --text-muted: #8B84A8;
+  --text-dim: #8B84A8;
+  --text-inverse: #07060E;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(192, 132, 252, 0.14);
+  --border-strong: rgba(192, 132, 252, 0.28);
+  --table-th-bg: rgba(157, 78, 221, 0.10);
+
+  --shadow-sm:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 3px rgba(0, 0, 0, 0.45);
+  --shadow-md:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 20px rgba(0, 0, 0, 0.55);
+  --shadow-card:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    0 6px 14px -4px rgba(0, 0, 0, 0.65);
+  --shadow-card-hover:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 2px 4px rgba(0, 0, 0, 0.45),
+    0 10px 24px -6px rgba(0, 0, 0, 0.7);
+}
+
+/* ═══════ TOKENS — 极简云白 Minimal（清爽高质感微灰底盘 + 纯白浮岛胶囊 + 沉稳高对比文字） ═══════ */
+[data-theme="minimal"] {
+  --bg-primary: #F3F5F8;
+  --bg-secondary: #E8ECF2;
+  --bg-card: #FFFFFF;
+  --bg-hero: #F3F5F8;
+  --bg-glass: rgba(255, 255, 255, 0.96);
+  --bg-input: #EEF1F6;
+  --bg-hover: #E7ECF3;
+
+  --accent: #0F172A;
+  --accent-hover: #020617;
+  --accent-secondary: #475569;
+  --accent-warm: #D97706;
+  --accent-light: rgba(15, 23, 42, 0.05);
+  --accent-glow: rgba(15, 23, 42, 0.10);
+  --accent-rgb: 15, 23, 42;
+  --accent-secondary-rgb: 71, 85, 105;
+  --accent-bright-rgb: 15, 23, 42;
+
+  --topbar-bg: #FFFFFF;
+  --topbar-segment-bg: #F1F5F9;
+  --topbar-border: rgba(0, 0, 0, 0.06);
+  --topbar-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  /* 运行态胶囊底色必须足够深，才能承载 --button-on-solid(#FFFFFF) 白字；
+     扁平风格下的浅灰中性方案由 [data-style="minimal"] 单独覆盖 */
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 6px 14px -6px rgba(19, 182, 125, 0.42);
+  --brand-frame-bg: #FFFFFF;
+  --brand-frame-border: rgba(0, 0, 0, 0.06);
+  --logo-node-1: #0F172A;
+  --logo-node-2: #475569;
+  --logo-node-3: #94A3B8;
+
+  --sidebar-bg: #F8FAFC;
+  --sidebar-border: rgba(0, 0, 0, 0.06);
+  --sidebar-shadow: none;
+  --sidebar-icon-bg: #FFFFFF;
+  --sidebar-icon-border: rgba(0, 0, 0, 0.06);
+  --sidebar-icon-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  --sidebar-item-color: #64748B;
+  --sidebar-item-hover-bg: rgba(0, 0, 0, 0.03);
+  --sidebar-item-hover-color: #0F172A;
+  --sidebar-active-bg: #FFFFFF;
+  --sidebar-active-border: rgba(0, 0, 0, 0.06);
+  --sidebar-active-color: #0F172A;
+  --sidebar-active-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.06);
+  --success: #15803D;
+  --success-dim: #F0FDF4;
+  --danger: #DC2626;
+  --danger-dim: #FEF2F2;
+  --warn: #D97706;
+  --accent-warm-dim: #FFFBEB;
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-muted: #475569;
+  --text-dim: #64748B;
+  --text-inverse: #FFFFFF;
+  --button-on-solid: #FFFFFF;
+
+  --border: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.16);
+  --table-th-bg: #F8FAFC;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  --shadow-card-hover: 0 6px 16px -4px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+}
+
+/* ═══════ TOKENS — 极简墨黑 Ink（云白的深色对：深空底盘 + 中性色阶 + 高对比浅字） ═══════ */
+[data-theme="ink"] {
+  --bg-primary: #0B1120;
+  --bg-secondary: #111827;
+  --bg-card: #151C2C;
+  --bg-hero: #151C2C;
+  --bg-glass: rgba(21, 28, 44, 0.94);
+  --bg-input: #1B2333;
+  --bg-hover: #1F2937;
+
+  --accent: #E2E8F0;
+  --accent-hover: #F8FAFC;
+  --accent-secondary: #94A3B8;
+  --accent-warm: #FBBF24;
+  --accent-light: rgba(226, 232, 240, 0.10);
+  --accent-glow: rgba(226, 232, 240, 0.14);
+  --accent-dim: rgba(226, 232, 240, 0.06);
+  --accent-rgb: 226, 232, 240;
+  --accent-secondary-rgb: 148, 163, 184;
+  --accent-bright-rgb: 226, 232, 240;
+
+  /* 顶栏须比页面底色略亮，否则与内容区完全同色、失去边界 */
+  --topbar-bg: #101827;
+  --topbar-segment-bg: #1B2333;
+  --topbar-border: rgba(255, 255, 255, 0.07);
+  --topbar-shadow: none;
+  /* 与其余主题保持一致：深绿渐变承载 --button-on-solid 白字 */
+  --pill-running-bg: linear-gradient(135deg, #13B67D, #087D5D);
+  --pill-running-shadow: 0 6px 14px -6px rgba(19, 182, 125, 0.42);
+  --brand-frame-bg: #151C2C;
+  --brand-frame-border: rgba(255, 255, 255, 0.10);
+  --logo-node-1: #F1F5F9;
+  --logo-node-2: #94A3B8;
+  --logo-node-3: #64748B;
+
+  --sidebar-bg: #0B1120;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-shadow: none;
+  /* 图标底改浅灰：多数平台 logo 是深色/黑白，深底上会糊成一团 */
+  --sidebar-icon-bg: #C7D0DD;
+  --sidebar-icon-border: rgba(255, 255, 255, 0.10);
+  --sidebar-icon-shadow: none;
+  --sidebar-item-color: #94A3B8;
+  --sidebar-item-hover-bg: rgba(255, 255, 255, 0.05);
+  --sidebar-item-hover-color: #F1F5F9;
+  --sidebar-active-bg: #1B2333;
+  --sidebar-active-border: rgba(255, 255, 255, 0.10);
+  --sidebar-active-color: #F8FAFC;
+  --sidebar-active-shadow: 0 2px 6px -1px rgba(0, 0, 0, 0.50);
+
+  --success: #34D399;
+  --success-dim: rgba(52, 211, 153, 0.14);
+  --danger: #F87171;
+  --danger-dim: rgba(248, 113, 113, 0.14);
+  --warn: #FBBF24;
+  --accent-warm-dim: rgba(251, 191, 36, 0.14);
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --text-dim: #64748B;
+  --text-inverse: #0B1120;
+  --button-on-solid: #0B1120;
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --table-th-bg: #151C2C;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-card-hover: 0 6px 16px -4px rgba(0, 0, 0, 0.55);
+}
+

@@ -27,11 +27,41 @@ import { tryGunzip, unaryHeaders, wrapUnary } from './connect.js';
 import { mergeUnaryFrames } from './handlers/build-response.js';
 import { snapshot } from './stats.js';
 import { extractModelList, unlockModels } from './rename-models.js';
+import { WINDSURF_CATALOG } from './windsurf-catalog.js';
 import { mitmLog, rpcAuditLog } from './mitm-logger.js';
-import { httpsAgentFor } from './system-proxy.js';
+import { SHARED_HTTPS_AGENT, httpsAgentFor } from './system-proxy.js';
 import { attachPluginRoutes } from './plugin-loader.js';
 import { createRateLimitedLogger } from './lib/log-rate-limit.js';
-import { mitmCertRejected, TLS_CLIENT_CERT_REJECTED_EVENT } from './lib/tls-diagnostics.js';
+import {
+  isPreHandshakeDisconnect,
+  mitmCertRejected,
+  TLS_CLIENT_CERT_REJECTED_EVENT,
+} from './lib/tls-diagnostics.js';
+import {
+  hashModelList,
+  loadMitmCertificates,
+  rewriteConfigSignature,
+  writeCapturedModelList,
+} from './lib/hybrid-server/certs-and-traffic.js';
+import {
+  PREFLIGHT_ALLOW_METHODS,
+  STREAMING_METHODS,
+  createProtoHelpers,
+  getRpcMethod,
+  now,
+  sanitizeProxyRequestHeaders,
+  sanitizeProxyResponseHeaders,
+  stripRoutePrefix,
+} from './lib/hybrid-server/proto-helpers.js';
+import { createCodeiumProxy } from './lib/hybrid-server/codeium-proxy.js';
+import {
+  createMitmInternalServer,
+  handleByokCdpNoBodyRoute,
+  handleByokCdpPostRoute,
+  handleCommonCodeiumAndChatRoutes,
+  handleMitmHealthRoute,
+  startAntigravityHttpsEndpoint,
+} from './lib/hybrid-server/mitm-and-cdp.js';
 
 // 只给高频重复诊断套用去重限流，不替换全局 console：
 // 第三方依赖的日志和一次性错误必须完整可见，排查时也不能被 60s 窗口吞掉最后一跳。
@@ -44,12 +74,7 @@ function intEnv(name, fallback, min = 1) {
 
 const PORT = intEnv('API_PORT', 7450, 1);
 const DEBUG_IMAGES = /^(true|1|on)$/i.test(String(process.env.BYOK_DEBUG_IMAGES || 'false'));
-const PROXY_HTTPS_AGENT = new https.Agent({
-  keepAlive: true,
-  keepAliveMsecs: 30_000,
-  maxSockets: intEnv('BYOK_PROXY_MAX_SOCKETS', 64, 1),
-  maxFreeSockets: intEnv('BYOK_PROXY_MAX_FREE_SOCKETS', 16, 1),
-});
+const PROXY_HTTPS_AGENT = SHARED_HTTPS_AGENT;
 
 // 遥测屏蔽：这些 gRPC 方法直接返回空 200 响应，不转发到服务端。
 // 保护隐私，避免 BYOK 使用行为暴露。
@@ -145,168 +170,29 @@ function noteTakeoverCapture(host) {
 // 启动即落一次初始状态：让体检能区分「网关在跑但从没收到请求」与「网关没跑」
 persistTakeoverState(true);
 
-let MITM_CERT, MITM_KEY;
-let MITM_CA_CERT = null;
-let MITM_ENABLED = false;
-let MITM_CERT_FINGERPRINT = null;
-let MITM_ERROR = null;
-try {
-  // 优先使用由本地 CA 签发的 end-entity 叶子证书（mitm-leaf.pem，含 CA 链）。
-  // 严格 TLS 客户端（rustls/webpki）拒绝「CA 证书当作服务器证书」(CaUsedAsEndEntity)，
-  // 因此 MITM 必须呈现叶子证书，CA 仅作为信任根。
-  const leafUrl = new URL('mitm-leaf.pem', CERTS_DIR);
-  const leafKeyUrl = new URL('mitm-leaf-key.pem', CERTS_DIR);
-  const caUrl = new URL('server.codeium.com.pem', CERTS_DIR);
-  const hasLeaf = fs.existsSync(leafUrl) && fs.existsSync(leafKeyUrl);
-  if (hasLeaf) {
-    MITM_CERT = fs.readFileSync(leafUrl);
-    MITM_KEY = fs.readFileSync(leafKeyUrl);
-    MITM_CA_CERT = fs.readFileSync(caUrl);
-  } else {
-    // 兼容旧布局（CA 直接当服务器证书）：仅供独立 dev 运行，严格客户端会拒绝。
-    // 正常启动路径（Rust ensure_mitm_certs_ex）会先补齐叶子证书，不会走到这里。
-    MITM_CERT = fs.readFileSync(caUrl);
-    MITM_KEY = fs.readFileSync(new URL('server.codeium.com-key.pem', CERTS_DIR));
-  }
-  // X509Certificate 解析链首证书（叶子）。
-  const certificate = new crypto.X509Certificate(MITM_CERT);
-  const privateKey = crypto.createPrivateKey(MITM_KEY);
-  if (!certificate.checkPrivateKey(privateKey)) {
-    throw new Error('证书与私钥不匹配');
-  }
-  if (Date.now() < Date.parse(certificate.validFrom) || Date.now() > Date.parse(certificate.validTo)) {
-    throw new Error(`证书不在有效期内: ${certificate.validFrom} ~ ${certificate.validTo}`);
-  }
-  const missing = [...MITM_HOSTS].filter(host => !certificate.checkHost(host));
-  if (missing.length) {
-    throw new Error(`证书缺少 SAN: ${missing.join(', ')}`);
-  }
-  if (hasLeaf) {
-    // 叶子必须是非 CA 的 end-entity，且由本地 CA 签发。
-    if (certificate.ca) {
-      throw new Error('MITM 叶子证书不应标记为 CA');
-    }
-    const ca = new crypto.X509Certificate(MITM_CA_CERT);
-    if (!ca.ca) {
-      throw new Error('MITM 信任根未标记为 CA');
-    }
-    if (!certificate.verify(ca.publicKey)) {
-      throw new Error('叶子证书未由本地 MITM CA 签发');
-    }
-  } else if (!certificate.ca) {
-    throw new Error('证书未标记为 CA，不能作为 MITM 信任根');
-  }
-  // Creating the context validates the key/certificate pair before the first
-  // client connection and avoids discovering a broken key only under load.
-  tls.createSecureContext({ cert: MITM_CERT, key: MITM_KEY });
-  MITM_CERT_FINGERPRINT = certificate.fingerprint256;
-  MITM_ENABLED = true;
-  console.log(`🔐 MITM enabled; ${hasLeaf ? 'leaf' : 'ca-as-leaf'}=${new URL(hasLeaf ? 'mitm-leaf.pem' : 'server.codeium.com.pem', CERTS_DIR).href}; fingerprint=${MITM_CERT_FINGERPRINT}`);
-} catch (error) {
-  MITM_ERROR = error instanceof Error ? error.message : String(error);
-  MITM_CERT = undefined;
-  MITM_KEY = undefined;
-  MITM_CA_CERT = null;
-  console.error(`❌ MITM certificate unavailable: ${MITM_ERROR}`);
-}
+const {
+  MITM_CERT,
+  MITM_KEY,
+  MITM_CA_CERT,
+  MITM_ENABLED,
+  MITM_CERT_FINGERPRINT,
+  MITM_ERROR,
+} = loadMitmCertificates(CERTS_DIR, MITM_HOSTS);
 
 let requestCounter = 0;
 
 const CA_COMMON_NAME_HINT = '「AnyBridge Local CA」';
 
-// MITM 连接的上游主机映射：记录每个 TLS socket 对应的原始 CONNECT 目标。
-// Devin 连 server.codeium.com，Windsurf 连 server.self-serve.windsurf.com，
-// 网关需要转发到各自的真实上游，不能一律发到 windsurf.com。
 const mitmUpstreamHost = new WeakMap();
 
-// 高频 GetUserStatus 去重：每 10s 至少只写一次 ide-models.json，
-// 每 5s 至少只打一次相关日志。避免每秒 8-10 次心跳把磁盘 IO 打满。
-let lastModelListSig = '';
-let lastModelListCapturedAt = 0;
-let lastModelCaptureLogAt = 0;
-let lastModelRewriteLogAt = 0;
-// unlockModels 结果缓存：同一秒内输入相同 → 复用上次结果
-let lastUnlockInputSig = '';
-let lastUnlockResult = null;
-
-function hashModelList(list) {
-  // 短签名：modelUid + label。够用——下游关心的是"清单是否变化"。
-  try {
-    const h = crypto.createHash('sha1');
-    for (const m of list) h.update(`${m.modelUid || ''}|${m.label || ''}\n`);
-    return h.digest('hex').slice(0, 16);
-  } catch {
-    return String(Date.now());
-  }
-}
-
-function writeCapturedModelList(file, list) {
-  let existing = {};
-  try {
-    existing = JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    existing = {};
-  }
-
-  const existingByUid = new Map();
-  for (const item of (Array.isArray(existing.models) ? existing.models : [])) {
-    if (item && item.modelUid) existingByUid.set(item.modelUid, item);
-  }
-
-  // protobuf/JSON 抓取结果 = Windsurf 客户端下拉真实清单。
-  // accountModelIds 必须与之对齐；否则 UI「当前账号」仍只显示旧 JSON API 精简集。
-  const models = [];
-  const accountModelIds = [];
-  const seen = new Set();
-  for (const item of list) {
-    const modelUid = String(item?.modelUid || '').trim();
-    if (!modelUid || seen.has(modelUid)) continue;
-    // 拦截噪声：apiServerUrl 等被误识别为 label 的条目
-    const label = String(item?.label || modelUid).trim();
-    if (/^https?:\/\//i.test(label)) continue;
-    seen.add(modelUid);
-    const prev = existingByUid.get(modelUid) || {};
-    const out = {
-      modelUid,
-      label: label || modelUid,
-    };
-    const apiId = item.apiId || prev.apiId;
-    if (apiId) out.apiId = apiId;
-    models.push(out);
-    accountModelIds.push(modelUid);
-  }
-  if (!models.length) return;
-
-  const next = {
-    capturedAt: Date.now(),
-    source: 'captured',
-    accountModelIds,
-    models,
-  };
-  if (existing.account && typeof existing.account === 'object') next.account = existing.account;
-  fs.writeFileSync(file, JSON.stringify(next, null, 2));
-}
-
-function rewriteConfigSignature() {
-  const dir = configDir();
-  return ['model-map.json', 'providers.json', 'ide-models.json']
-    .map((name) => {
-      try {
-        const s = fs.statSync(path.join(dir, name));
-        return `${name}:${s.mtimeMs}:${s.size}`;
-      } catch {
-        return `${name}:missing`;
-      }
-    })
-    .join('|');
-}
-
-// ─── Helpers ──────────────────────────────────────────────
-
-function getRpcMethod(url) {
-  const parts = url.split('/');
-  return parts[parts.length - 1] || '';
-}
+const modelRewriteCacheState = {
+  lastModelListSig: '',
+  lastModelListCapturedAt: 0,
+  lastModelCaptureLogAt: 0,
+  lastModelRewriteLogAt: 0,
+  lastUnlockInputSig: '',
+  lastUnlockResult: null,
+};
 
 function getUpstreamHost(url) {
   if (url.includes('unleash') || url.includes('experiment_config')) {
@@ -315,403 +201,38 @@ function getUpstreamHost(url) {
   return REAL_API_HOST;
 }
 
-// Windsurf Secure adds /_route/api_server prefix; real server doesn't use it
-function stripRoutePrefix(url) {
-  return url.replace(/^\/_route\/api_server/, '');
-}
+const {
+  rewriteRegisterUser,
+  buildPreflightOkResponse,
+  makeUnaryResponseCollector,
+} = createProtoHelpers({
+  PORT,
+  parseFields,
+  writeStringField,
+  writeBytesField,
+  writeVarintField,
+  mergeUnaryFrames,
+  wrapUnary,
+  unaryHeaders,
+});
 
-function now() {
-  return new Date().toISOString().slice(11, 23);
-}
-
-function sanitizeProxyRequestHeaders(headers, body) {
-  const out = { ...headers };
-  delete out.host;
-  delete out.connection;
-  delete out['proxy-connection'];
-  delete out['keep-alive'];
-  delete out.te;
-  delete out.trailer;
-  delete out.upgrade;
-  delete out['transfer-encoding'];
-  delete out['content-length'];
-  if (body && body.length > 0) out['content-length'] = String(body.length);
-  return out;
-}
-
-function sanitizeProxyResponseHeaders(headers, opts = {}) {
-  const out = { ...headers };
-  delete out.connection;
-  delete out['proxy-connection'];
-  delete out['keep-alive'];
-  delete out.te;
-  delete out.trailer;
-  delete out.upgrade;
-  delete out['transfer-encoding'];
-  delete out['content-length'];
-  if (opts.stripEncoding) {
-    delete out['content-encoding'];
-    delete out['connect-content-encoding'];
-  }
-  if (opts.contentLength !== undefined) out['content-length'] = String(opts.contentLength);
-  return out;
-}
-
-// ─── Varint encoder (for protobuf rewrite) ────────────────
-
-function encodeVarintBuf(value) {
-  const bytes = [];
-  let v = BigInt(value);
-  if (v < 0n) v = v + (1n << 64n);
-  do {
-    let byte = Number(v & 0x7fn);
-    v >>= 7n;
-    if (v > 0n) byte |= 0x80;
-    bytes.push(byte);
-  } while (v > 0n);
-  return Buffer.from(bytes);
-}
-
-// ─── Rewrite RegisterUser response ────────────────────────
-// Replace api_server_url (field 3) so extension keeps talking to us
-
-function rewriteRegisterUser(protoBuf) {
-  try {
-    const fields = parseFields(protoBuf);
-    const parts = [];
-    for (const f of fields) {
-      if (f.field === 3 && f.wireType === 2) {
-        const origUrl = f.value.toString('utf8');
-        console.log(`  🔄 RegisterUser: ${origUrl} → http://localhost:${PORT}`);
-        parts.push(writeStringField(3, `http://localhost:${PORT}`));
-      } else if (f.wireType === 0) {
-        parts.push(Buffer.concat([
-          Buffer.from([(f.field << 3) | 0]),
-          encodeVarintBuf(f.value),
-        ]));
-      } else if (f.wireType === 2) {
-        parts.push(writeBytesField(f.field, f.value));
-      } else if (f.wireType === 1) {
-        const tag = Buffer.from([(f.field << 3) | 1]);
-        parts.push(Buffer.concat([tag, f.value]));
-      } else if (f.wireType === 5) {
-        const tag = Buffer.from([(f.field << 3) | 5]);
-        parts.push(Buffer.concat([tag, f.value]));
-      }
-    }
-    return Buffer.concat(parts);
-  } catch (e) {
-    console.error(`  ❌ RegisterUser rewrite failed: ${e.message}`);
-    return protoBuf;
-  }
-}
-
-// ─── Streaming RPCs that need to be piped through ─────────
-
-// ─── BYOK preflight allowance: synthesize successful local capacity checks ──
-// These preflight RPCs are answered locally so configured BYOK chat routing can continue:
-//
-// 1. CheckUserMessageRateLimitResponse (exa.api_server_pb)
-//    Proto shape observed from the client schema:
-//      field 1: hasCapacity (bool)
-//      field 2: message (string)
-//      field 3: messagesRemaining (int32)
-//      field 4: maxMessages (int32)
-//      field 5: resetsInSeconds (int64)
-//
-// 2. CheckChatCapacityResponse (exa.language_server_pb)
-//    Proto 结构：
-//      field 1: has_capacity (bool)
-//      field 2: message (string)
-//      field 3: active_sessions (int32)
-//
-// BYOK 模式下用自己的 API，不走 Codeium 配额，所以直接返回 hasCapacity=true。
-// Proto3 默认值不编码（false/0/"" 不序列化），所以只编码非零字段即可。
-function buildPreflightOkResponse(method) {
-  // hasCapacity = true → field 1, wire type 0 (varint), value = 1
-  const hasCapacity = writeVarintField(1, 1);
-  if (method === 'CheckChatCapacity') {
-    // activeSessions = 0 → proto3 默认值不编码
-    return Buffer.concat([hasCapacity]);
-  }
-  // CheckUserMessageRateLimit: 加上 messagesRemaining 和 maxMessages
-  // messagesRemaining = 9999 → field 3, wire type 0 (varint)
-  const messagesRemaining = writeVarintField(3, 9999);
-  // maxMessages = 9999 → field 4, wire type 0 (varint)
-  const maxMessages = writeVarintField(4, 9999);
-  return Buffer.concat([hasCapacity, messagesRemaining, maxMessages]);
-}
-
-const PREFLIGHT_ALLOW_METHODS = new Set(['CheckUserMessageRateLimit', 'CheckChatCapacity']);
-
-const STREAMING_METHODS = new Set([
-  'GetStreamingCompletions',
-  'GetStreamingExternalChatCompletions',
-]);
-
-// ─── Forward request to real Codeium ──────────────────────
-
-function proxyToCodeium(req, res, body, id, opts = {}) {
-  const method = getRpcMethod(req.url);
-  // MITM 模式下优先使用 socket 记录的上游主机（Devin: server.codeium.com, Windsurf: server.self-serve.windsurf.com）
-  const socketUpstream = req.socket && mitmUpstreamHost.get(req.socket);
-  const upstream = opts.upstream || socketUpstream || getUpstreamHost(req.url);
-  const upstreamPath = stripRoutePrefix(req.url);
-  const isStreaming = STREAMING_METHODS.has(method);
-  const source = opts.source || 'http';
-
-  rpcAuditLog({
-    id,
-    phase: 'request',
-    source,
-    route: 'codeium',
-    method,
-    url: req.url,
-    upstream,
-    upstreamPath,
-    requestBytes: body ? body.length : 0,
-  });
-
-  // Forward headers — swap host and normalize body framing.
-  // Node rejects responses/requests that carry both Content-Length and Transfer-Encoding.
-  const fwdHeaders = sanitizeProxyRequestHeaders(req.headers, body);
-  fwdHeaders.host = upstream;
-
-  const proxyReq = https.request({
-    agent: httpsAgentFor(PROXY_HTTPS_AGENT),
-    hostname: upstream,
-    port: 443,
-    path: upstreamPath,
-    method: req.method,
-    headers: fwdHeaders,
-  }, (proxyRes) => {
-
-    if (isStreaming) {
-      // Pipe streaming responses through
-      console.log(`  [#${id}] ← ${proxyRes.statusCode} (streaming ${method})`);
-      let responseBytes = 0;
-      proxyRes.on('data', c => { responseBytes += c.length; });
-      // MITM 日志：GetChatMessage 透传到 Codeium 时记录
-      if (method === 'GetChatMessage') {
-        mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
-      }
-      res.writeHead(proxyRes.statusCode, sanitizeProxyResponseHeaders(proxyRes.headers));
-      proxyRes.pipe(res);
-      proxyRes.on('error', () => { if (!res.writableEnded) res.end(); });
-      // 透传的 GetChatMessage 响应日志
-      proxyRes.on('end', () => {
-        rpcAuditLog({
-          id,
-          phase: 'response',
-          source,
-          route: 'codeium',
-          method,
-          url: req.url,
-          upstream,
-          upstreamPath,
-          statusCode: proxyRes.statusCode,
-          responseBytes,
-        });
-        if (method === 'GetChatMessage') {
-          mitmLog({ direction: 'downstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` }, response: { statusCode: proxyRes.statusCode } });
-        }
-      });
-    } else {
-      // Buffer unary responses
-      const chunks = [];
-      proxyRes.on('data', c => chunks.push(c));
-      proxyRes.on('end', () => {
-        let resBody = Buffer.concat(chunks);
-        console.log(`  [#${id}] ← ${proxyRes.statusCode} (${resBody.length}b)`);
-        rpcAuditLog({
-          id,
-          phase: 'response',
-          source,
-          route: 'codeium',
-          method,
-          url: req.url,
-          upstream,
-          upstreamPath,
-          statusCode: proxyRes.statusCode,
-          responseBytes: resBody.length,
-        });
-        // MITM 日志：GetChatMessage 透传（非流式分支）
-        if (method === 'GetChatMessage') {
-          mitmLog({ direction: 'upstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` } });
-          mitmLog({ direction: 'downstream', providerName: 'Codeium(透传)', model: '(未拦截)', format: 'connect-grpc', request: { method, url: `https://${upstream}${upstreamPath}` }, response: { statusCode: proxyRes.statusCode, body: resBody.length <= 4096 ? resBody.toString('utf8') : `[${resBody.length}b]` } });
-        }
-
-        // Rewrite RegisterUser to keep extension pointed at us (HTTP mode only)
-        if (!opts.skipRewrite && method === 'RegisterUser' && proxyRes.statusCode === 200 && resBody.length > 5) {
-          try {
-            const flags = resBody[0];
-            const msgLen = resBody.readUInt32BE(1);
-            if (msgLen === resBody.length - 5 && flags <= 1) {
-              let payload = resBody.subarray(5);
-              if (flags === 1) {
-                const d = tryGunzip(payload);
-                if (d) payload = d;
-              }
-              const rewritten = rewriteRegisterUser(payload);
-              const envelope = Buffer.alloc(5 + rewritten.length);
-              envelope[0] = 0;
-              envelope.writeUInt32BE(rewritten.length, 1);
-              rewritten.copy(envelope, 5);
-              resBody = envelope;
-              console.log(`  [#${id}] 🔄 RegisterUser rewritten`);
-            }
-          } catch (e) {
-            console.error(`  [#${id}] RegisterUser rewrite error: ${e.message}`);
-          }
-        }
-
-        // 改写模型清单响应（合并三件事：label 改名 + 注入项 + 全部解锁）。
-        // 覆盖两个数据源：
-        //   - GetUserStatus：Windsurf/Devin Cascade 面板的下拉数据源
-        //   - GetCliModelConfigs：新版 Devin Local (devin-cli ACP) 的下拉数据源（Connect unary 纯 protobuf）
-        // 阶段 4 改造后，unlockModels 一次性完成以下职责：
-        //   - 槽位改名（model-map.json 的 slots.displayName + namePrefix）
-        //   - 注入项（model-map.json 的 injected）→ label 改写为 "(BYOK) {label} (服务商/未配置)" + 解锁
-        //   - 全部解锁（删 field4 disabled = true）让下拉框灰色项可点
-        let stripEncoding = false;
-        let cliRewriteDiagnostic = null;
-        const shouldRewriteModels = proxyRes.statusCode === 200
-          && (method === 'GetUserStatus' || method === 'GetCliModelConfigs');
-        if (shouldRewriteModels) {
-          // 接管心跳：这一条请求证明 IDE 的流量确实经过了网关。
-          // 同一结构的心跳每秒可达 8-10 次，交由 diagLog 去重限流，不再各自手写计时器。
-          noteTakeoverRequest(upstream);
-          diagLog.log(
-            `takeover heartbeat: target=${upstream === 'server.codeium.com' ? 'devin' : 'windsurf'} method=${method} status=${proxyRes.statusCode}`
-          );
-          // 抓取原始模型清单(改名前)→ 缓存供 GUI 添加映射时选用（仅 GetUserStatus，清单最全）。
-          // 性能优化：每秒 8-10 次心跳 → 节流到 30s 一次 + 签名比对
-          // 注意：unlockModels 仍然每次都做（必须做，下拉框要看到 BYOK 项）
-          const shouldCapture = method === 'GetUserStatus' && (Date.now() - lastModelListCapturedAt) > 30000;
-          if (shouldCapture) {
-            try {
-              const list = extractModelList(resBody);
-              if (list && list.length) {
-                const dir = process.env.BYOK_CONFIG_DIR;
-                if (dir) {
-                  const file = path.join(dir, 'ide-models.json');
-                  const sig = hashModelList(list);
-                  if (sig !== lastModelListSig) {
-                    lastModelListSig = sig;
-                    writeCapturedModelList(file, list);
-                    noteTakeoverCapture(upstream);
-                    const target = upstream === 'server.codeium.com' ? 'Devin' : 'Windsurf';
-                    console.log(`  [#${id}] 📋 已捕获 ${target} 模型 ${list.length} 个 → ide-models.json`);
-                  }
-                }
-              }
-              lastModelListCapturedAt = Date.now();
-            } catch (e) {
-              console.error(`  [#${id}] capture models error: ${e.message}`);
-            }
-          }
-          try {
-            // 相同响应和配置复用已计算结果，避免高频心跳重复解析大块 protobuf。
-            const inputSig = `${method}|${crypto.createHash('sha1').update(resBody).digest('hex').slice(0, 16)}|${rewriteConfigSignature()}`;
-            const responseBytes = resBody.length;
-            const contentType = String(proxyRes.headers['content-type'] || '-');
-            const contentEncoding = String(proxyRes.headers['content-encoding'] || '-');
-            const connectEncoding = String(proxyRes.headers['connect-content-encoding'] || '-');
-            // 只检查 gzip magic bytes 和 Connect 帧长度，不解码或记录 protobuf 正文。
-            const isGzip = resBody[0] === 0x1f && resBody[1] === 0x8b;
-            const frameLength = resBody.length >= 5 ? resBody.readUInt32BE(1) : -1;
-            const isConnectFrame = (resBody[0] === 0 || resBody[0] === 1)
-              && frameLength === resBody.length - 5;
-            const inputFormat = isGzip ? 'gzip' : (isConnectFrame ? `Connect帧(flags=${resBody[0]})` : '裸protobuf/其他');
-            const cacheHit = inputSig === lastUnlockInputSig && !!lastUnlockResult;
-            let rewriteResult;
-            if (cacheHit) {
-              rewriteResult = lastUnlockResult;
-              resBody = rewriteResult.body;
-              if (rewriteResult.wasConnect) stripEncoding = true;
-            } else {
-              rewriteResult = unlockModels(resBody);
-              if (rewriteResult) {
-                resBody = rewriteResult.body;
-                if (rewriteResult.wasConnect) stripEncoding = true;
-                lastUnlockResult = rewriteResult;
-                lastUnlockInputSig = inputSig;
-              }
-            }
-            if (method === 'GetCliModelConfigs') {
-              // CLI 请求同一轮可能并发出现多次，不做时间限频；仅记录格式和大小，不记录模型正文或凭据。
-              cliRewriteDiagnostic = {
-                responseBytes,
-                inputFormat,
-                contentType,
-                contentEncoding,
-                connectEncoding,
-                cacheHit,
-                changed: rewriteResult ? rewriteResult.changed : 0,
-                outputBytes: resBody.length,
-              };
-            } else if (rewriteResult && Date.now() - lastModelRewriteLogAt > 5000) {
-              console.log(`  [#${id}] 🔄 ${method}：已改写 ${rewriteResult.changed} 个模型（重命名、解锁、注入）`);
-              lastModelRewriteLogAt = Date.now();
-            }
-          } catch (e) {
-            console.error(`  [#${id}] 模型列表改写失败：${e.message}`);
-          }
-        }
-
-        const resHeaders = sanitizeProxyResponseHeaders(proxyRes.headers, {
-          stripEncoding,
-          contentLength: resBody.length,
-        });
-        if (cliRewriteDiagnostic) {
-          const d = cliRewriteDiagnostic;
-          const outcome = d.changed > 0 ? `已改写 ${d.changed} 个模型` : '未改写';
-          // 使用清洗后的响应头记录最终编码，Connect 帧重写时可能已移除上游编码声明。
-          const outputEncoding = resHeaders['content-encoding'] || '-';
-          console.log(`  [#${id}] 🔄 GetCliModelConfigs：${outcome}，缓存命中=${d.cacheHit ? '是' : '否'}，格式=${d.inputFormat}，上游=${d.responseBytes}字节/输出=${d.outputBytes}字节，类型=${d.contentType}，编码=${d.contentEncoding}，Connect编码=${d.connectEncoding}，返回编码=${outputEncoding}`);
-        }
-        res.writeHead(proxyRes.statusCode, resHeaders);
-        res.end(resBody);
-      });
-      proxyRes.on('error', (err) => {
-        console.error(`  [#${id}] ← error: ${err.message}`);
-        rpcAuditLog({
-          id,
-          phase: 'error',
-          source,
-          route: 'codeium',
-          method,
-          url: req.url,
-          upstream,
-          upstreamPath,
-          error: err.message,
-        });
-        if (!res.headersSent) res.writeHead(502);
-        if (!res.writableEnded) res.end();
-      });
-    }
-  });
-
-  proxyReq.on('error', (err) => {
-    console.error(`  [#${id}] ✗ upstream: ${err.message}`);
-    rpcAuditLog({
-      id,
-      phase: 'error',
-      source,
-      route: 'codeium',
-      method,
-      url: req.url,
-      upstream,
-      upstreamPath,
-      requestBytes: body ? body.length : 0,
-      error: err.message,
-    });
-    if (!res.headersSent) res.writeHead(502);
-    if (!res.writableEnded) res.end(`Upstream error: ${err.message}`);
-  });
-
-  proxyReq.end(body);
-}
+const proxyToCodeium = createCodeiumProxy({
+  configDir,
+  mitmUpstreamHost,
+  getUpstreamHost,
+  httpsAgentFor,
+  PROXY_HTTPS_AGENT,
+  rpcAuditLog,
+  mitmLog,
+  tryGunzip,
+  rewriteRegisterUser,
+  noteTakeoverRequest,
+  noteTakeoverCapture,
+  diagLog,
+  extractModelList,
+  unlockModels,
+  cacheState: modelRewriteCacheState,
+});
 
 // ─── Main request handler ─────────────────────────────────
 
@@ -728,6 +249,7 @@ function handleRequest(req, res) {
       mitmCertDir: CERTS_DIR.href,
       mitmError: MITM_ERROR,
       mitmHosts: [...MITM_HOSTS],
+      windsurfCatalogCount: WINDSURF_CATALOG.length,
     });
     res.writeHead(200, {
       'content-type': 'application/json',
@@ -737,48 +259,11 @@ function handleRequest(req, res) {
     return;
   }
 
-  if (req.url === '/__byok/mitm-health') {
-    const upstream = req.socket && mitmUpstreamHost.get(req.socket);
-    const payload = JSON.stringify({
-      ok: MITM_ENABLED && Boolean(upstream),
-      source: upstream ? 'mitm' : 'direct',
-      upstream: upstream || null,
-      mitmEnabled: MITM_ENABLED,
-      fingerprint: MITM_CERT_FINGERPRINT,
-    });
-    res.writeHead(upstream && MITM_ENABLED ? 200 : 503, {
-      'content-type': 'application/json',
-      'content-length': Buffer.byteLength(payload),
-      'connection': 'close',
-    });
-    res.end(payload);
+  if (handleMitmHealthRoute(req, res, { mitmUpstreamHost, MITM_ENABLED, MITM_CERT_FINGERPRINT })) {
     return;
   }
 
-  // -- BYOK control endpoint: injection module version (no body) --
-  if (req.url.split('?')[0] === '/__byok/codex-cdp/version') {
-    res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-    res.end(JSON.stringify({ ok: true, version: '20260627-v6-proven', patchKey: '__ccSwitchCodexModelPickerUnlockV6' }));
-    return;
-  }
-
-  // ── BYOK control endpoint: Codex Desktop CDP status (no body) ──
-  if (req.url.split('?')[0] === '/__byok/codex-cdp/status') {
-    (async () => {
-      try {
-        const search = req.url.split('?')[1] || '';
-        const params = new URLSearchParams(search);
-        const port = parseInt(params.get('port') || '9229', 10);
-        const targets = await listTargets(port);
-        res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-        res.end(JSON.stringify({ ok: true, reachable: true, targets: targets.length }));
-      } catch (err) {
-        res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*' });
-        res.end(JSON.stringify({ ok: true, reachable: false, error: err.message }));
-      }
-    })();
-    return;
-  }
+  if (handleByokCdpNoBodyRoute(req, res, { listTargets })) return;
 
   const chunks = [];
   req.on('error', err => {
@@ -790,67 +275,12 @@ function handleRequest(req, res) {
   req.on('end', () => {
     const body = Buffer.concat(chunks);
 
-    // ── BYOK control endpoint: inject CDP patches into Codex Desktop ──
-    if (req.url === '/__byok/codex-cdp/inject' && req.method === 'POST') {
-      (async () => {
-        try {
-          const payload = body.length ? JSON.parse(body.toString('utf8')) : {};
-          const port = parseInt(payload.port || '9229', 10);
-          const models = Array.isArray(payload.models) && payload.models.length
-            ? payload.models
-            : readInjectableModels();
-          // models_cache.json 由 Rust write_models_cache 在 Codex 启动前写入
-          //（带 anybridge_managed 标记、slug 无前缀）。此处不再写 models_cache：
-          // CDP inject 发生在 Codex 启动之后，启动后改 models_cache 对已加载的 Desktop
-          // 无效，且会与 Rust 注入产生重复/前缀不一致的条目（历史 bug 根因）。
-          console.log(`[${now()}] #${id} CDP inject → port ${port}, ${models.length} models`);
-          const result = await injectWithRetry(port, models);
-          const json = JSON.stringify(result);
-          // 显式 Content-Length 避免 chunked 编码（Rust 端 http_post_local 不解析 chunked）
-          res.writeHead(result.ok ? 200 : 502, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
-          res.end(json);
-        } catch (err) {
-          console.error(`[${now()}] #${id} CDP inject error: ${err.message}`);
-          const json = JSON.stringify({ ok: false, message: err.message || String(err) });
-          res.writeHead(500, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
-          res.end(json);
-        }
-      })();
-      return;
-    }
-
-    // ── BYOK control endpoint: check if CDP injection is present ──
-    if (req.url === '/__byok/codex-cdp/check' && req.method === 'POST') {
-      (async () => {
-        try {
-          const payload = body.length ? JSON.parse(body.toString('utf8')) : {};
-          const port = parseInt(payload.port || '9229', 10);
-          const injected = await isAlreadyInjected(port);
-          const json = JSON.stringify({ ok: true, injected });
-          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
-          res.end(json);
-        } catch (err) {
-          const json = JSON.stringify({ ok: true, injected: false, error: err.message });
-          res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
-          res.end(json);
-        }
-      })();
-      return;
-    }
-
-    // ── BYOK control endpoint: invalidate unlockModels cache ──
-    // Rust save_model_map 保存后调用此端点，清除 sidecar 内存缓存，
-    // 使下次 Windsurf 心跳立即用新 model-map.json 重跑 unlockModels。
-    if (req.url === '/__byok/invalidate-models' && req.method === 'POST') {
-      lastUnlockInputSig = '';
-      lastUnlockResult = null;
-      lastModelListCapturedAt = 0;
-      lastModelRewriteLogAt = 0;
-      lastModelCaptureLogAt = 0;
-      const json = JSON.stringify({ ok: true });
-      res.writeHead(200, { 'content-type': 'application/json', 'access-control-allow-origin': '*', 'content-length': Buffer.byteLength(json) });
-      res.end(json);
-      console.log(`[${now()}] #${id} 🧹 invalidated unlockModels cache`);
+    if (handleByokCdpPostRoute(req, res, body, id, {
+      readInjectableModels,
+      injectWithRetry,
+      isAlreadyInjected,
+      cacheState: modelRewriteCacheState,
+    })) {
       return;
     }
 
@@ -917,67 +347,18 @@ function handleRequest(req, res) {
       return res.end();
     }
 
-    // ── Telemetry blocking: 返回空 200，不转发到服务端 ──
-    if (BLOCKED_TELEMETRY_METHODS.has(method)) {
-      console.log(`[${now()}] #${id} 🚫 ${method} → blocked`);
-      rpcAuditLog({
-        id,
-        phase: 'blocked',
-        source: 'http',
-        route: 'blocked',
-        method,
-        url: req.url,
-        requestBytes: body.length,
-        statusCode: 200,
-        responseBytes: 0,
-      });
-      res.writeHead(200, { 'content-type': 'application/proto' });
-      res.end();
-      return;
-    }
-
-    // BYOK preflight allowance: return a successful local capacity response.
-    if (PREFLIGHT_ALLOW_METHODS.has(method)) {
-      console.log(`[${now()}] #${id} ${method} -> local preflight ok`);
-      const protoBody = buildPreflightOkResponse(method);
-      const frame = Buffer.alloc(5 + protoBody.length);
-      frame[0] = 0; // flags
-      frame.writeUInt32BE(protoBody.length, 1);
-      protoBody.copy(frame, 5);
-      rpcAuditLog({
-        id,
-        phase: 'intercepted',
-        source: 'http',
-        route: 'byok-preflight-allow',
-        method,
-        url: req.url,
-        requestBytes: body.length,
-        statusCode: 200,
-        responseBytes: frame.length,
-      });
-      res.writeHead(200, {
-        'content-type': 'application/proto',
-        'content-length': frame.length,
-      });
-      res.end(frame);
-      return;
-    }
-
-    // ── Intercept: GetChatMessage → Anthropic API ──
-    // TODO: GetWebSearchResults / GetWebSearchRedirect — currently forwarded to
-    // Codeium, but can be intercepted here to route through own search API.
-    if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
-      console.log(`[${now()}] #${id} ⚡ GetChatMessage → Anthropic API (${body.length}b)`);
-      rpcAuditLog({
-        id,
-        phase: 'intercepted',
-        source: 'http',
-        route: 'byok',
-        method,
-        url: req.url,
-        requestBytes: body.length,
-      });
-      if (DEBUG_IMAGES) {
+    if (handleCommonCodeiumAndChatRoutes(req, res, body, {
+      id,
+      method,
+      source: 'http',
+      client: 'direct',
+      BLOCKED_TELEMETRY_METHODS,
+      rpcAuditLog,
+      buildPreflightOkResponse,
+      shouldIntercept,
+      createTracker,
+      handleGetChatMessage,
+      onBeforeChat: DEBUG_IMAGES ? () => {
         try {
           const dumpDir = path.join(configDir(), 'debug-dumps');
           fs.mkdirSync(dumpDir, { recursive: true });
@@ -1008,24 +389,8 @@ function handleRequest(req, res) {
         } catch (e) {
           console.log(`  [DEBUG-RAW-IMG] scan err: ${e.message}`);
         }
-      }
-      const tracker = createTracker({ client: 'direct', route: 'chat' });
-      try {
-        const result = handleGetChatMessage(req, res, body, tracker);
-        if (result && typeof result.catch === 'function') {
-          result.catch(err => {
-            console.error(`[${now()}] #${id} Chat error: ${err.message}`);
-            if (!res.headersSent) res.writeHead(500);
-            if (!res.writableEnded) res.end();
-            tracker.finish();
-          });
-        }
-      } catch (err) {
-        console.error(`[${now()}] #${id} Chat error: ${err.message}`);
-        if (!res.headersSent) res.writeHead(500);
-        if (!res.writableEnded) res.end();
-        tracker.finish();
-      }
+      } : null,
+    })) {
       return;
     }
 
@@ -1040,211 +405,6 @@ function handleRequest(req, res) {
 }
 
 // ─── Server ───────────────────────────────────────────────
-
-/**
- * 构造一个「unary 响应收集器」，用于把 handleGetChatMessage 产出的 streaming 帧
- * 缓冲起来，在结束时合并成一个完整的 GetChatMessageResponse 并以 unary 格式回传。
- * 供 Devin Local (devin-cli, Connect unary 客户端) 使用。
- */
-function makeUnaryResponseCollector(realRes) {
-  const frames = [];
-  const emitter = new EventEmitter();
-  let statusCode = 200;
-  let sent = false;
-  let ended = false;
-
-  // 客户端断开时转发 close 事件，让 handler 能中止上游请求。
-  realRes.on('close', () => {
-    if (!ended) ended = true;
-    emitter.emit('close');
-  });
-
-  const collector = {
-    writeHead(status) {
-      statusCode = status;
-      sent = true;
-    },
-    write(data) {
-      if (data) frames.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
-      return true;
-    },
-    end(data) {
-      if (data) frames.push(Buffer.isBuffer(data) ? data : Buffer.from(data));
-      if (ended) return;
-      ended = true;
-      const merged = mergeUnaryFrames(frames);
-      const wrapped = wrapUnary(merged);
-      if (!realRes.headersSent) {
-        realRes.writeHead(statusCode, { ...unaryHeaders(), 'content-length': wrapped.length });
-      }
-      realRes.end(wrapped);
-    },
-    on: (ev, cb) => { emitter.on(ev, cb); return collector; },
-    once: (ev, cb) => { emitter.once(ev, cb); return collector; },
-    removeListener: (ev, cb) => { emitter.removeListener(ev, cb); return collector; },
-    removeAllListeners: () => { emitter.removeAllListeners(); return collector; },
-    setHeader() {},
-    getHeader() { return undefined; },
-    getHeaders() { return {}; },
-    removeHeader() {},
-    flushHeaders() {},
-  };
-
-  Object.defineProperty(collector, 'headersSent', {
-    get: () => sent,
-    configurable: true,
-  });
-  Object.defineProperty(collector, 'writableEnded', {
-    get: () => ended,
-    configurable: true,
-  });
-
-  return collector;
-}
-
-const server = http.createServer(handleRequest);
-
-// ─── MITM internal server (handles decrypted traffic) ─────
-// This server is NEVER bound to a port. We manually emit 'connection'
-// events with TLS-unwrapped sockets from the CONNECT handler.
-
-const mitmServer = http.createServer((req, res) => {
-  const id = ++requestCounter;
-  const method = getRpcMethod(req.url);
-  const upstreamHost = req.socket && mitmUpstreamHost.get(req.socket);
-
-  if (req.url === '/__byok/mitm-health') {
-    const payload = JSON.stringify({
-      ok: MITM_ENABLED && Boolean(upstreamHost),
-      source: upstreamHost ? 'mitm' : 'direct',
-      upstream: upstreamHost || null,
-      mitmEnabled: MITM_ENABLED,
-      fingerprint: MITM_CERT_FINGERPRINT,
-    });
-    res.writeHead(upstreamHost && MITM_ENABLED ? 200 : 503, {
-      'content-type': 'application/json',
-      'content-length': Buffer.byteLength(payload),
-      'connection': 'close',
-    });
-    res.end(payload);
-    return;
-  }
-
-  const chunks = [];
-  req.on('error', err => {
-    console.error(`[${now()}] #${id} MITM REQ ERROR: ${err.message}`);
-    if (!res.headersSent) res.writeHead(500);
-    if (!res.writableEnded) res.end();
-  });
-  req.on('data', c => chunks.push(c));
-  req.on('end', () => {
-    const body = Buffer.concat(chunks);
-    if (handleCursorRequest(req, res, body, {
-      id,
-      source: 'mitm',
-      upstreamHost,
-      log: (line) => console.log(`[${now()}] #${id} ${line}`),
-    })) {
-      return;
-    }
-
-    // ── Telemetry blocking ──
-    if (BLOCKED_TELEMETRY_METHODS.has(method)) {
-      console.log(`[${now()}] #${id} 🚫 MITM ${method} → blocked`);
-      rpcAuditLog({
-        id,
-        phase: 'blocked',
-        source: 'mitm',
-        route: 'blocked',
-        method,
-        url: req.url,
-        requestBytes: body.length,
-        statusCode: 200,
-        responseBytes: 0,
-      });
-      res.writeHead(200, { 'content-type': 'application/proto' });
-      res.end();
-      return;
-    }
-
-    // BYOK preflight allowance: return a successful local capacity response.
-    if (PREFLIGHT_ALLOW_METHODS.has(method)) {
-      console.log(`[${now()}] #${id} MITM ${method} -> local preflight ok`);
-      const protoBody = buildPreflightOkResponse(method);
-      const frame = Buffer.alloc(5 + protoBody.length);
-      frame[0] = 0;
-      frame.writeUInt32BE(protoBody.length, 1);
-      protoBody.copy(frame, 5);
-      rpcAuditLog({
-        id,
-        phase: 'intercepted',
-        source: 'mitm',
-        route: 'byok-preflight-allow',
-        method,
-        url: req.url,
-        requestBytes: body.length,
-        statusCode: 200,
-        responseBytes: frame.length,
-      });
-      res.writeHead(200, {
-        'content-type': 'application/proto',
-        'content-length': frame.length,
-      });
-      res.end(frame);
-      return;
-    }
-
-    // ── THE INTERCEPTION: GetChatMessage → Anthropic API ──
-    if (method === 'GetChatMessage' && shouldIntercept(body, req.headers)) {
-      console.log(`[${now()}] #${id} ⚡ MITM GetChatMessage → Anthropic (${body.length}b) ct=${req.headers['content-type']} enc=${req.headers['connect-content-encoding'] || req.headers['content-encoding'] || '-'}`);
-      rpcAuditLog({
-        id,
-        phase: 'intercepted',
-        source: 'mitm',
-        route: 'byok',
-        method,
-        url: req.url,
-        requestBytes: body.length,
-      });
-      // Devin Local (devin-cli) 是 Connect unary 客户端（content-type: application/proto），
-      // 期待一次性 gzip 完整响应；而内部统一按 streaming 帧产出。这里用收集器把
-      // streaming 帧缓冲起来，结束时合并成 unary 响应回传。
-      const reqContentType = String(req.headers['content-type'] || '');
-      const isUnaryRequest = reqContentType.includes('application/proto') && !reqContentType.includes('connect+proto');
-      const targetRes = isUnaryRequest ? makeUnaryResponseCollector(res) : res;
-      const tracker = createTracker({
-        client: upstreamHost && upstreamHost.includes('windsurf') ? 'windsurf' : 'devin',
-        route: 'chat',
-      });
-      try {
-        const result = handleGetChatMessage(req, targetRes, body, tracker);
-        if (result && typeof result.catch === 'function') {
-          result.catch(err => {
-            console.error(`[${now()}] #${id} Chat error: ${err.message}`);
-            if (!targetRes.headersSent) targetRes.writeHead(500);
-            if (!targetRes.writableEnded) targetRes.end();
-            tracker.finish();
-          });
-        }
-      } catch (err) {
-        console.error(`[${now()}] #${id} Chat error: ${err.message}`);
-        if (!targetRes.headersSent) targetRes.writeHead(500);
-        if (!targetRes.writableEnded) targetRes.end();
-        tracker.finish();
-      }
-      return;
-    }
-
-    // ── Everything else → forward to real Codeium (skip RegisterUser rewrite) ──
-    // 高频心跳 GetUserStatus 不刷日志：每秒 8-10 条 → 仅每 N 条采样一次
-    if (method === 'GetUserStatus') {
-      statusLog.sample(id, method, body.length);
-    } else {
-      console.log(`[${now()}] #${id} → MITM ${method || req.url.slice(0, 80)} (${body.length}b) → Codeium`);
-    }
-    proxyToCodeium(req, res, body, id, { skipRewrite: true, source: 'mitm' });
-  });
-});
 
 // 高频请求日志采样：避免每秒 10+ 条 GetUserStatus 把日志洪流。
 // 策略：每 5s 内最多打印 1 条。
@@ -1261,6 +421,25 @@ const statusLog = {
     }
   },
 };
+
+const server = http.createServer(handleRequest);
+
+const mitmServer = createMitmInternalServer({
+  nextRequestId: () => ++requestCounter,
+  mitmUpstreamHost,
+  MITM_ENABLED,
+  MITM_CERT_FINGERPRINT,
+  handleCursorRequest,
+  BLOCKED_TELEMETRY_METHODS,
+  rpcAuditLog,
+  buildPreflightOkResponse,
+  shouldIntercept,
+  makeUnaryResponseCollector,
+  createTracker,
+  handleGetChatMessage,
+  statusLog,
+  proxyToCodeium,
+});
 
 // ─── CONNECT tunnel handler ───────────────────────────────
 // Two modes:
@@ -1322,12 +501,21 @@ server.on('connect', (req, clientSocket, head) => {
       ALPNProtocols: ['http/1.1'],
     });
 
+    let tlsEstablished = false;
     tlsSocket.on('secure', () => {
+      tlsEstablished = true;
       console.log(`  [#${id}] 🔐 TLS established, ALPN=${tlsSocket.alpnProtocol || 'none'}`);
     });
 
     tlsSocket.on('error', (err) => {
-      // Ignore ECONNRESET / EPIPE — client disconnected
+      if (isPreHandshakeDisconnect(err, tlsEstablished)) {
+        diagLog.error(
+          `⚠️ [${host}] MITM TLS 握手未完成即断开 (${err.code})，客户端可能未信任 MITM 证书或被系统策略中断`,
+        );
+        if (!clientSocket.destroyed) clientSocket.destroy();
+        return;
+      }
+      // 握手建立后的 ECONNRESET / EPIPE 属于正常长连接关闭噪声
       if (err.code === 'ECONNRESET' || err.code === 'EPIPE') return;
       console.error(`  [#${id}] MITM TLS error: ${err.message}`);
       // 客户端不认我们的证书时，光甩一行 OpenSSL 内部错误没人看得懂，
@@ -1417,28 +605,4 @@ listenWithReclaim(server, PORT, logBanner, 'hybrid');
 // Antigravity 的语言服务器对明文 HTTP 端点会隐藏 boost / teamwork-preview 等
 // 高级命令（官方直连是 https）。这里用已受系统信任的 AnyBridge Local CA 签发的
 // 叶子证书（SAN 含 localhost）提供 https 端点，使接管后 LS 仍以 https 方式接入。
-function startAntigravityHttpsEndpoint() {
-  // 证书目录必须走 CERTS_DIR 的跨平台解析（BYOK_CONFIG_DIR/certs → 资源目录/certs → ../certs）。
-  // 旧实现硬编码 Windows 的 process.env.APPDATA：macOS/Linux 上该变量不存在，
-  // 会在证书明明存在的情况下误报「证书缺失」并永久跳过 HTTPS 端点。
-  const keyPath = fileURLToPath(new URL('mitm-leaf-key.pem', CERTS_DIR));
-  const certPath = fileURLToPath(new URL('mitm-leaf.pem', CERTS_DIR));
-  try {
-    if (!fs.existsSync(keyPath) || !fs.existsSync(certPath)) {
-      console.error('[antigravity-https] 证书缺失，跳过 HTTPS 端点');
-      return;
-    }
-    const httpsServer = https.createServer(
-      { key: fs.readFileSync(keyPath), cert: fs.readFileSync(certPath) },
-      handleRequest,
-    );
-    const httpsPort = intEnv('ANTIGRAVITY_HTTPS_PORT', 7452, 1);
-    httpsServer.on('error', err => console.error(`[antigravity-https] 监听 ${httpsPort} 失败: ${err.message}`));
-    httpsServer.listen(httpsPort, '127.0.0.1', () => {
-      console.error(`[antigravity-https] 已就绪: https://localhost:${httpsPort}`);
-    });
-  } catch (e) {
-    console.error(`[antigravity-https] 启动异常: ${e.message}`);
-  }
-}
-startAntigravityHttpsEndpoint();
+startAntigravityHttpsEndpoint({ CERTS_DIR, handleRequest, intEnv });

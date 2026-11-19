@@ -9,6 +9,92 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.14 - 2026-11-19（全端架构重构与 Devin 3.14 适配发版）
+
+### 第三波：Devin 3.14.30825 适配与边界加固
+
+1. **Sidecar 协议改写与 TLS 诊断**：
+   - `sidecar/lib/rename/proto-rewrite.js` 抽出 `unwrapModelPayload` 统一兼容 `plain` / `gzip` / `connect` / 裸 `application/proto`，`sidecar/rename-models.js` 的 `rewrapUserStatusPayload` 对裸 `proto` 原样输出不套 Connect 帧头。
+   - `sidecar/lib/tls-diagnostics.js` 与 `sidecar/hybrid-server.js` 增加单次 `tlsSocket.on('secure')` 与 `isPreHandshakeDisconnect` 握手前断连诊断日志，证书未信任时显式记录断开原因。
+2. **Rust 配置对称、无备份升级与重启超时**：
+   - `src-tauri/src/commands/ide_config/mod.rs` 为 Devin 补齐 `http.proxySupport = "override"`、对称维护 `devin/config.json` 的 `process_model = "in-process"`（经 `parse_object_with_label` 精准报错文件名），新增 `strip_managed_proxy_for_backup` / `write_stripped_backup` 修复无 `.byok-bak` 升级污染。
+   - `src-tauri/src/commands/system/restart.rs` 新增 `run_command_with_timeout`（50ms 轮询 + 4s 超时 `child.kill()`）保护 `stop_devin_daemon_if_running`。
+3. **判据与回归**：
+   - `docs/pitfalls.json` 新增 `devin-bare-proto-model-rewrite` 与 `devin-daemon-proxy-override-and-legacy-backup-strip`（共 88 条），回归测试覆盖 `sidecar/rename-models.test.js`、`sidecar/lib/tls-diagnostics.test.js`、`src-tauri/src/commands/ide_config/tests.rs` 与 `src-tauri/src/commands/system/tests.rs`。
+
+### 第二波：全仓大文件清零、去冗余收敛与工作区净场
+
+1. **Rust 后端与 `cursor-core` 全仓瘦身、单源预设收敛**：
+   - `src-tauri/src/commands/platforms/model_context.rs` 的 `MODEL_CONTEXT_PRESETS_JSON` 改为编译期直接 `include_str!` 读取唯一源 `ui/assets/model-context-presets.json`，物理删除冗余副本 `src-tauri/resources/model-context-presets.json`。
+   - 在 `cursor-core/src/cursor/prompting/assets.rs` 新增单测 `shared_mode_base_prompts_stay_identical_between_embedded_and_disk`，锁定 `cursor-core/prompt/cursor/{agent,debug,plan,subagent}/prompt.md` 四份基础提示词模板逐字节一致。
+   - 完成 `cursor-core/` 全量 12 个 `>800` 行文件与 `local_app/account.rs` 语义拆分（覆盖 `plugin/{registry,worker}`、`cursor/conversation/{output,runtime}`、`control/service`、`run/engine`、`cursor/tools/tool_call_result/gate`、`cursor/services/model_catalog`、`crates/semble-core/src/search/engine` 以及集成测试 `tests/{interrupt,tool_round,error_lifecycle}_cases/`），同步拆分 `src-tauri/src/` 全部 7 个 `>=740` 行贴红线文件（`codex_session_visibility`、`platforms/tests/{pi,yaml_platforms}`、`platforms/managed_models_cmds`、`extensions/cpa_install_and_mirrors`、`proxy_routes`、`model_map`、`proxy/commands_and_cleanup`），实现主仓 `<= 730` 行、`cursor-core` `<= 672` 行。
+
+2. **Sidecar 死模块清理、外层尝试调度收敛与大文件拆解**：
+   - 物理删除零引用脏模块 `sidecar/inject-models.js`；新增 `sidecar/lib/attempt-runner.js`（及 `attempt-runner.test.js`）收敛 `local-proxy.js`、`handlers/chat.js`、`local-proxy/transport.js` 与 `local-proxy/count-tokens.js` 共用的候选密钥顺延、可重试判定及 `<2s` `Retry-After` 微退避逻辑。
+   - 语义拆解 6 个 `>=710` 行文件（`tool-proto-builders.js`、`antigravity-handler.js`、`proto-parsers.js`、`upstream-payload.js`、`cursor-proxy.js`、`local-proxy.js`），全量 140 个 `.js` 均 `<= 689` 行，且从 `sidecar/proxy-entry.js` 依赖树 100% 可达、零死生产模块。
+
+3. **前端空壳清理、Buddy 家族收敛与组件/模块拆解**：
+   - 物理删除零引用空壳 `ui/assets/scripts/00-bridge.js`（`ui/README.md` 同步指向 `api/bridge.js`）；新增 `ui/assets/scripts/platforms/shared_buddy_add.js` 抽离 CodeBuddy / WorkBuddy / ZCode 添加页公共流程。
+   - 将 `platform-cursor.html` 与 `model-slots.html` 拆分为 8 个 `ui-src/partials/components/*.html` 组件经 `@include` 组装（保持产物 `ui/index.html` 逐字节一致）；将 `antigravity_models.js`、`antigravity_console.js`、`grok_helpers.js`、`cursor_add.js` 及 `00-foundation.css`（提取 `foundation/tokens.css`）按业务职责拆解，全部非字典/非编译产物文件均 `<= 698` 行。
+
+4. **工作区净场、构建自动化升级与全仓 800 行硬门禁**：
+   - 清理纯编译缓存与 7 个已完成使命的一次性 UI 迁移脚本（同步移除 `.gitignore` 中的 `!scripts/verify-ui-baseline.mjs` 与索引残留）；将散落本地探针与历史遗留跟踪脚本无损归档至临时归档目录 `tmp/archived-probes/{untracked,tracked-legacy}/`。
+   - 升级 `scripts/build/build_protected_sidecar.py` 为自动扫描 `JSC_DIR` 根目录模块（移除过时硬编码列表）；升级 `scripts/build-ui.mjs` 集成幂等 `syncSharedResources()`，构建时自动按字节比对单向同步 `windsurf-catalog.json`、`system-prompt.md` 与 `docs/assets/icons/` 同名图标。
+   - 更新 `scripts/check-ui.mjs`（移除 `00-bridge.js` 并校验 `55-platforms.js` 导入序、样式子模块与 8 个 HTML 组件）与 `scripts/check-no-sensitive-files.mjs`（允许 `cursor-core/{src,tests,crates}/*.rs` 未跟踪源码）；升级 `scripts/lib/key-features/ui-guards-and-presets.mjs` 与 `scripts/arch-anti-regression.test.mjs`，正式把 `cursor-core/{src,crates,tests}` 全部 `.rs` 纳入 `<= 800` 行硬门禁，并加入死模块/冗余副本不复活、共享资源字节一致及 `scripts/` 净场防退化断言。
+
+### 全端零技术债模块化重构与门禁升级
+
+1. **Rust 后端：统一锁事务底座、全平台 SSOT 解析与保形还原转正**
+   - 新增 `src-tauri/src/commands/store_io.rs` 与 `cursor-core/src/fs_atomic.rs`：`write_atomic` 升级为 PID + 纳秒时间戳 + 原子自增序数唯一临时文件，收口替换全仓 7 处重复实现及 `antigravity_patch.rs` / `hub_patch.rs` 对 `app.asar` 的裸 `fs::write`；基于规范化路径进程内 `Mutex` + 同目录 `.lock` 文件锁封装 `with_file_lock` / `update_provider_store` / `update_proxy_routes` / `update_codex_proxy_routes`，消除多路 RMW 丢更新与 `cursor_models/commands.rs` 写路由吞错假成功，并将 `write_provider_store` / `model_map.rs` 内 2s 同步 TCP 通知剥离为异步后台通知。
+   - 在 `config/conversions.rs` 为 6 类平台配置（`AntigravityConfig` / `CodexConfig` / `ClaudeCodeConfig` / `OpenCodeConfig` / `GrokConfig` / `ClaudeDesktopConfig`）统一实现 `resolve_provider` 与 `validate_active_source`：实时继承主供应商端点、完整 `api_keys` 密钥池与启用状态，覆盖 `claude/mod.rs` / `opencode.rs` 的静态 `settings_config` 连接字段，并在 `codex/config_parse.rs` 与 `proxy_routes.rs::sync_provider_api_keys` 打通 `codex-proxy-routes.json` 密钥池同步，修复 `switch_and_update.rs` OpenCode 提前 return 死代码。
+   - 默认开启 `ANYBRIDGE_FORMAT_PRESERVING_JSON`（`jsonc_edit/mod.rs` 新增 `Object`/`Array` 缩进对齐写入）与 `ANYBRIDGE_FIELD_RESTORE`（`field_restore.rs` 改用 `serde_json::Value` 转义语义比较；`platform_restore.rs` 还原后清理 `.byok-bak` 及伴生状态文件；`declared_apply.rs` 统一 `.byok-bak`）。
+   - 清理 `platforms/` 25 个生产子模块顶部 `#[allow(unused_imports)]` prelude 块；核心配置/模型命令改 `async fn` + `spawn_blocking`；修复 `antigravity_patch.rs` / `antigravity.rs` `inject_lock()` 覆盖、`models_cache.rs` 非 Object 根 panic、锁中毒恢复、`google_gemini/mod.rs` 常量 `OnceLock<Regex>` 缓存，并合并 `version_probe` 重复 `HideWindow` trait。
+
+2. **Sidecar 网关：标准 SSE、多协议 CodecRegistry、只读缓存与流尾账本结算**
+   - 新增 `sidecar/lib/sse-parser.js`（`StringDecoder('utf8')`、多行 `data:`、`data:{...}` 无空格兼容、默认事件与 EOF `flush()`），替换各处碎片解析器并修复 `lib/cursor/common.js` / `plugin-loader.js` / `step-executor.js` UTF-8 分片截断乱码；删除 5 个全仓零引用死模块（`multimodal-middleware.js`、`handlers/{web-search,completions,embeddings}.js`、`retry.js`）。
+   - 新增 `sidecar/lib/upstream-decoder.js` 与 `sidecar/lib/codec-registry.js`：重构 `sendGeminiStream`、`sendAntigravityStream` 与 `lib/cursor/streaming.js` 支持 4 类上游真流式解码，`runStreamPipeline` 绑定 `res.once('close')` 并在 `try/finally` 中 100% `destroy()` 上游释放 `providerInflightGate` 槽位；将 `local-proxy` / `cursor` 流式请求的 `tracker.finish()` 后置至流真实终结时写入真实 `usage`（提前 EOF/断连绝不补 `STOP`/`[DONE]` 或记为 `ok`）。
+   - 修复多轮 `normalize.js`（合并 `tool`+`user`、保留文本+工具块、剔除空 `content`）、`responses-chat/to-chat.js` 对象输出、`reasoning_content` 回填、`gemini-thought-signature.js` 2000 条 LRU + host/model 隔离、`cache_creation_input_tokens` 透传；收口 `hybrid-server.js` 与 `mitm-and-cdp.js` 重复路由。
+   - 重构 `config-cache.js` 与 `provider-pool.js`：移除 sidecar 对 `providers.json` 的一切写入；坏盘解析保留上次健康快照、`loadProxyRoutesEntry` 尊重 `entry.dirty`、联动 `clearAntigravityCache()`、`codexConfigs` 实时合并主供应商；新增 `sidecar/lib/http-retry.js` 与 `local-proxy/count-tokens.js`，复用 `system-proxy.js` 共享长连接池，补齐 401/429 `apiKeys` 轮换、`<2s` `Retry-After` 微退避、OAuth 并发单飞锁与有界缓存淘汰。
+
+3. **前端架构：集中式事务 Store、消除 `57-pb-models.js` 裂脑与共享编辑器**
+   - 新增 `ui/assets/scripts/state/provider-store.js`（`main.js` 紧接 `state/logs.js` 加载）：收口 `resolveBoundProviderView`、`persistProviders`、`mutateProviderStore`（串行队列、深拷贝快照、过滤虚拟内置供应商、失败 100% 自动回滚）；删除 `antigravityDrop` 中不存在的 `write_provider_store` 调用，同步修复 `saveProviderFromEditor` 与编辑器保存时的嵌套 `settingsConfig` 反咬漏洞。
+   - 物理删除 `ui/assets/scripts/57-pb-models.js` 并收口 Pi / Hermes / DeepSeek Harness 到 `managed_models.js` + `models_table_factory.js` 7 列统一表格与计数/搜索/排序；新增 `ui/assets/scripts/platforms/shared_config_editor.js` 抽取四大配置式编辑器共用逻辑；为 `cursor_add.js` 切页补实时重探。
+   - 消除 `proxy.html` 三重触发、`openPlatformPage` 双倍包装、统计页热力图 `panicPanel` 遗漏与 `refreshStats` 后台盲跑；全部异步操作补齐 `try/finally` + 标准 `setLoading` / `loadingHtml`；同步 i18n 字典并收紧 `js-cjk-baseline.json`（`3742 -> 3660`）。
+
+4. **门禁升级与权威文档同步**
+   - 升级 `scripts/lib/key-features/ui-guards-and-presets.mjs` 与 `scripts/check-ui.mjs`：`runActionReachability` 支持规范前缀动态注册解析并将 `KNOWN_MISSING` 清零至 0 项；扩充 `LOADING_WORDS` 拦截 `生成/重装/清理/复制/卸载/拉取/测速/验证/删除/重置` 静态加载文案；纳入跨端架构防退化硬校验并新增 `scripts/arch-anti-regression.test.mjs`。
+   - 同步更新 `docs/capabilities.md`、`docs/pitfalls.json`（修正 `ag-source-provider-snapshot-drift` 并新增 4 条跨层防退化坑点）、`docs/ARCHITECTURE(_zh).md` 及 `docs/subsystems/*.md`。
+   - 判据与回归：`scripts/arch-anti-regression.test.mjs`、`scripts/ui-store-and-pb-regression.test.mjs`、`sidecar/lib/{sse-parser,codec-registry}.test.js`、`sidecar/lib/local-proxy/api-keys-rotation.test.js`、`src-tauri/src/commands/{store_io.rs,config/tests.rs,platforms/tests/ssot_and_restore.rs}`。
+
+## v1.1.13 - 2026-11-16
+
+### 1. 测试宿主机环境彻底隔离（防清配置 / 防杀进程）
+- 根因：本地/CI 执行 `cargo test`（如 `antigravity_official_writes_back_user_url`）与 `sidecar/antigravity.test.js` 时，测试会直接调用无隔离入口 `clear_antigravity_stale_managed_endpoints()`、`Self::kill_antigravity_language_server()`、`agent_stash_dir()` 以及未设 `BYOK_CONFIG_DIR` 的 `configDir()`，导致真实 `Antigravity/Antigravity IDE` 的 `settings.json` 被清除、运行中语言服务被终止触发自动整窗重载、`agent-stash.json` 写入测试 fixture、`ag-handshake.log` 污染。
+- 修复：
+  - `platforms.rs` 抽取 `clear_antigravity_stale_managed_endpoints_in_dirs` 供单测注入临时目录；`apply_antigravity*_with_stash` 宿主机全局副作用加上 `!cfg!(test)` 守卫；
+  - `agent_stash_dir()`、`clear_antigravity_stale_managed_endpoints()`、`kill_antigravity_language_server()`、`patch_antigravity_ide_extension()`、`antigravity_endpoint_keeper_tick()` 增加 `#[cfg(test)] panic!` 强制拦截；
+  - `platforms.rs` `mod tests` 全部 35 处调用改为传入临时 stash 的 `*_with_stash` 版本；
+  - `sidecar/antigravity.test.js` 为 HTTP 模拟用例配置独立临时 `BYOK_CONFIG_DIR` 与测试 `byok-config.json` / `providers.json`。
+- 判据与回归：`test-must-not-touch-real-host-state`；`platforms.rs::antigravity_clear_stale_managed_endpoints_only_touches_managed_dirs`、`scripts/antigravity-refresh-and-isolation.test.mjs`。
+
+### 2. Antigravity 控制台 UI 实时状态探测与反馈
+- 修复 `ui-src/partials/pages/platform-antigravity.html` 与 `55-platforms.js` 中刷新状态/模型按钮仅重绘旧内存缓存的问题：绑定 `antigravityRefreshConsoleAction(triggerEl)` 走 `force: true` 强扫 `detect_platforms` 并重载 `providers.json`，补齐 `setLoading`/`clearLoading`/`spinnerHtml` 动态指示与 15s 超时/失败 toast；`openPlatformPage` 与 `switchAntigravityClientTarget` 异步校对实时状态并在 `renderAntigravityPageStatus` 按目标过滤；文案收口进 `zh-CN.js` / `en-US.js` 维持 `js-cjk-baseline` 零增长。
+- 判据与回归：`antigravity-ui-refresh-must-probe-live-state`；`scripts/antigravity-refresh-and-isolation.test.mjs`。
+
+### 3. 网关协议与混合分桶增强
+- `sidecar/lib/antigravity-handler.js` 新增 `antigravityAuthScopeKey` 按 Authorization 指纹隔离 hybrid 官方模型响应缓存桶，防止切号串联旧号目录；
+- `sidecar/local-proxy.js` 与 `sidecar/lib/gemini-thought-signature.js` / `chat-sse-transform.js` 修复多轮工具调用转 Gemini 原生上游的 `functionCall`/`functionResponse` 与 `thoughtSignature` 签名回放与兜底链路（`openai-to-gemini-tool-history-dropped`）。
+
+### 4. 全仓长文件重构收敛、Antigravity/Gemini 实时解析与透传闭环、编译器警告清零
+- 结构重构与收敛：消除 `50-platforms.css` (`part-01..19`) 与 `windsurf-catalog-part-1..4` 机械分片，完成全仓 `>800` 行脚本/样式/Rust 模块语义化拆解并收拢 `windsurf-catalog.json` 单一事实源及平台添加页公共 HTML 组件；清除残余廉价 `border-left` 彩条装饰并升级 `check-key-features.mjs` 守卫（覆盖 `border-left-width`）；清理 `src-tauri` 166 条编译警告至零警告并保持 Unix/macOS `#[cfg]` 守卫完整。
+- Gemini/Vertex/Antigravity 闭环修复：
+  - `antigravity_models.js` (`resolveAntigravityConfigView`) 与 `models_table_factory.js` 拖拽导入禁止旧快照 `apiFormat` 压过主供应商端点推断与重复写入污染快照；
+  - `sidecar/config-cache.js` 剥离 `sourceProviderId` 配置项上的过时能力/连接快照字段（`apiKeys`/`wireApi`/`capabilities`/`modelCaps` 等）；
+  - `90-init.js` / `hero_and_agents.js` 在首屏渲染与平台检测前预加载 `loadAgentRegistry()` 消除冷启动期 `platformDef` 回退 `'openai'` 窗口；
+  - `routes.js` (`buildAntigravityRouteFromCustomModel`) + `local-proxy.js` 修复内部依赖与 `countTokens` 在同名 `upstreamModel` 下绕过活跃配置路线、关联主供应商禁用时回落 `proxy-routes.json` 的缺陷；
+  - `upstream-payload.js` (`buildGeminiNativePassthroughPayload`) 剥离 Antigravity/LS 内部包装字段（`sessionId`/`requestType`/`userAgent`/`project`/`metadata` 等）、统一 snake/camel 键并按需清理非法 JSON Schema 关键字；`thinking.js` 补齐 `function_call` 兜底签名；`probe_conn.rs` (`build_fetch_model_url`) 与 `eval/protocol_and_checks.rs` (`protocol_gemini_urls`) 消除 `fetch_models` 重复拼接 host 内嵌路径及评测自定义路径丢失问题。
+- 判据与回归：`ag-internal-dependency-must-pin-active-route`、`gemini-fetch-models-no-duplicate-host-path`、`docs/capabilities.md`；`google-gemini.test.js`、`google-gemini-e2e.test.js`、`antigravity-refresh-and-isolation.test.mjs`、`config::tests::fetch_models_gemini_url_does_not_duplicate_embedded_host_path`、`eval::tests::gemini_protocol_checks_preserve_custom_gemini_path`。
+
 ## v1.1.12 - 2026-11-15
 
 ### 转发链路韧性
