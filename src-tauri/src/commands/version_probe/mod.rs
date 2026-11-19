@@ -541,9 +541,6 @@ pub fn run_self_update_sync(
     Ok(())
 }
 
-/// Toolhelp32 进程枚举（唯一实现）：pred 决定匹配哪个进程。
-#[cfg(windows)]
-
 /// 统一入口：平台已装版本（CLI 或 GUI 自动选择）。
 pub fn installed_version(platform_id: &str) -> Option<String> {
     if let Some(v) = installed_cli_version(platform_id) {

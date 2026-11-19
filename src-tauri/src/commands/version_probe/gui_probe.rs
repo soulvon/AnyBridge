@@ -221,6 +221,7 @@ fn electron_app_version(dir: &std::path::Path) -> Option<String> {
 }
 
 
+#[cfg(windows)]
 fn running_process_dir_matching<F: Fn(&str) -> bool>(pred: F) -> Option<std::path::PathBuf> {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{

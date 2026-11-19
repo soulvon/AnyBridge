@@ -526,7 +526,7 @@ pub(crate) fn find_ide_bin(target: &str) -> Option<std::path::PathBuf> {
         );
     }
     // which 回退（PATH 上的真实安装）
-    if let Ok(out) = Command::new("sh")
+    if let Ok(out) = std::process::Command::new("sh")
         .args(["-c", &format!("command -v {} 2>/dev/null", bin_name)])
         .output()
     {
