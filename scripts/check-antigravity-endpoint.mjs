@@ -124,6 +124,10 @@ section('注入代码：自包含与语法');
         `const hubSrc=${JSON.stringify(hub)};`,
         `process.env.APPDATA=${JSON.stringify(tmpRoot)};`,
         `process.env.LOCALAPPDATA=${JSON.stringify(tmpRoot)};`,
+        `process.env.USERPROFILE=${JSON.stringify(tmpRoot)};`,
+        `process.env.HOME=${JSON.stringify(tmpRoot)};`,
+        `process.env.XDG_CONFIG_HOME=${JSON.stringify(tmpRoot)};`,
+        `process.env.XDG_DATA_HOME=${JSON.stringify(tmpRoot)};`,
         'delete process.env.ANYBRIDGE_ANTIGRAVITY_SETTINGS;',
         'const ide=eval(ideSrc)({});',
         'const hub=eval(hubSrc);',
@@ -131,8 +135,20 @@ section('注入代码：自包含与语法');
       ].join('\n'), 'utf8');
       try {
         // 隔离宿主注入的 NODE_OPTIONS（AI IDE 的 --require shim 在高负载下
-        // 会加载失败导致 node 退出，见 docs/pitfalls.json 同名条目）
-        const isolatedEnv = { ...process.env, NODE_OPTIONS: '' };
+        // 会加载失败导致 node 退出，见 docs/pitfalls.json 同名条目），
+        // 同时隔离三平台全部配置目录环境变量（APPDATA/LOCALAPPDATA/USERPROFILE/HOME/XDG_*），
+        // 防止 Linux/macOS 找不到 fixture 或穿透宿主机真实 settings.json。
+        const isolatedEnv = {
+          ...process.env,
+          NODE_OPTIONS: '',
+          APPDATA: tmpRoot,
+          LOCALAPPDATA: tmpRoot,
+          USERPROFILE: tmpRoot,
+          HOME: tmpRoot,
+          XDG_CONFIG_HOME: tmpRoot,
+          XDG_DATA_HOME: tmpRoot,
+        };
+        delete isolatedEnv.ANYBRIDGE_ANTIGRAVITY_SETTINGS;
         const out = execFileSync(process.execPath, [script], { encoding: 'utf8', stdio: 'pipe', env: isolatedEnv });
         const pass = out.includes('"ide":"https://localhost:7452"') && out.includes('"hub":"https://localhost:9999"');
         if (!pass) console.log(`    [真执行诊断] stdout=${out.slice(0, 500)}`);

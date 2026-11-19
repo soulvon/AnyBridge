@@ -55,44 +55,77 @@ jobs:
           python scripts/build/build_sidecar_plain.py --platform "$HOST"
           python scripts/build/build_cursor_core.py --target "$HOST"
 
-      - name: Verify
+      - name: Verify (Windows)
         if: runner.os == 'Windows'
-        run: npm run verify
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $logFile = Join-Path $env:RUNNER_TEMP 'verify.log'
+          npm run verify 2>&1 | Tee-Object -FilePath $logFile
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            if (Test-Path $logFile) {
+              Get-Content $logFile | Select-String -Pattern '(?:not ok |❌|error(\[E\d+\])?:|AssertionError)' | Select-Object -First 40 | ForEach-Object {
+                Write-Output "::error::$($_.Line)"
+              }
+              Get-Content $logFile -Tail 40 | Where-Object { $_ -ne '' } | ForEach-Object {
+                Write-Output "::error::$_"
+              }
+            }
+            exit $code
+          }
 
-      - name: Verify
-        id: verify_unix
+      # 日志统一写到 RUNNER_TEMP：写到仓库根目录会被 npm run verify 里的
+      # runTempFileDiscipline 自动迁入 tmp/，导致后续读取失败。
+      - name: Verify (non-Windows)
         if: runner.os != 'Windows'
         shell: bash
-        continue-on-error: true
-        run: npm run verify 2>&1 | tee verify.log
-
-      - name: Verify report
-        if: runner.os != 'Windows' && steps.verify_unix.outcome == 'failure'
-        shell: bash
         run: |
-          tail -80 verify.log | while IFS= read -r line; do
-            [ -n "$line" ] && echo "::error::$line"
-          done
-          exit 1
+          set +e
+          LOG_FILE="${RUNNER_TEMP}/verify.log"
+          npm run verify 2>&1 | tee "$LOG_FILE"
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            if [ -f "$LOG_FILE" ]; then
+              grep -aE "not ok |❌|error(\[E[0-9]+\])?:|AssertionError" "$LOG_FILE" | head -40 | while IFS= read -r line; do
+                if [ -n "$line" ]; then echo "::error::$line"; fi
+              done
+              tail -60 "$LOG_FILE" | while IFS= read -r line; do
+                if [ -n "$line" ]; then echo "::error::$line"; fi
+              done
+            fi
+            exit "$status"
+          fi
 
       # release profile 才会编译 #[cfg(not(debug_assertions))] 分支，
-      # 本地 Windows 与 debug 门控都覆盖不到 unix 下的 release-only 代码。
-      # 只在 Linux 跑一次 release check，把该类错误钉在 CI 上。
-      - name: Cargo check (release profile, Linux only)
-        if: runner.os == 'Linux'
+      # 本地 Windows 与 debug 门控都覆盖不到 Linux/macOS 下的 release-only 代码。
+      # 在全部非 Windows runner 上同时检查 cursor-core 与 src-tauri，把跨平台编译错误钉在 CI。
+      - name: Cargo check (release profile, non-Windows)
+        if: runner.os != 'Windows'
         shell: bash
         env:
           CARGO_TERM_COLOR: never
         run: |
           set +e
-          cargo check --release --message-format short --manifest-path src-tauri/Cargo.toml 2>&1 | tee cargo-release.log
-          status=${PIPESTATUS[0]}
+          LOG_FILE="${RUNNER_TEMP}/cargo-release.log"
+          : > "$LOG_FILE"
+          status=0
+          for cmd_args in \
+            "--manifest-path cursor-core/Cargo.toml --release --all-targets" \
+            "--manifest-path src-tauri/Cargo.toml --release"; do
+            echo ">>> cargo check --message-format short $cmd_args" | tee -a "$LOG_FILE"
+            cargo check --message-format short $cmd_args 2>&1 | tee -a "$LOG_FILE"
+            s=${PIPESTATUS[0]}
+            if [ "$s" -ne 0 ]; then
+              status=$s
+            fi
+          done
           if [ "$status" -ne 0 ]; then
-            grep -aE "error(\[E[0-9]+\])?: " cargo-release.log | head -40 | while IFS= read -r line; do
-              echo "::error::$line"
+            grep -aE "error(\[E[0-9]+\])?: " "$LOG_FILE" | head -40 | while IFS= read -r line; do
+              if [ -n "$line" ]; then echo "::error::$line"; fi
             done
-            tail -60 cargo-release.log | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error::$line"
+            tail -60 "$LOG_FILE" | while IFS= read -r line; do
+              if [ -n "$line" ]; then echo "::error::$line"; fi
             done
             exit "$status"
           fi

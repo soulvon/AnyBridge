@@ -370,13 +370,17 @@ test('Sidecar antigravity.test.js 运行时不向宿主机真实配置目录写 
   env.HOME = fakeAppData;
 
   try {
-    const res = spawnSync(process.execPath, ['--test', 'sidecar/antigravity.test.js'], {
+    // 显式指定 --test-reporter=tap：Node 默认在本地 TTY 用 spec（ℹ pass N），
+    // 在 CI 非 TTY 管道下用 TAP（# pass N），不固定 reporter 会导致本地绿、CI 红。
+    const res = spawnSync(process.execPath, ['--test', '--test-reporter=tap', 'sidecar/antigravity.test.js'], {
       cwd: root,
       env,
       encoding: 'utf8',
     });
     assert.equal(res.status, 0, `sidecar/antigravity.test.js 执行失败:\n${res.stdout}\n${res.stderr}`);
-    assert.match(res.stdout, /ℹ pass 12/, 'sidecar/antigravity.test.js 应完整执行全部用例');
+    assert.match(res.stdout, /# tests 12\b/, 'sidecar/antigravity.test.js 应完整执行全部 12 项用例');
+    assert.match(res.stdout, /# pass 12\b/, 'sidecar/antigravity.test.js 全部 12 项用例应通过');
+    assert.match(res.stdout, /# fail 0\b/, 'sidecar/antigravity.test.js 失败项应为 0');
 
     const leakedLog = path.join(fakeAnyBridgeDir, 'ag-handshake.log');
     assert.equal(

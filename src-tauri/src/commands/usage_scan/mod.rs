@@ -406,6 +406,5 @@ pub fn get_stats_history(days: Option<u32>) -> Result<serde_json::Value, String>
 
 
 #[cfg(test)]
-
 mod tests;
 

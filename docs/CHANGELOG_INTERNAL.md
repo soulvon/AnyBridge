@@ -9,6 +9,23 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## 未发版（v1.1.14 跨平台门控与 CI 全绿加固）
+
+### 根因复盘：v1.1.14 连续 4 轮非 Windows 发布失败 + HEAD 三平台 CI 隐性全红
+1. **5 处非 Windows 编译错误全部源自 `2f54ce25` 大文件拆分 + 本地守卫盲区**：
+   - `cursor-core/src/local_app/ca/mod.rs`（`#[cfg(unix)]` 内 `from_mode` 缺 `PermissionsExt`）、`src-tauri/src/commands/system/ide_paths.rs`（`#[cfg(not(windows))]` 内裸写 `Command::new` 缺导入）；
+   - `src-tauri/src/commands/version_probe/mod.rs` 与 `codex_desktop/launch_and_http.rs`（拆走函数遗留孤悬 `#[cfg(windows)]` + 空行吸附到下一个跨平台函数 `installed_version` / `kill_codex`）；
+   - `src-tauri/src/commands/version_probe/gui_probe.rs`（`running_process_dir_matching` 丢 `#[cfg(windows)]`，旧 `runPlatformGuards` 往前盲扫 80 行命中前一个函数的 `#[cfg(windows)]` 假阳性放行，且未扫 `cursor-core`）。
+2. **补修 HEAD 仍残留的 5 处同源问题**：
+   - 清理 `codex_desktop/mod.rs`（挪回错位的 `http_get_local` 注释、消除孤悬 `#[cfg(target_os = "windows")]` 空行）与 `usage_scan/mod.rs`（消除 `#[cfg(test)]` 后空行）。
+   - 修复 `scripts/check-antigravity-endpoint.mjs` 真执行未设置 `USERPROFILE`/`HOME`/`XDG_CONFIG_HOME`/`XDG_DATA_HOME` 导致 Linux/macOS CI 必红的缺陷。
+   - 修复 `scripts/antigravity-refresh-and-isolation.test.mjs` 写死 TTY 专用 `ℹ pass 12` 导致 Windows CI（非 TTY TAP 输出）必红的缺陷，改用显式 `--test-reporter=tap`。
+   - 修复 `.github/workflows/ci.yml` 把 `verify.log` 写到仓库根目录被自家 `runTempFileDiscipline` 自动搬进 `tmp/` 导致 `Verify report` 报错失明的问题；CI 与 `release.yml` 临时日志统一改写到 `$RUNNER_TEMP`，并将非 Windows `--release` 预检扩展到 **Linux + macOS** 且同时覆盖 `cursor-core` 与 `src-tauri`。
+   - `scripts/check-release-gate.mjs --remote` 增加当前 HEAD 的远端三平台 CI 通过校验，防止 CI 未绿即推 tag。
+3. **本地跨平台静态守卫升级与回归锁**：
+   - `scripts/lib/key-features/hygiene-and-portability.mjs` 升级 `runPlatformGuards`（导出 `auditRustPlatformGuards` / `scanRustPlatformGuards`）：词法级大括号作用域 + 模块级 `#[cfg]`/`#[path]` 识别（覆盖 `src-tauri` + `cursor-core` 412 文件）、硬禁孤悬 `#[cfg(...)]`、硬检非 Windows 分支缺失 `PermissionsExt` / 裸 `Command::new`。
+   - 新增 `scripts/platform-guards.test.mjs`（含 5 处事故精准复现 fixture + `win32`/`darwin`/`linux` 三平台注入真执行模拟 + CI/Release 门控断言），并沉淀 2 条结构化坑点进 `docs/pitfalls.json`（`rust-refactor-cfg-blindspot-and-window-guard`、`ci-verify-cross-platform-env-and-log-collision`，共 90 条）。
+
 ## v1.1.14 - 2026-11-19（全端架构重构与 Devin 3.14 适配发版）
 
 ### 第三波：Devin 3.14.30825 适配与边界加固

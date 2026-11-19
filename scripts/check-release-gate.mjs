@@ -150,6 +150,32 @@ if (withRemote) {
     pushed ? '' : '推 tag 后 Release workflow 才会启动'
   );
 
+  // 远端跨平台 CI 状态：避免在 Linux/macOS 编译或单测未绿时就打 tag 触发 40 分钟多平台 Release
+  try {
+    const head = git('rev-parse HEAD');
+    const ciJson = execSync(
+      `gh api "repos/:owner/:repo/actions/workflows/ci.yml/runs?head_sha=${head}&per_page=5"`,
+      { cwd: root, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }
+    );
+    const runs = JSON.parse(ciJson || '{}').workflow_runs || [];
+    const latest = runs[0];
+    if (!latest) {
+      bad(
+        `远端跨平台 CI 已通过（HEAD ${head.slice(0, 8)}）`,
+        '未找到该 commit 的 CI 记录——请先推 main 等三平台 CI 全绿后再打 tag 发版'
+      );
+    } else if (latest.status === 'completed' && latest.conclusion === 'success') {
+      ok(`远端跨平台 CI 已通过（run #${latest.id}）`);
+    } else {
+      bad(
+        `远端跨平台 CI 已通过（run #${latest.id}）`,
+        `当前状态 status=${latest.status} conclusion=${latest.conclusion ?? 'pending'}——修复 CI 后再发版`
+      );
+    }
+  } catch (error) {
+    bad('远端 CI 状态检查失败', `gh api 出错：${String(error.message).slice(0, 120)}`);
+  }
+
   // 同 tag 的 release 状态：只允许「不存在」或「draft」（CI 建的、正在传产物）
   try {
     // jq 的复杂引号在 Windows shell 里会被吞，取全量后在这里过滤

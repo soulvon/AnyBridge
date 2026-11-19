@@ -160,13 +160,8 @@ pub(super) fn connect_error(port: u16, errors: &[String]) -> String {
     format!("无法连接 {port}：{}", errors.join("；"))
 }
 
-/// 发送一个 GET 请求到 127.0.0.1:port/path，返回完整响应文本（含头）。
-///
-/// CDP 的 /json 响应不主动关闭连接（keep-alive），read_to_string 会等到
-/// 超时才返回 Err。这里改成读到数据就返回：先读到第一个响应字节，再尝试
-/// 短暂继续读（40ms 内还有数据就继续拼），没有更多数据就返回已读内容。
+/// PowerShell：判断是否为 Codex Desktop 相关进程（宿主 / app-server / 排除 CLI）。
 #[cfg(target_os = "windows")]
-
 pub(super) const PS_CODEX_DESKTOP_PROCESS_FILTER: &str = r#"
 function Test-CodexDesktopProcess($proc, [switch]$UiHostOnly) {
   if (-not $proc) { return $false }

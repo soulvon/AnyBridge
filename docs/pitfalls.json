@@ -1171,6 +1171,42 @@
       },
       "regression_test": "src-tauri/src/commands/ide_config/tests.rs::devin_upgrade_from_legacy_patch_without_backup_restores_cleanly",
       "severity": "high"
+    },
+    {
+      "id": "rust-refactor-cfg-blindspot-and-window-guard",
+      "title": "大文件拆分子模块易遗留孤悬 #[cfg] 吃掉跨平台函数，且固定行数窗口会假阳性放行未守卫平台 API",
+      "symptom": "v1.1.14（638 文件重构）后 Windows 本地 npm run verify 全绿，但 Linux/macOS 发布连炸 4 轮共 5 处编译错：① ca/mod.rs 拆走 write_atomic 时误删 PermissionsExt 导入致 #[cfg(unix)] from_mode 报 E0599；② version_probe/mod.rs 与 codex_desktop/launch_and_http.rs 拆走函数后遗留孤悬 #[cfg(windows)] + 空行吸附到下一个跨平台函数（installed_version / kill_codex），非 Windows 上函数直接消失；③ gui_probe.rs 搬走 running_process_dir_matching 丢了 #[cfg(windows)]，旧 runPlatformGuards 往前盲扫 80 行命中前一个函数的 #[cfg(windows)] 假阳性放行；④ ide_paths.rs 非 Windows 分支裸写 Command::new 缺导入",
+      "lesson": "Windows 本地编译不检查 #[cfg(unix)]/#[cfg(not(windows))]，也不能只靠固定行数文本窗口做守卫。三道硬门控缺一不可：① runPlatformGuards 升级为词法级大括号/语句作用域 + 模块级 #[cfg(windows)]/#[path] 识别，扫描覆盖 src-tauri 与 cursor-core 全部 Rust 文件；② 硬禁孤悬 #[cfg(...)]（属性后禁止空行或紧跟文档注释 ///，doc 注释一律在属性上方）；③ 静态拦截非 Windows 分支缺失 PermissionsExt 与未导入的裸 Command::new；④ CI 非 Windows（Linux + macOS）同步跑 cursor-core 与 src-tauri 的 --release 编译预检",
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/lib/key-features/hygiene-and-portability.mjs",
+        "must_contain": "export function auditRustPlatformGuards"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "scripts/lib/key-features/hygiene-and-portability.mjs",
+        "must_not_match": "lines\\.slice\\(Math\\.max\\(0,\\s*i\\s*-\\s*80\\)"
+      },
+      "regression_test": "scripts/platform-guards.test.mjs::platform-guards: 精确作用域拦截 80 行窗口假阳性（v1.1.14 gui_probe.rs 事故复现）",
+      "severity": "critical"
+    },
+    {
+      "id": "ci-verify-cross-platform-env-and-log-collision",
+      "title": "CI 门控不得依赖本地 TTY 格式、单平台环境变量，或把日志写到会被临时文件守卫搬走的根目录",
+      "symptom": "v1.1.14 Release 虽通过但 HEAD 上三平台 CI 全红：① Windows CI 无 TTY 时 node --test 默认输出 TAP（# pass 12），antigravity-refresh-and-isolation.test.mjs 硬断言 /ℹ pass 12/ 必败；② check-antigravity-endpoint.mjs 真执行只设 APPDATA/LOCALAPPDATA 未设 HOME/XDG_CONFIG_HOME，Linux/macOS CI 100% 找不到 fixture 失败；③ ci.yml 把 verify.log 写到仓库根目录，运行中途被 runTempFileDiscipline 自动 rename 进 tmp/，后续 Verify report 报 tail: cannot open 'verify.log' 失明",
+      "lesson": "① 子进程调用 node --test 并断言输出时必须显式传 --test-reporter=tap（消除 TTY spec vs CI TAP 漂移）；② 跨平台真执行测试必须同时隔离并注入 APPDATA/LOCALAPPDATA/USERPROFILE/HOME/XDG_CONFIG_HOME/XDG_DATA_HOME 六个变量，并用三平台模拟单测锁定；③ CI/Release 临时日志统一写进 $RUNNER_TEMP，绝不落仓库根目录与工作树卫生门控打架；④ 发版前先推 main 等三平台 CI 绿灯（check-release-gate --remote 强制核对）再打 tag",
+      "check": {
+        "type": "source_contains",
+        "file": "scripts/antigravity-refresh-and-isolation.test.mjs",
+        "must_contain": "--test-reporter=tap"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": ".github/workflows/ci.yml",
+        "must_not_match": "tee verify\\.log|tail -80 verify\\.log"
+      },
+      "regression_test": "scripts/platform-guards.test.mjs::cross-platform CI gates: Antigravity 注入模板在 win32 / darwin / linux 三平台模拟下真执行均读出端点",
+      "severity": "high"
     }
   ]
 }
