@@ -126,7 +126,10 @@ impl CaManager {
     fn generate(&self) -> Result<()> {
         fs::create_dir_all(&self.dir)?;
         #[cfg(unix)]
-        fs::set_permissions(&self.dir, fs::Permissions::from_mode(0o700))?;
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&self.dir, fs::Permissions::from_mode(0o700))?;
+        }
 
         let key = KeyPair::generate_rsa_for(&PKCS_RSA_SHA256, RsaKeySize::_3072)
             .map_err(|error| Error::Config(format!("generate CA key: {error}")))?;
