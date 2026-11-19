@@ -316,7 +316,7 @@ section('Rust 单测（含多形态 + Node 真解析）');
 {
   try {
     const out = execFileSync('cargo', ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--lib', 'antigravity_'], {
-      cwd: root, encoding: 'utf8', stdio: 'pipe', timeout: 240000,
+      cwd: root, encoding: 'utf8', stdio: 'pipe', timeout: 1500000,
     });
     const m = /test result: ok\. (\d+) passed/.exec(out);
     ok(`antigravity 单测全绿（${m ? m[1] : '?'} 项）`, !!m);

@@ -56,4 +56,36 @@ jobs:
           python scripts/build/build_cursor_core.py --target "$HOST"
 
       - name: Verify
+        if: runner.os == 'Windows'
         run: npm run verify
+
+      - name: Verify
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set +e
+          npm run verify 2>&1 | tee verify.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E "error(\[E[0-9]+\])?:|❌" verify.log | head -30 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit "$status"
+          fi
+
+      # release profile 才会编译 #[cfg(not(debug_assertions))] 分支，
+      # 本地 Windows 与 debug 门控都覆盖不到 unix 下的 release-only 代码。
+      # 只在 Linux 跑一次 release check，把该类错误钉在 CI 上。
+      - name: Cargo check (release profile, Linux only)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set +e
+          cargo check --release --manifest-path src-tauri/Cargo.toml 2>&1 | tee cargo-release.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E "^error|^warning: unused" cargo-release.log | head -30 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            exit "$status"
+          fi
