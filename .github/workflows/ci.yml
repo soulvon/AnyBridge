@@ -60,21 +60,20 @@ jobs:
         run: npm run verify
 
       - name: Verify
+        id: verify_unix
         if: runner.os != 'Windows'
         shell: bash
+        continue-on-error: true
+        run: npm run verify 2>&1 | tee verify.log
+
+      - name: Verify report
+        if: runner.os != 'Windows' && steps.verify_unix.outcome == 'failure'
+        shell: bash
         run: |
-          set +e
-          npm run verify 2>&1 | tee verify.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            grep -E "error(\[E[0-9]+\])?:|❌" verify.log | head -30 | while IFS= read -r line; do
-              echo "::error::$line"
-            done
-            tail -60 verify.log | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error::$line"
-            done
-            exit "$status"
-          fi
+          tail -80 verify.log | while IFS= read -r line; do
+            [ -n "$line" ] && echo "::error::$line"
+          done
+          exit 1
 
       # release profile 才会编译 #[cfg(not(debug_assertions))] 分支，
       # 本地 Windows 与 debug 门控都覆盖不到 unix 下的 release-only 代码。
@@ -82,13 +81,18 @@ jobs:
       - name: Cargo check (release profile, Linux only)
         if: runner.os == 'Linux'
         shell: bash
+        env:
+          CARGO_TERM_COLOR: never
         run: |
           set +e
-          cargo check --release --manifest-path src-tauri/Cargo.toml 2>&1 | tee cargo-release.log
+          cargo check --release --message-format short --manifest-path src-tauri/Cargo.toml 2>&1 | tee cargo-release.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            grep -E "^error|^warning: unused" cargo-release.log | head -30 | while IFS= read -r line; do
+            grep -aE "error(\[E[0-9]+\])?: " cargo-release.log | head -40 | while IFS= read -r line; do
               echo "::error::$line"
+            done
+            tail -60 cargo-release.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
             done
             exit "$status"
           fi
