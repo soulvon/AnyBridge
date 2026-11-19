@@ -200,9 +200,9 @@ $obj | ConvertTo-Json -Compress
 ///
 /// 注意：Win32 进程名大小写不稳定，不能用 -ieq 'Codex.exe' 区分宿主与 app-server。
 /// app-server 特征：路径含 \resources\codex.exe，或命令行含 app-server。
-#[cfg(target_os = "windows")]
-
-/// 部分子进程需等父进程死后才能退出），再超时则暴露剩余 PID 供诊断。
+///
+/// 两轮 Stop-Process：第二轮针对第一轮残留的子进程（部分子进程需等
+/// 父进程死后才能退出），再超时则暴露剩余 PID 供诊断。
 pub(super) fn kill_codex() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
