@@ -70,6 +70,9 @@ jobs:
             grep -E "error(\[E[0-9]+\])?:|❌" verify.log | head -30 | while IFS= read -r line; do
               echo "::error::$line"
             done
+            tail -60 verify.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
             exit "$status"
           fi
 

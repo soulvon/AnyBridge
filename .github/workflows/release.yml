@@ -173,6 +173,28 @@ jobs:
             python scripts/build/build_cursor_core.py
           fi
 
+      # 打包前先单独跑一次 release 编译：tauri-action 内部的编译失败只回一句
+      # 「failed with exit code 1」，看不到具体错误。这里提前编译，失败时把
+      # 关键行输出成 annotation，便于定位平台分支问题。
+      - name: Cargo build (release precheck)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          RUST_TARGET: ${{ matrix.rust_target }}
+        run: |
+          set +e
+          cargo build --release --manifest-path src-tauri/Cargo.toml ${RUST_TARGET:+--target "$RUST_TARGET"} 2>&1 | tee cargo-build.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            grep -E "^(error|warning: unused)" cargo-build.log | head -40 | while IFS= read -r line; do
+              echo "::error::$line"
+            done
+            tail -40 cargo-build.log | while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error::$line"
+            done
+            exit "$status"
+          fi
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
