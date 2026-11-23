@@ -25,24 +25,54 @@ const KITE_FALLBACK_CDP_PORT: u16 = 9222;
 /// 已确认属于 Antigravity IDE 的调试端口；0 表示尚未发现。
 static ACTIVE_CDP_PORT: AtomicU16 = AtomicU16::new(0);
 
-/// 从 IDE 用户级 settings.json 读取 Kite 配置的调试端口。
-/// Kite 用 VS Code 配置 API 写 `antigravityKite.cdpPort`，用户可改成非 9333；
-/// AnyBridge 必须跟随，否则 Kite 一改端口，汉化 keeper 就整体停摆。
-fn kite_configured_cdp_port() -> Option<u16> {
-    let dir = super::platforms::antigravity_ide_config_dir()?;
-    let raw = std::fs::read_to_string(dir.join("settings.json")).ok()?;
+const KITE_CDP_PORT_KEY: &str = "antigravityKite.cdpPort";
+
+/// 从指定 IDE 配置目录读取 Kite 写入的调试端口配置项。
+fn read_kite_cdp_port_from_dir(config_dir: &std::path::Path) -> Option<u16> {
+    let raw = std::fs::read_to_string(config_dir.join("settings.json")).ok()?;
     let obj = super::ide_config::parse_object(&raw).ok()?;
-    obj.get("antigravityKite.cdpPort")
+    obj.get(KITE_CDP_PORT_KEY)
         .and_then(|v| v.as_u64())
         .and_then(|n| u16::try_from(n).ok())
         .filter(|p| *p > 0)
 }
 
+/// 从 IDE 用户级 settings.json 读取 Kite 配置的调试端口。
+/// Kite 用 VS Code 配置 API 写 `antigravityKite.cdpPort`，用户可改成非 9333；
+/// AnyBridge 必须跟随，否则 Kite 一改端口，汉化 keeper 就整体停摆。
+fn kite_configured_cdp_port() -> Option<u16> {
+    let dir = super::platforms::antigravity_ide_config_dir()?;
+    read_kite_cdp_port_from_dir(&dir)
+}
+
+/// 从 IDE 配置目录推导 `DevToolsActivePort` 路径并读取端口：
+/// Chromium/Electron 将 `DevToolsActivePort` 写在 `--user-data-dir` 根目录（`User/` 的父目录），
+/// 若仅在传入目录自身存在（向后兼容历史布局/测试夹具）则作为次级回退。
+fn read_devtools_active_port_from_dir(config_dir: &std::path::Path) -> Option<u16> {
+    let candidates = [
+        config_dir.parent().map(|p| p.join("DevToolsActivePort")),
+        Some(config_dir.join("DevToolsActivePort")),
+    ];
+    for path in candidates.into_iter().flatten() {
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if let Some(port) = raw
+            .lines()
+            .next()
+            .and_then(|line| line.trim().parse::<u16>().ok())
+            .filter(|p| *p > 0)
+        {
+            return Some(port);
+        }
+    }
+    None
+}
+
 /// 读 IDE 的 DevToolsActivePort（Kite 也读它，动态端口场景下必须同源）。
 fn devtools_active_port() -> Option<u16> {
     let dir = super::platforms::antigravity_ide_config_dir()?;
-    let raw = std::fs::read_to_string(dir.join("DevToolsActivePort")).ok()?;
-    raw.lines().next()?.trim().parse::<u16>().ok().filter(|p| *p > 0)
+    read_devtools_active_port_from_dir(&dir)
 }
 
 /// 当前应使用的调试端口（优先已确认的活跃端口）。
@@ -98,6 +128,25 @@ pub(crate) fn cdp_port_candidates_for_test(
     build_cdp_port_candidates(0, kite_port, devtools_port)
 }
 
+/// 校验 CDP /json/version 的 User-Agent 是否属于 Antigravity IDE（兼容紧凑写法与带空格写法，
+/// 严格排除白底桌面端 Antigravity/2.x、普通 Chrome 与 Codex）。
+pub(crate) fn is_antigravity_ide_ua(ua: &str) -> bool {
+    let lower = ua.to_ascii_lowercase();
+    lower.contains("antigravityide") || lower.contains("antigravity ide")
+}
+
+/// 从指定 IDE 配置目录解析启动应使用的 CDP 端口。
+fn preferred_launch_port_from_dir(config_dir: &std::path::Path) -> u16 {
+    read_kite_cdp_port_from_dir(config_dir).unwrap_or(CDP_PORT)
+}
+
+/// Antigravity IDE 重启时的默认或用户已配置的 CDP 调试端口。
+pub fn preferred_launch_port() -> u16 {
+    super::platforms::antigravity_ide_config_dir()
+        .map(|d| preferred_launch_port_from_dir(&d))
+        .unwrap_or(CDP_PORT)
+}
+
 /// 探测单个端口是否属于 Antigravity IDE 的调试端点。
 fn probe_port(port: u16) -> Result<String, String> {
     let base = format!("http://127.0.0.1:{port}");
@@ -110,7 +159,7 @@ fn probe_port(port: u16) -> Result<String, String> {
     let v: Value = serde_json::from_str(&body)
         .map_err(|e| format!("解析调试端口 {port} 响应失败: {e}"))?;
     let ua = v.get("User-Agent").and_then(|x| x.as_str()).unwrap_or("");
-    if !ua.contains("AntigravityIDE") {
+    if !is_antigravity_ide_ua(ua) {
         return Err(format!("端口 {port} 不是 Antigravity IDE 的调试端口"));
     }
     Ok(v.get("webSocketDebuggerUrl")
@@ -166,6 +215,7 @@ fn cdp_base() -> String {
 
 fn http_client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
+        .no_proxy()
         .timeout(Duration::from_secs(2))
         .build()
         .map_err(|e| format!("创建 CDP HTTP 客户端失败: {e}"))
@@ -179,10 +229,10 @@ pub fn probe() -> Result<String, String> {
 
 /// 该 target 是否是 Antigravity 的本地 Web 应用界面（设置页 / Agent 面板）。
 ///
-/// 只认 127.0.0.1 + 扩展 iframe 的标记参数；浏览器控制页（/browser 那套）
+/// 只认本机回环（127.0.0.1 / localhost）+ 扩展 iframe 的标记参数；浏览器控制页（/browser 那套）
 /// 不属于 IDE 界面，注入了反而乱改其他网页，必须排除。
 fn is_app_target(url: &str) -> bool {
-    url.starts_with("http://127.0.0.1:")
+    (url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:"))
         && (url.contains("/settings-standalone") || url.contains("extensionView=true"))
 }
 
@@ -384,12 +434,31 @@ mod tests {
         assert!(is_app_target(
             "http://127.0.0.1:64213/?extensionView=true&extensionVariant=vs-code"
         ));
+        assert!(is_app_target(
+            "http://localhost:64213/?extensionView=true&extensionVariant=vs-code"
+        ));
         // 浏览器控制页（别的网页）绝不能注入
         assert!(!is_app_target("http://127.0.0.1:48883/"));
+        assert!(!is_app_target("http://localhost:48883/"));
         // 非本地地址不碰
         assert!(!is_app_target("https://example.com/?extensionView=true"));
         // vscode webview 外壳不是目标（它只是 iframe 宿主）
         assert!(!is_app_target("vscode-webview://abc/index.html?id=1"));
+    }
+
+    #[test]
+    fn ua_matcher_accepts_spaced_and_compact_ide_but_rejects_hub_and_chrome() {
+        assert!(is_antigravity_ide_ua(
+            "Mozilla/5.0 AntigravityIDE/1.107.0 Chrome/142.0.7444.175 Electron/39.2.3"
+        ));
+        assert!(is_antigravity_ide_ua(
+            "Mozilla/5.0 Antigravity IDE/1.107.0 Chrome/142.0.7444.175 Electron/39.2.3"
+        ));
+        assert!(!is_antigravity_ide_ua(
+            "Mozilla/5.0 Antigravity/2.34.0 Chrome/142.0.7444.175 Electron/39.2.3"
+        ));
+        assert!(!is_antigravity_ide_ua("Mozilla/5.0 Chrome/142.0.0.0 Safari/537.36"));
+        assert!(!is_antigravity_ide_ua("Mozilla/5.0 Codex/1.0"));
     }
 
     #[test]
@@ -404,5 +473,69 @@ mod tests {
             "设置页没有 workbench 根节点，必须走辅助窗口快速启动分支"
         );
         assert!(script.contains("MutationObserver"), "引擎本体必须保留");
+    }
+
+    #[test]
+    fn devtools_active_port_reads_user_data_root_before_user_subdir() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "anybridge-test-ag-devtools-port-{}-{stamp}",
+            std::process::id()
+        ));
+        let user_dir = root.join("User");
+        std::fs::create_dir_all(&user_dir).unwrap();
+
+        // Chromium/Electron 将 DevToolsActivePort 放在 --user-data-dir 根目录，而非 User 子目录
+        std::fs::write(
+            root.join("DevToolsActivePort"),
+            "9444\n/devtools/browser/test-id\n",
+        )
+        .unwrap();
+        assert_eq!(read_devtools_active_port_from_dir(&user_dir), Some(9444));
+
+        // 向后兼容：若仅 User 子目录存在也可读取
+        std::fs::remove_file(root.join("DevToolsActivePort")).unwrap();
+        std::fs::write(
+            user_dir.join("DevToolsActivePort"),
+            "9555\n/devtools/browser/fallback\n",
+        )
+        .unwrap();
+        assert_eq!(read_devtools_active_port_from_dir(&user_dir), Some(9555));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn kite_cdp_port_helper_reads_settings_or_defaults() {
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!(
+            "anybridge-test-ag-kite-port-{}-{stamp}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        assert_eq!(preferred_launch_port_from_dir(&dir), CDP_PORT);
+
+        std::fs::write(
+            dir.join("settings.json"),
+            format!(r#"{{"{KITE_CDP_PORT_KEY}": 9444}}"#),
+        )
+        .unwrap();
+        assert_eq!(preferred_launch_port_from_dir(&dir), 9444);
+
+        std::fs::write(
+            dir.join("settings.json"),
+            format!(r#"{{"{KITE_CDP_PORT_KEY}": 0}}"#),
+        )
+        .unwrap();
+        assert_eq!(preferred_launch_port_from_dir(&dir), CDP_PORT);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

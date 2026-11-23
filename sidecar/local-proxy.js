@@ -20,6 +20,7 @@ import {
   mockAntigravityUserQuotaSummary,
   mockAntigravityUserSettings,
   resolveAntigravityCustomModel,
+  resolveAntigravityQuotaPolicy,
   singleflight,
 } from './lib/antigravity-handler.js';
 import { createTargetAttemptRunner } from './lib/attempt-runner.js';
@@ -298,8 +299,19 @@ async function handleAntigravityRequest(req, res, body, p, json, attachScope) {
     return;
   }
   if (method === 'retrieveUserQuotaSummary' || method === 'retrieveUserQuota') {
+    const { mockCreditsEnabled } = resolveAntigravityQuotaPolicy(providersJson);
     if (isHybrid) {
-      await forwardToOfficialAntigravity(req, res, { body, onFailed: () => sendJson(res, 200, mockAntigravityUserQuotaSummary()) });
+      await forwardToOfficialAntigravity(
+        req,
+        res,
+        mockCreditsEnabled
+          ? { body, onFailed: () => sendJson(res, 200, mockAntigravityUserQuotaSummary()) }
+          : { body },
+      );
+      return;
+    }
+    if (!mockCreditsEnabled) {
+      sendJson(res, 200, { userQuotaSummary: { quotas: [] } });
       return;
     }
     sendJson(res, 200, await singleflight('ag_user_quota_summary', 10000, async () => mockAntigravityUserQuotaSummary()));

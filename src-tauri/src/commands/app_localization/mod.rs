@@ -92,7 +92,7 @@ pub(super) fn platform_meta(platform: &str) -> Option<(&'static str, &'static [&
         "devin" => Some(("Devin Desktop", &["Devin", "Windsurf"])),
         "cursor" => Some(("Cursor", &["Cursor"])),
         "claude-desktop" => Some(("Claude Desktop", &[])),
-        "antigravity-ide" => Some(("Antigravity IDE", &["Antigravity IDE", "Antigravity"])),
+        "antigravity-ide" => Some(("Antigravity IDE", &["Antigravity IDE"])),
         _ => None,
     }
 }
@@ -112,34 +112,74 @@ pub(super) fn ide_state_dir(platform: &str) -> Option<PathBuf> {
         .or_else(|| names.first().map(|n| roaming.join(n)))
 }
 
+/// 与安装目录隔离的 home 点目录（Codeium 传统扩展目录以及 Antigravity IDE 的
+/// `dataFolderName: .antigravity-ide`，Electron 主进程从此读取 extensions 与 argv.json）。
+pub(super) fn ide_home_dot_dir(platform: &str) -> Option<PathBuf> {
+    let home = dirs::home_dir()?;
+    match platform {
+        "windsurf" => Some(home.join(".windsurf")),
+        "devin" => {
+            let d = home.join(".devin");
+            if d.is_dir() || !home.join(".windsurf").is_dir() {
+                Some(d)
+            } else {
+                Some(home.join(".windsurf"))
+            }
+        }
+        "antigravity-ide" => Some(home.join(".antigravity-ide")),
+        _ => None,
+    }
+}
+
+/// argv.json 路径：VS Code 主进程按 `VSCODE_PORTABLE` → `~/<dataFolderName>/argv.json`
+/// 解析显示语言 `locale`（实测 Antigravity IDE 在 `~/.antigravity-ide/argv.json`，
+/// 与 `%APPDATA%/Antigravity IDE` 下的 `languagepacks.json` 分离）。
+/// 注意：Cursor 的 `~/.cursor` 是 CLI agent 目录，仅当已存在 `argv.json` 时兼容读取，不主动创建。
+pub(super) fn ide_argv_path(platform: &str) -> Option<PathBuf> {
+    if let Some(portable) = std::env::var_os("VSCODE_PORTABLE") {
+        if !portable.is_empty() {
+            let p = PathBuf::from(&portable);
+            if p.is_dir() {
+                return Some(p.join("argv.json"));
+            }
+        }
+    }
+    if let Some(dot) = ide_home_dot_dir(platform) {
+        return Some(dot.join("argv.json"));
+    }
+    if platform == "cursor" {
+        if let Some(home) = dirs::home_dir() {
+            let home_argv = home.join(".cursor").join("argv.json");
+            if home_argv.exists() {
+                return Some(home_argv);
+            }
+        }
+    }
+    ide_state_dir(platform).map(|d| d.join("argv.json"))
+}
+
 /// 扩展目录（extensions/ 所在）。
-/// Windsurf 系（Codeium 传统）实测把扩展放在 ~/.<name>/extensions；
-/// 其余（Cursor / Antigravity IDE 等标准 VS Code 系）在 %APPDATA%\<name>/extensions。
-/// 注意：Cursor 的 ~/.cursor 是 CLI agent 的目录（agents/cli-config/skills），
-/// 绝不能把编辑器扩展装到那儿——只有 Windsurf 系才探测 home 位置。
+/// Windsurf 系（Codeium 传统）与 Antigravity IDE（`dataFolderName: .antigravity-ide`）
+/// 均将扩展放在 `~/.<name>/extensions`；其余默认在 `%APPDATA%/<name>/extensions`。
+/// 注意：Cursor 的 `~/.cursor` 是 CLI agent 目录，绝不把编辑器扩展装到那儿。
 pub(super) fn ide_extensions_dir(platform: &str) -> Option<PathBuf> {
     let (_, names) = platform_meta(platform)?;
     if names.is_empty() {
         return None;
     }
     let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dot) = ide_home_dot_dir(platform) {
+        candidates.push(dot.join("extensions"));
+    }
     if let Some(roaming) = dirs::config_dir() {
         for n in names {
             candidates.push(roaming.join(n).join("extensions"));
         }
     }
-    if platform == "windsurf" || platform == "devin" {
-        if let Some(home) = dirs::home_dir() {
-            for n in names {
-                // home 下是点前缀小写形式（.windsurf / .devin）
-                let lower = n.to_lowercase().replace(' ', "-");
-                candidates.push(home.join(format!(".{}", lower)).join("extensions"));
-            }
-        }
-    }
     candidates
         .into_iter()
         .find(|p| p.is_dir())
+        .or_else(|| ide_home_dot_dir(platform).map(|d| d.join("extensions")))
         .or_else(|| ide_state_dir(platform).map(|d| d.join("extensions")))
 }
 
@@ -546,3 +586,5 @@ pub async fn download_app_localization_update(
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod lang_pack_tests;

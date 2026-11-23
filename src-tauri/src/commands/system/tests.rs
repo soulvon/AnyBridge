@@ -503,3 +503,40 @@ fn run_command_with_timeout_kills_slow_process_within_budget() {
         "fast process should finish within timeout"
     );
 }
+
+#[test]
+fn antigravity_ide_restart_args_preserve_or_enable_cdp_port() {
+    // 1. 汉化已开启且未传 extra_args：重启必须自动附带调试端口，防止设置页与 Agent 面板退回全英文
+    assert_eq!(
+        super::restart::merge_antigravity_ide_cdp_args(&[], true, None, 9444),
+        vec!["--remote-debugging-port=9444".to_string()]
+    );
+    // 2. 汉化未开启但重启前已带 CDP 端口（如用户快捷方式/Kite 开启）：必须保留原端口
+    assert_eq!(
+        super::restart::merge_antigravity_ide_cdp_args(&[], false, Some(9333), 9444),
+        vec!["--remote-debugging-port=9333".to_string()]
+    );
+    // 3. 汉化未开启且原本未开 CDP：不强加调试端口
+    assert!(
+        super::restart::merge_antigravity_ide_cdp_args(&[], false, None, 9333).is_empty()
+    );
+    // 4. 调用方已显式传入 --remote-debugging-port 时不重复追加
+    let explicit = vec!["--remote-debugging-port=9555".to_string()];
+    assert_eq!(
+        super::restart::merge_antigravity_ide_cdp_args(&explicit, true, Some(9333), 9444),
+        explicit
+    );
+}
+
+#[test]
+fn restart_cdp_command_uses_preferred_launch_port_helper() {
+    assert_eq!(
+        super::restart::build_cdp_restart_args(9444),
+        vec!["--remote-debugging-port=9444".to_string()]
+    );
+    let src = include_str!("restart.rs");
+    assert!(
+        !src.contains("let port = crate::commands::antigravity_cdp::CDP_PORT;"),
+        "restart_antigravity_ide_with_cdp 不得写死 CDP_PORT，应走 preferred_launch_port()"
+    );
+}

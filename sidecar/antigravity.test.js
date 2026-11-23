@@ -19,6 +19,7 @@ import {
   mockAntigravityUserInfo,
   mockAntigravityAdminControls,
   mockAntigravityUserSettings,
+  resolveAntigravityQuotaPolicy,
   isAntigravityBypassMetricsPath,
   antigravityAuthScopeKey,
   singleflight,
@@ -600,5 +601,55 @@ test('Antigravity singleflight 分桶隔离: hybrid 切号后不得命中前一�
   assert.deepEqual(resA1, resA2);
   assert.notDeepEqual(resA1, resB1);
   clearAntigravityCache();
+});
+
+test('Antigravity catalog: 模型未显式设 contextWindow 时继承顶层 antigravityContextWindow', () => {
+  const merged = mergeAntigravityModelsResponse({}, {
+    antigravityContextWindow: 524288,
+    antigravityConfigs: [
+      {
+        id: 'cfg-inherit',
+        name: 'Inherit Model',
+        defaultModel: 'deepseek/deepseek-chat',
+        enabled: true,
+        injectModels: true,
+      },
+      {
+        id: 'cfg-explicit',
+        name: 'Explicit Model',
+        defaultModel: 'deepseek/deepseek-reasoner',
+        contextWindow: 131072,
+        enabled: true,
+        injectModels: true,
+      },
+    ],
+  });
+  const byok = Object.values(merged.models).filter((m) => m.tagDescription === 'BYOK');
+  const inherited = byok.find((m) => m.providerModelId === 'deepseek/deepseek-chat');
+  const explicit = byok.find((m) => m.providerModelId === 'deepseek/deepseek-reasoner');
+  assert.ok(inherited && explicit);
+  assert.equal(inherited.maxTokens, 524288, '未显式配置的模型必须继承顶层 antigravityContextWindow');
+  assert.equal(explicit.maxTokens, 131072, '单模型显式指定的 contextWindow 必须优先');
+});
+
+test('Antigravity 配额策略: resolveAntigravityQuotaPolicy 正确解析默认窗口与伪装开关', () => {
+  assert.deepEqual(resolveAntigravityQuotaPolicy({}), {
+    defaultContextWindow: 262144,
+    mockCreditsEnabled: true,
+  });
+  assert.deepEqual(resolveAntigravityQuotaPolicy({
+    antigravityContextWindow: 1048576,
+    antigravityMockCredits: false,
+  }), {
+    defaultContextWindow: 1048576,
+    mockCreditsEnabled: false,
+  });
+  assert.deepEqual(resolveAntigravityQuotaPolicy({
+    antigravityContextWindow: 'invalid',
+    antigravityMockCredits: true,
+  }), {
+    defaultContextWindow: 262144,
+    mockCreditsEnabled: true,
+  });
 });
 

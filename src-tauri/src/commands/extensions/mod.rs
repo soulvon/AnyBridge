@@ -356,6 +356,7 @@ pub use cpa_install_and_mirrors::*;
 pub use deploy_suite::*;
 pub(crate) use github_download::{download_asset_with, resolve_release_asset, DownloadProgress};
 pub use process_and_suite::*;
+pub(crate) use updates_and_versions::{is_newer_version, latest_release_tag, normalize_version};
 pub use updates_and_versions::*;
 
 #[cfg(test)]

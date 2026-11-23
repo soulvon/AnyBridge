@@ -66,6 +66,9 @@ function updateProxyPlatformCopy(platformId) {
 }
 
 function syncPlatformRailForPage(pageId) {
+  const agTarget = typeof getAntigravityTarget === 'function'
+    ? getAntigravityTarget()
+    : (globalThis._currentAntigravityTarget === 'antigravity-ide' ? 'antigravity-ide' : 'antigravity');
   const pageToPlatform = {
     'platform-cursor': 'cursor',
     'platform-cursor-add': 'cursor',
@@ -75,9 +78,9 @@ function syncPlatformRailForPage(pageId) {
     'platform-claude-desktop-add': 'claude-desktop',
     'platform-codex': 'codex',
     'platform-codex-add': 'codex',
-    'platform-antigravity': 'antigravity',
+    'platform-antigravity': agTarget,
     'platform-antigravity-ide': 'antigravity-ide',
-    'platform-antigravity-add': 'antigravity',
+    'platform-antigravity-add': agTarget,
     'platform-codebuddy': 'codebuddy',
     'platform-codebuddy-add': 'codebuddy',
     'platform-opencode': 'opencode',

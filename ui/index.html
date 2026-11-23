@@ -6623,18 +6623,13 @@
               </button>
               <button class="btn-ghost accent platform-refresh-proxy" id="antigravityRefreshBtn" data-action="antigravityRefreshConsoleAction" data-pass-this>刷新状态</button>
               <button class="btn-ghost danger platform-stop-proxy" id="antigravityRestoreBtn" data-action="antigravityRestoreAction" disabled>停止接入</button>
-              <!-- 汉化放最右（用户指定）：独立于网关接入的能力 -->
-              <button type="button" class="btn-ghost secondary platform-lang-action-btn" id="antigravityLangBtn" data-action="openAntigravityLangModal"
-                style="display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 8px; font-size: 12px; font-weight: 600; height: 30px; flex-shrink: 0;">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0;">
-                  <path d="m5 8 6 6"/>
-                  <path d="m4 14 6-6 2-3"/>
-                  <path d="M2 5h12"/>
-                  <path d="M7 2h1"/>
-                  <path d="m22 22-5-10-5 10"/>
-                  <path d="M14 18h6"/>
+              <!-- 增强插件放最右：统一收口界面汉化与第三方增强项 -->
+              <button type="button" class="btn-ghost secondary platform-enhance-action-btn" id="antigravityEnhanceBtn" data-action="openAntigravityEnhanceModal">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
                 </svg>
-                <span id="antigravityLangBtnText">一键汉化</span>
+                <span id="antigravityEnhanceBtnText">增强插件</span>
+                <span class="enhance-entry-count" id="antigravityEnhanceCount" hidden></span>
               </button>
             </div>
           </section>
@@ -6961,6 +6956,102 @@
               <div style="display: flex; gap: 8px; align-items: center;">
                 <button type="button" class="btn-ghost danger" id="antigravityLangModalRestoreBtn" data-action="restoreAntigravityLocalizationAction" style="height: 32px; padding: 0 14px; font-size: 12px; font-weight: 500; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;" disabled>还原官方英文</button>
                 <button type="button" class="btn-primary" id="antigravityLangModalApplyBtn" data-action="applyAntigravityLocalizationAction" style="height: 32px; padding: 0 16px; font-size: 12px; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;">一键应用汉化</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY 增强插件弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravityEnhanceModal" data-enhance-app="antigravity" role="dialog" aria-modal="true" aria-labelledby="antigravityEnhanceModalTitle" data-action="closeAntigravityEnhanceModal" data-only-self>
+          <div class="modal-container antigravity-enhance-modal is-single">
+            <div class="modal-header antigravity-enhance-head">
+              <div class="antigravity-enhance-head-main">
+                <div class="antigravity-enhance-head-icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+                  </svg>
+                </div>
+                <div class="antigravity-enhance-head-copy">
+                  <div class="modal-title antigravity-enhance-title" id="antigravityEnhanceModalTitle">Antigravity 增强插件</div>
+                  <p class="antigravity-enhance-subtitle" id="antigravityEnhanceModalSubtitle">管理 Antigravity 社区增强插件（已内置界面汉化与多账号能力），改写安装资源前自动快照备份。</p>
+                </div>
+              </div>
+              <div class="antigravity-enhance-head-right">
+                <button type="button" class="btn-ghost icon-btn antigravity-enhance-close" data-action="closeAntigravityEnhanceModal" aria-label="关闭">✕</button>
+              </div>
+            </div>
+            <div class="modal-body antigravity-enhance-body">
+              <div class="antigravity-enhance-notice">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="16" x2="12" y2="12"/>
+                  <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>增强补丁作用于客户端本地资源，客户端官方升级覆盖后可在这里一键重新应用。</span>
+              </div>
+              <div id="antigravityEnhanceList" class="antigravity-enhance-list"></div>
+              <div class="antigravity-enhance-log-block">
+                <div class="antigravity-enhance-log-head">
+                  <span>执行日志</span>
+                  <button type="button" class="antigravity-enhance-log-clear" data-action="clearAntigravityEnhanceLog" data-arg="antigravity">清空</button>
+                </div>
+                <pre id="antigravityEnhanceLog" class="antigravity-enhance-log"></pre>
+              </div>
+            </div>
+            <div class="modal-footer antigravity-enhance-foot">
+              <span class="antigravity-enhance-foot-note">操作均会保留备份并校验，支持随时一键还原。</span>
+              <div class="antigravity-enhance-foot-actions">
+                <button type="button" class="btn-ghost" id="antigravityEnhanceCheckAllBtn" data-action="checkAllAntigravityEnhanceUpdates" data-arg="antigravity" data-pass-this>检查更新</button>
+                <button type="button" class="btn-ghost" id="antigravityEnhanceRefreshBtn" data-action="refreshAntigravityEnhance" data-arg="antigravity" data-pass-this>刷新状态</button>
+                <button type="button" class="btn-ghost secondary" data-action="closeAntigravityEnhanceModal">关闭</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══════ ANTIGRAVITY IDE 增强插件弹窗 ═══════ -->
+        <div class="modal-overlay" id="antigravityIdeEnhanceModal" data-enhance-app="antigravity-ide" role="dialog" aria-modal="true" aria-labelledby="antigravityIdeEnhanceModalTitle" data-action="closeAntigravityIdeEnhanceModal" data-only-self>
+          <div class="modal-container antigravity-enhance-modal">
+            <div class="modal-header antigravity-enhance-head">
+              <div class="antigravity-enhance-head-main">
+                <div class="antigravity-enhance-head-icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
+                  </svg>
+                </div>
+                <div class="antigravity-enhance-head-copy">
+                  <div class="modal-title antigravity-enhance-title" id="antigravityIdeEnhanceModalTitle">Antigravity IDE 增强插件</div>
+                  <p class="antigravity-enhance-subtitle" id="antigravityIdeEnhanceModalSubtitle">统一管理 Antigravity IDE 主界面汉化与内嵌设置页运行期注入，改写前自动快照备份。</p>
+                </div>
+              </div>
+              <div class="antigravity-enhance-head-right">
+                <button type="button" class="btn-ghost icon-btn antigravity-enhance-close" data-action="closeAntigravityIdeEnhanceModal" aria-label="关闭">✕</button>
+              </div>
+            </div>
+            <div class="modal-body antigravity-enhance-body">
+              <div class="antigravity-enhance-notice">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="12" y1="16" x2="12" y2="12"/>
+                  <line x1="12" y1="8" x2="12.01" y2="8"/>
+                </svg>
+                <span>增强补丁作用于客户端本地资源，客户端官方升级覆盖后可在这里一键重新应用。</span>
+              </div>
+              <div id="antigravityIdeEnhanceList" class="antigravity-enhance-list"></div>
+              <div class="antigravity-enhance-log-block">
+                <div class="antigravity-enhance-log-head">
+                  <span>执行日志</span>
+                  <button type="button" class="antigravity-enhance-log-clear" data-action="clearAntigravityEnhanceLog" data-arg="antigravity-ide">清空</button>
+                </div>
+                <pre id="antigravityIdeEnhanceLog" class="antigravity-enhance-log"></pre>
+              </div>
+            </div>
+            <div class="modal-footer antigravity-enhance-foot">
+              <span class="antigravity-enhance-foot-note">操作均会保留备份并校验，支持随时一键还原。</span>
+              <div class="antigravity-enhance-foot-actions">
+                <button type="button" class="btn-ghost" id="antigravityIdeEnhanceCheckAllBtn" data-action="checkAllAntigravityEnhanceUpdates" data-arg="antigravity-ide" data-pass-this>检查更新</button>
+                <button type="button" class="btn-ghost" id="antigravityIdeEnhanceRefreshBtn" data-action="refreshAntigravityEnhance" data-arg="antigravity-ide" data-pass-this>刷新状态</button>
+                <button type="button" class="btn-ghost secondary" data-action="closeAntigravityIdeEnhanceModal">关闭</button>
               </div>
             </div>
           </div>

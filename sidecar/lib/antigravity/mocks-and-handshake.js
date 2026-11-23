@@ -3,6 +3,15 @@ import { normalizeOfficialRequestPayload } from './official-forwarder.js';
 
 const AG_HANDSHAKE_LOG_MAX_BYTES = 5 * 1024 * 1024;
 
+export function resolveAntigravityQuotaPolicy(providersJson = {}) {
+  const rawWindow = Number(providersJson?.antigravityContextWindow);
+  const defaultContextWindow = Number.isFinite(rawWindow) && rawWindow >= 16384
+    ? Math.trunc(rawWindow)
+    : 262144;
+  const mockCreditsEnabled = providersJson?.antigravityMockCredits !== false;
+  return { defaultContextWindow, mockCreditsEnabled };
+}
+
 export function mockAntigravityUserQuotaSummary() {
   return {
     userQuotaSummary: {

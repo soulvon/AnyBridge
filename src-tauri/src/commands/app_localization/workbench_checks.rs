@@ -118,6 +118,54 @@ pub(super) fn clear_enabled(platform: &str) {
     let _ = fs::remove_file(enabled_marker_path(platform));
 }
 
+/// 解析版本前缀：支持 `1.106.0-universal` / `-1.107.0` 等扩展目录后缀形态。
+pub(super) fn parse_semver_prefix(raw: &str) -> Option<(u32, u32, u32)> {
+    let cleaned = raw.trim().trim_start_matches(['-', 'v', 'V']);
+    let mut parts = cleaned.split('.');
+    let parse_num = |s: &str| -> Option<u32> {
+        let digits: String = s.chars().take_while(|c| c.is_ascii_digit()).collect();
+        if digits.is_empty() {
+            None
+        } else {
+            digits.parse::<u32>().ok()
+        }
+    };
+    let major = parse_num(parts.next()?)?;
+    let minor = parse_num(parts.next()?)?;
+    let patch = parts.next().and_then(parse_num).unwrap_or(0);
+    Some((major, minor, patch))
+}
+
+/// 判断语言包版本与 IDE 引擎版本是否兼容：
+/// 同大版本且 `pack.minor <= engine.minor`（允许向下兼容最多 5 个 minor 版本）。
+/// 实测 Open VSX 上 `ms-ceintl/vscode-language-pack-zh-hans` 缺少 `1.107.x`，
+/// `1.106.0`（`engines.vscode: ^1.106.0`）原生兼容 `1.107.0` 引擎；高于引擎的版本不兼容。
+pub(super) fn is_lang_pack_compatible(pack_ver: (u32, u32, u32), engine_ver: (u32, u32, u32)) -> bool {
+    pack_ver.0 == engine_ver.0
+        && pack_ver.1 <= engine_ver.1
+        && engine_ver.1.saturating_sub(pack_ver.1) <= 5
+}
+
+/// 从版本列表中挑出与当前 IDE 引擎兼容且版本号最大的原始键。
+pub(super) fn pick_compatible_lang_pack_version<'a>(
+    versions: impl IntoIterator<Item = &'a str>,
+    engine: &str,
+) -> Option<String> {
+    let engine_ver = parse_semver_prefix(engine)?;
+    let mut pick: Option<(String, (u32, u32, u32))> = None;
+    for raw in versions {
+        let Some(ver) = parse_semver_prefix(raw) else {
+            continue;
+        };
+        if is_lang_pack_compatible(ver, engine_ver)
+            && pick.as_ref().map(|(_, pv)| ver > *pv).unwrap_or(true)
+        {
+            pick = Some((raw.to_string(), ver));
+        }
+    }
+    pick.map(|(k, _)| k)
+}
+
 /// IDE 内置引擎版本：优先 product.json 的 vscodeVersion 字段（Cursor 等发行版
 /// 用自己的版本号，如 3.15.6，而内置 VS Code 引擎在 vscodeVersion，如 1.128.0），
 /// 回退 version 字段（Windsurf 系的 version 即引擎对齐版本）。
@@ -133,35 +181,32 @@ pub(super) fn engine_version(platform: &str) -> Option<String> {
         })
 }
 
-/// 已装语言包里是否有与 IDE 引擎 major.minor 匹配的版本。
-///
-/// 语言包跨引擎版本不兼容（engines.vscode 校验）：引擎 1.110.1 配 1.126.0
-/// 的语言包会被 VS Code 拒绝加载，locale 设了也回退英文——装了等于没装。
-/// 必须按兼容性判定，不能只看目录存在。
+/// 已装语言包里是否有与 IDE 引擎兼容的版本（兼容同 minor 或向下 5 个 minor，
+/// 并支持 `-universal` 等目录后缀）。
 pub(super) fn compatible_lang_pack_dir(platform: &str) -> Option<PathBuf> {
     let engine = engine_version(platform)?;
-    let want: Vec<u32> = engine.split('.').filter_map(|p| p.parse::<u32>().ok()).collect();
-    if want.len() < 2 {
-        return None;
-    }
+    let engine_ver = parse_semver_prefix(&engine)?;
     let ext_dir = ide_extensions_dir(platform)?;
     let entries = fs::read_dir(&ext_dir).ok()?;
-    let mut matched: Option<PathBuf> = None;
+    let mut matched: Option<((u32, u32, u32), PathBuf)> = None;
     for e in entries.flatten() {
+        if !e.path().is_dir() {
+            continue;
+        }
         let name = e.file_name().to_string_lossy().to_string();
         let Some(rest) = name.strip_prefix(LANG_PACK_DIR_PREFIX) else {
             continue;
         };
-        let ver: Vec<u32> = rest
-            .trim_start_matches('-')
-            .split('.')
-            .filter_map(|p| p.parse::<u32>().ok())
-            .collect();
-        if ver.len() >= 2 && ver[0] == want[0] && ver[1] == want[1] {
-            matched = Some(e.path());
+        let Some(ver) = parse_semver_prefix(rest) else {
+            continue;
+        };
+        if is_lang_pack_compatible(ver, engine_ver)
+            && matched.as_ref().map(|(mv, _)| ver > *mv).unwrap_or(true)
+        {
+            matched = Some((ver, e.path()));
         }
     }
-    matched
+    matched.map(|(_, p)| p)
 }
 
 /// 读扩展目录的 `.obsolete` 废弃标记 key 集合（小写，用于前缀匹配）。

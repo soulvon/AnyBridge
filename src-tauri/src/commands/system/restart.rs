@@ -198,6 +198,27 @@ fn stop_devin_daemon_if_running(ide_path: &std::path::Path) {
     let _ = run_command_with_timeout(&mut cmd, std::time::Duration::from_secs(4));
 }
 
+/// 合并 Antigravity IDE 重启时的 `--remote-debugging-port` 参数：
+/// 若已显式传入 `--remote-debugging-port` 则保持不变；
+/// 否则当汉化已开启或重启前已启用调试端口时，自动保留/补上调试端口，
+/// 避免设置页与 Agent 面板失去 CDP 注入通道。
+pub(crate) fn merge_antigravity_ide_cdp_args(
+    extra_args: &[String],
+    loc_enabled: bool,
+    prev_port: Option<u16>,
+    fallback_port: u16,
+) -> Vec<String> {
+    let mut out = extra_args.to_vec();
+    let has_port_arg = out.iter().any(|a| {
+        a == "--remote-debugging-port" || a.starts_with("--remote-debugging-port=")
+    });
+    if !has_port_arg && (loc_enabled || prev_port.is_some()) {
+        let port = prev_port.unwrap_or(fallback_port);
+        out.push(format!("--remote-debugging-port={port}"));
+    }
+    out
+}
+
 pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Result<String, String> {
     let t = if target == "auto" {
         detect_target_ide()
@@ -212,6 +233,20 @@ pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Resul
         let mut kill_report = String::new();
         let exe = find_ide_exe(&t)
             .ok_or_else(|| format!("未找到 {} 安装位置，请手动重启", ide_dir_name(&t)))?;
+
+        // 在杀进程前读取当前活跃的 CDP 端口与汉化开启态，确保普通重启也保留调试端口。
+        let effective_extra_args: Vec<String> = if t == "antigravity-ide" {
+            let prev_port = if crate::commands::antigravity_cdp::probe().is_ok() {
+                Some(crate::commands::antigravity_cdp::active_port())
+            } else {
+                None
+            };
+            let loc_enabled = crate::commands::app_localization::is_enabled("antigravity-ide");
+            let fallback_port = crate::commands::antigravity_cdp::preferred_launch_port();
+            merge_antigravity_ide_cdp_args(&extra_args, loc_enabled, prev_port, fallback_port)
+        } else {
+            extra_args.clone()
+        };
 
         // Devin 的主进程名仍为 Windsurf.exe，需通过路径过滤只杀来自 Devin 安装目录的进程；
         // Windsurf 则直接杀所有 Windsurf.exe 进程。
@@ -364,8 +399,9 @@ pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Resul
 
         let spawn_client = |args: &[&str]| -> Result<std::process::Child, String> {
             Command::new(&exe)
+                .env_remove("ELECTRON_RUN_AS_NODE")
                 .args(args)
-                .args(&extra_args)
+                .args(&effective_extra_args)
                 .hide_window()
                 .spawn()
                 .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))
@@ -551,6 +587,11 @@ pub async fn restart_ide(target: String) -> Result<String, String> {
         .map_err(|e| format!("重启 IDE 任务失败: {}", e))?
 }
 
+/// 构建以 CDP 调试模式启动 Antigravity IDE 的参数列表（便于全平台复用与单测锁定）。
+pub(super) fn build_cdp_restart_args(port: u16) -> Vec<String> {
+    vec![format!("--remote-debugging-port={port}")]
+}
+
 /// 以「汉化模式」重启 Antigravity IDE：附加 `--remote-debugging-port`。
 ///
 /// 设置页 / Agent 面板由本地 Web 应用渲染（跨源 iframe + 资源编译进 agy.exe），
@@ -577,10 +618,10 @@ pub async fn restart_antigravity_ide_with_cdp() -> Result<String, String> {
                     "调试端口 {port} 已就绪，已直接补注入 {injected} 个界面（未重启 IDE）"
                 ));
             }
-            let port = crate::commands::antigravity_cdp::CDP_PORT;
+            let port = crate::commands::antigravity_cdp::preferred_launch_port();
             restart_ide_impl(
                 "antigravity-ide".to_string(),
-                vec![format!("--remote-debugging-port={port}")],
+                build_cdp_restart_args(port),
             )
             .map(|msg| format!("{msg}（已启用深度汉化，调试端口 {port}）"))
         })

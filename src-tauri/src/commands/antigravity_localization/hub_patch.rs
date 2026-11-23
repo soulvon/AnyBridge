@@ -95,189 +95,86 @@ pub(crate) fn extract_dictionary_override(source: &str) -> Option<(String, usize
     Some((format!("window.__ANYBRIDGE_HANS_DICT = {};", json), count))
 }
 
-/// 检测 Hub 是否已汉化：只读 asar 的 header 区与 preload.js 段，不读全文件。
-/// 曾经 fs::read 整个 4.5MB asar：Windows Defender 实时扫描 + serde 解析 header
-/// 合计几百毫秒，且调用方是同步命令会占住 Tauri 主线程，点按钮观感"卡半天"。
-pub(crate) fn is_hub_localized(asar_path: &Path) -> bool {
+pub(crate) fn read_asar_header(file: &mut fs::File) -> Result<(usize, usize, Value), String> {
     use std::io::{Read, Seek, SeekFrom};
-    let Ok(mut file) = fs::File::open(asar_path) else {
-        return false;
-    };
+    file.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
     // pickle 头 16 字节：[4][headerBufLen][4][jsonLen]...
-    let mut head = [0u8; 16];
-    if file.read_exact(&mut head).is_err() {
-        return false;
-    }
-    let json_size = u32::from_le_bytes(head[12..16].try_into().unwrap()) as usize;
-    let declared_header_size = u32::from_le_bytes(head[4..8].try_into().unwrap()) as usize;
-    let payload_start = asar_payload_start(declared_header_size);
-    // 只读 header JSON（asar 全部文件条目，几百 KB），跳过 4.5MB payload
-    let mut header_bytes = vec![0u8; json_size];
-    if file.read_exact(&mut header_bytes).is_err() {
-        return false;
-    }
-    let Ok(header_str) = std::str::from_utf8(&header_bytes) else {
-        return false;
-    };
-    let Ok(header) = serde_json::from_str::<Value>(header_str) else {
-        return false;
-    };
-
-    let Some(preload_node) = header
-        .get("files")
-        .and_then(|f| f.get("dist"))
-        .and_then(|d| d.get("files"))
-        .and_then(|f| f.get("preload.js"))
-    else {
-        return false;
-    };
-
-    let offset: usize = preload_node
-        .get("offset")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    let size: usize = preload_node
-        .get("size")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as usize;
-    if size == 0 {
-        return false;
-    }
-    // seek 到 preload.js 段，只读这一段
-    if file
-        .seek(SeekFrom::Start((payload_start + offset) as u64))
-        .is_err()
-    {
-        return false;
-    }
-    let mut code_bytes = vec![0u8; size];
-    if file.read_exact(&mut code_bytes).is_err() {
-        return false;
-    }
-    let Ok(code) = std::str::from_utf8(&code_bytes) else {
-        return false;
-    };
-    // 当前代 payload 的运行时标记（常量与 payload 同源，见 antigravity_loc_payload）；
-    // 两个历史引擎字面量保留为兼容判据——老版本 AnyBridge 打的补丁没有新标记，
-    // 漏判会让用户重复 apply、旧补丁叠加。去重锚点同样兼容这三代（见 patch_hub_asar）。
-    code.contains(crate::commands::antigravity_loc_payload::HUB_PATCH_FLAG)
-        || code.contains("__antigravityHansInjected")
-        || code.contains("Antigravity 2.0 Chinese Localization Engine")
-}
-
-pub(crate) fn is_ide_localized(html_path: &Path) -> bool {
-    if let Ok(content) = fs::read_to_string(html_path) {
-        return content.contains("antigravity-hans-overlay.js")
-            || content.contains("__antigravityIdeHansInjected");
-    }
-    false
-}
-
-pub(crate) fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
-    use std::io::{Read, Seek, SeekFrom};
-    let _t0 = std::time::Instant::now();
-
-    // ── 轻量读：只读 header + preload.js 段（几 MB）。构造期望内容后与现值
-    //    比对，一致（重复点「一键汉化」且词库/引擎未变）则跳过几百 MB 的
-    //    asar 全量重写——原先每次都读写整个文件，是点击后卡顿数秒的主因。
-    let mut f = fs::File::open(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
     let mut head16 = [0u8; 16];
-    f.read_exact(&mut head16).map_err(|e| format!("读取 asar 头失败: {e}"))?;
+    file.read_exact(&mut head16)
+        .map_err(|e| format!("读取 asar 头失败: {e}"))?;
+    let declared_header_size = u32::from_le_bytes(head16[4..8].try_into().unwrap()) as usize;
     let json_size = u32::from_le_bytes(head16[12..16].try_into().unwrap()) as usize;
     if json_size == 0 || json_size > 64 * 1024 * 1024 {
         return Err("app.asar header 大小异常".to_string());
     }
-
-    let mut header_bytes = vec![0u8; 16 + json_size];
-    f.seek(SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-    f.read_exact(&mut header_bytes).map_err(|e| format!("读取 asar header 失败: {e}"))?;
-    let header_str = std::str::from_utf8(&header_bytes[16..])
+    let payload_start = asar_payload_start(declared_header_size);
+    let mut header_bytes = vec![0u8; json_size];
+    file.read_exact(&mut header_bytes)
+        .map_err(|e| format!("读取 asar header 失败: {e}"))?;
+    let header_str = std::str::from_utf8(&header_bytes)
         .map_err(|e| format!("解析 header UTF-8 失败: {e}"))?;
-    let mut header: Value =
+    let header: Value =
         serde_json::from_str(header_str).map_err(|e| format!("解析 header JSON 失败: {e}"))?;
+    Ok((json_size, payload_start, header))
+}
 
-    let preload_node = header
-        .get_mut("files")
-        .and_then(|f| f.get_mut("dist"))
-        .and_then(|d| d.get_mut("files"))
-        .and_then(|f| f.get_mut("preload.js"))
-        .and_then(|n| n.as_object_mut())
-        .ok_or_else(|| "未在 app.asar 中找到 dist/preload.js".to_string())?;
-
-    let offset: usize = preload_node
+pub(crate) fn read_asar_node_text(
+    file: &mut fs::File,
+    header: &Value,
+    payload_start: usize,
+    rel_parts: &[&str],
+) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut cur = header;
+    for part in rel_parts {
+        cur = cur
+            .get("files")
+            .and_then(|f| f.get(*part))
+            .ok_or_else(|| format!("未在 app.asar 中找到 {}", rel_parts.join("/")))?;
+    }
+    let offset: usize = cur
         .get("offset")
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
-    let size: usize = preload_node
-        .get("size")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as usize;
-    let declared_header_size = u32::from_le_bytes(head16[4..8].try_into().unwrap()) as usize;
-    let payload_start = asar_payload_start(declared_header_size);
+    let size: usize = cur.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
     if size == 0 || size > 256 * 1024 * 1024 {
-        return Err("preload.js 段大小异常".to_string());
+        return Err(format!("{} 段大小异常", rel_parts.join("/")));
     }
-
-    f.seek(SeekFrom::Start((payload_start + offset) as u64))
+    file.seek(SeekFrom::Start((payload_start + offset) as u64))
         .map_err(|e| e.to_string())?;
-    let mut preload_buf = vec![0u8; size];
-    f.read_exact(&mut preload_buf).map_err(|e| format!("读取 preload.js 失败: {e}"))?;
-    let original_code =
-        std::str::from_utf8(&preload_buf).map_err(|e| format!("解析 preload.js 失败: {e}"))?.to_string();
-    drop(f);
+    let mut buf = vec![0u8; size];
+    file.read_exact(&mut buf)
+        .map_err(|e| format!("读取 {} 失败: {e}", rel_parts.join("/")))?;
+    std::str::from_utf8(&buf)
+        .map(|s| s.to_string())
+        .map_err(|e| format!("解析 {} 失败: {e}", rel_parts.join("/")))
+}
 
-    // ── 备份策略（版本防护，与 workbench_inject 的 product.json 备份同思路）──
-    // 原厂态（首次汉化，或官方升级覆盖后的新版原厂）一律刷新备份，确保
-    // app.asar.lang.bak 与当前安装严格一致——否则升级后点"还原"会把新版
-    // 客户端覆盖成旧版。已汉化态则要求备份必须存在，缺失如实报错：
-    // 旧实现 let _ = 静默吞掉 copy 失败 = 永久失去还原源。
-    let patched = original_code.contains(crate::commands::antigravity_loc_payload::HUB_PATCH_FLAG);
-    let bak_path = asar_path.with_file_name("app.asar.lang.bak");
-    if !patched {
-        fs::copy(asar_path, &bak_path).map_err(|e| {
-            format!(
-                "备份 app.asar 失败（不备份就打补丁将无法还原，请先关闭 Antigravity 后重试）: {e}"
-            )
-        })?;
-    } else if !bak_path.exists() {
-        return Err(
-            "检测到已汉化但缺少 app.asar.lang.bak 备份，无法安全更新补丁；请先重装 Antigravity 恢复原厂后再试"
-                .to_string(),
-        );
-    }
+fn read_asar_dist_file(
+    file: &mut fs::File,
+    header: &Value,
+    payload_start: usize,
+    file_name: &str,
+) -> Result<String, String> {
+    read_asar_node_text(file, header, payload_start, &["dist", file_name])
+}
 
-    // ── 去重截断：从最早出现的补丁块锚点处截掉旧补丁，再追加新补丁 ──
-    // 三代引擎的锚点都保留：老版本 AnyBridge 打的旧补丁也要能被剥掉，
-    // 否则新旧引擎叠加会双重翻译。
-    let anchors: [&str; 3] = [
-        crate::commands::antigravity_loc_payload::HUB_PATCH_HEADER,
-        "// Antigravity 2.0 Chinese Localization Engine",
-        "// Antigravity Chinese Localization Engine",
-    ];
-    let clean_base = anchors
-        .iter()
-        .filter_map(|a| original_code.find(a))
-        .min()
-        .map(|idx| original_code[..idx].trim_end().to_string())
-        .unwrap_or_else(|| original_code.clone());
-
-    let new_code = format!("{}\n\n{}\n", clean_base, get_hub_payload().trim());
-    eprintln!("[ag-loc] patch: 轻量读+构造耗时 {:?}", _t0.elapsed());
-
-    // 幂等：内容一致 → 跳过几百 MB 的 asar 全量重写
-    if original_code == new_code {
-        
-        eprintln!("[ag-loc] patch: 内容一致跳过写回");
-        return Ok(());
-    }
-
-    // 内容有变（首次 / 词库更新 / 引擎升级）→ 全量读 asar 改 header 后写回
+pub(crate) fn write_asar_preload(asar_path: &Path, new_code: &str) -> Result<(), String> {
     let bytes = fs::read(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
-    if bytes.len() < 16 + json_size {
+    if bytes.len() < 16 {
         return Err("app.asar header 大小异常".to_string());
     }
+    let declared_header_size = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let json_size = u32::from_le_bytes(bytes[12..16].try_into().unwrap()) as usize;
+    if json_size == 0 || json_size > 64 * 1024 * 1024 || bytes.len() < 16 + json_size {
+        return Err("app.asar header 大小异常".to_string());
+    }
+    let payload_start = asar_payload_start(declared_header_size);
+    if bytes.len() < payload_start {
+        return Err("app.asar payload 偏移异常".to_string());
+    }
+
     let header_str = std::str::from_utf8(&bytes[16..16 + json_size])
         .map_err(|e| format!("解析 header UTF-8 失败: {e}"))?;
     let mut header: Value =
@@ -289,6 +186,7 @@ pub(crate) fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
         .and_then(|f| f.get_mut("preload.js"))
         .and_then(|n| n.as_object_mut())
         .ok_or_else(|| "未在 app.asar 中找到 dist/preload.js".to_string())?;
+
     let new_code_bytes = new_code.as_bytes();
     let old_payload = &bytes[payload_start..];
     let new_offset = old_payload.len();
@@ -331,8 +229,155 @@ pub(crate) fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
     final_bytes.extend_from_slice(new_code_bytes);
 
     crate::commands::write_atomic(asar_path, &final_bytes)
-        .map_err(|e| format!("写入汉化补丁失败（请先关闭 Antigravity 客户端后重试）: {e}"))?;
-    Ok(())
+        .map_err(|e| format!("写入汉化补丁失败（请先关闭 Antigravity 客户端后重试）: {e}"))
+}
+
+/// 剥离 `dist/preload.js` 中的 AnyBridge 汉化引擎段落，保留前后其它第三方补丁（如 context-viewer）。
+/// 未命中任何一代汉化锚点时返回 `None`。
+pub(crate) fn strip_hub_localization_code(code: &str) -> Option<String> {
+    let anchors: [&str; 3] = [
+        crate::commands::antigravity_loc_payload::HUB_PATCH_HEADER,
+        "// Antigravity 2.0 Chinese Localization Engine",
+        "// Antigravity Chinese Localization Engine",
+    ];
+    let start_idx = anchors.iter().filter_map(|a| code.find(a)).min()?;
+    let tail = &code[start_idx..];
+
+    // 若汉化块之后还追加了第三方模块标记，只切除中间的 AnyBridge 汉化段，保留后缀补丁。
+    let third_party_markers = [
+        "// --- Antigravity Context Meter",
+        "// --- Antigravity Proxy",
+        "// --- Antigravity Chinese Localization",
+        "// --- METER_PRELOAD_START ---",
+    ];
+    let third_party_offset = third_party_markers
+        .iter()
+        .filter_map(|m| tail.find(m))
+        .min();
+
+    let prefix = code[..start_idx].trim_end();
+    if let Some(offset) = third_party_offset {
+        let suffix = tail[offset..].trim_start();
+        if prefix.is_empty() {
+            Some(suffix.to_string())
+        } else {
+            Some(format!("{prefix}\n\n{suffix}"))
+        }
+    } else {
+        Some(prefix.to_string())
+    }
+}
+
+fn asar_has_third_party_patch(asar_path: &Path) -> bool {
+    let Ok(mut f) = fs::File::open(asar_path) else {
+        return false;
+    };
+    let Ok((_, payload_start, header)) = read_asar_header(&mut f) else {
+        return false;
+    };
+    if header.pointer("/files/dist/files/meter-manifest.json").is_some() {
+        return true;
+    }
+    if let Ok(utils) = read_asar_dist_file(&mut f, &header, payload_start, "utils.js") {
+        if utils.contains("installContextMeter(")
+            || utils.contains("Antigravity Context Meter")
+            || utils.contains("Antigravity Proxy NoTun")
+        {
+            return true;
+        }
+    }
+    if let Ok(preload) = read_asar_dist_file(&mut f, &header, payload_start, "preload.js") {
+        if preload.contains("Antigravity Context Meter")
+            || preload.contains("METER_PRELOAD_START")
+            || preload.contains("Antigravity Chinese Localization Injection")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// 判断 `dist/preload.js` 文本中是否包含任意一代 AnyBridge 汉化补丁标记（当前代 + 两代历史引擎）。
+/// 由 `is_hub_localized` 与 `patch_hub_asar` 共享唯一判据，防止老代补丁升级时被误认作原厂并污染备份。
+pub(crate) fn code_has_hub_localization(code: &str) -> bool {
+    code.contains(crate::commands::antigravity_loc_payload::HUB_PATCH_FLAG)
+        || code.contains("__antigravityHansInjected")
+        || code.contains("Antigravity 2.0 Chinese Localization Engine")
+}
+
+/// 检测 Hub 是否已汉化：只读 asar 的 header 区与 preload.js 段，不读全文件。
+/// 曾经 fs::read 整个 4.5MB asar：Windows Defender 实时扫描 + serde 解析 header
+/// 合计几百毫秒，且调用方是同步命令会占住 Tauri 主线程，点按钮观感"卡半天"。
+pub(crate) fn is_hub_localized(asar_path: &Path) -> bool {
+    let Ok(mut file) = fs::File::open(asar_path) else {
+        return false;
+    };
+    let Ok((_, payload_start, header)) = read_asar_header(&mut file) else {
+        return false;
+    };
+    let Ok(code) = read_asar_dist_file(&mut file, &header, payload_start, "preload.js") else {
+        return false;
+    };
+    code_has_hub_localization(&code)
+}
+
+pub(crate) fn is_ide_localized(html_path: &Path) -> bool {
+    if let Ok(content) = fs::read_to_string(html_path) {
+        return content.contains("antigravity-hans-overlay.js")
+            || content.contains("__antigravityIdeHansInjected");
+    }
+    false
+}
+
+pub(crate) fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
+    let _t0 = std::time::Instant::now();
+
+    // ── 轻量读：只读 header + preload.js 段（几 MB）。构造期望内容后与现值
+    //    比对，一致（重复点「一键汉化」且词库/引擎未变）则跳过几百 MB 的
+    //    asar 全量重写——原先每次都读写整个文件，是点击后卡顿数秒的主因。
+    let mut f = fs::File::open(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
+    let (_, payload_start, header) = read_asar_header(&mut f)?;
+    let original_code = read_asar_dist_file(&mut f, &header, payload_start, "preload.js")?;
+    drop(f);
+
+    // ── 备份策略（版本防护，与 workbench_inject 的 product.json 备份同思路）──
+    // 原厂态（首次汉化，或官方升级覆盖后的新版原厂）一律刷新备份，确保
+    // app.asar.lang.bak 与当前安装严格一致——否则升级后点"还原"会把新版
+    // 客户端覆盖成旧版。已汉化态则要求备份必须存在，缺失如实报错：
+    // 旧实现 let _ = 静默吞掉 copy 失败 = 永久失去还原源。
+    let patched = code_has_hub_localization(&original_code);
+    let bak_path = asar_path.with_file_name("app.asar.lang.bak");
+    if !patched {
+        fs::copy(asar_path, &bak_path).map_err(|e| {
+            format!(
+                "备份 app.asar 失败（不备份就打补丁将无法还原，请先关闭 Antigravity 后重试）: {e}"
+            )
+        })?;
+    } else if !bak_path.exists() {
+        return Err(
+            "检测到已汉化但缺少 app.asar.lang.bak 备份，无法安全更新补丁；请先重装 Antigravity 恢复原厂后再试"
+                .to_string(),
+        );
+    }
+
+    // ── 去重剥离：只剥离 AnyBridge 汉化段，完整保留前后其它第三方补丁 ──
+    let clean_base = strip_hub_localization_code(&original_code)
+        .unwrap_or_else(|| original_code.clone());
+    let clean_trimmed = clean_base.trim_end();
+    let new_code = if clean_trimmed.is_empty() {
+        format!("{}\n", get_hub_payload().trim())
+    } else {
+        format!("{}\n\n{}\n", clean_trimmed, get_hub_payload().trim())
+    };
+    eprintln!("[ag-loc] patch: 轻量读+构造耗时 {:?}", _t0.elapsed());
+
+    // 幂等：内容一致 → 跳过几百 MB 的 asar 全量重写
+    if original_code == new_code {
+        eprintln!("[ag-loc] patch: 内容一致跳过写回");
+        return Ok(());
+    }
+
+    write_asar_preload(asar_path, &new_code)
 }
 
 /// 当前 asar 是否已含 BYOK 端点补丁（端点节点里有 jetski.cloudCodeUrl）。
@@ -340,64 +385,49 @@ pub(crate) fn patch_hub_asar(asar_path: &Path) -> Result<(), String> {
 /// 与 patch_antigravity_hub_asar 共用同一份节点选择规则。
 /// 用途见 restore_hub_asar：覆盖前记录，覆盖后把补丁打回去。
 pub(crate) fn hub_has_byok_patch(asar_path: &Path) -> bool {
-    use std::io::{Read, Seek, SeekFrom};
     let Ok(mut f) = fs::File::open(asar_path) else {
         return false;
     };
-    let mut head16 = [0u8; 16];
-    if f.read_exact(&mut head16).is_err() {
-        return false;
-    }
-    let json_size = u32::from_le_bytes(head16[12..16].try_into().unwrap()) as usize;
-    if json_size == 0 || json_size > 64 * 1024 * 1024 {
-        return false;
-    }
-    let mut header_bytes = vec![0u8; 16 + json_size];
-    if f.seek(SeekFrom::Start(0)).is_err() || f.read_exact(&mut header_bytes).is_err() {
-        return false;
-    }
-    let Ok(header_str) = std::str::from_utf8(&header_bytes[16..]) else {
-        return false;
-    };
-    let Ok(header) = serde_json::from_str::<Value>(header_str) else {
+    let Ok((_, payload_start, header)) = read_asar_header(&mut f) else {
         return false;
     };
     let Some(node_name) = crate::commands::platforms::hub_endpoint_node_name(&header) else {
         return false;
     };
-    let Some(ls) = header.pointer(&format!("/files/dist/files/{node_name}")) else {
-        return false;
-    };
-    let offset: usize = ls
-        .get("offset")
-        .and_then(|v| v.as_str())
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(0);
-    let size: usize = ls.get("size").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
-    if size == 0 || size > 256 * 1024 * 1024 {
-        return false;
-    }
-    let declared = u32::from_le_bytes(head16[4..8].try_into().unwrap()) as usize;
-    let payload_start = asar_payload_start(declared);
-    if f.seek(SeekFrom::Start((payload_start + offset) as u64)).is_err() {
-        return false;
-    }
-    let mut buf = vec![0u8; size];
-    if f.read_exact(&mut buf).is_err() {
-        return false;
-    }
-    std::str::from_utf8(&buf)
+    read_asar_dist_file(&mut f, &header, payload_start, node_name)
         .map(|c| c.contains("jetski.cloudCodeUrl"))
         .unwrap_or(false)
 }
 
 pub(crate) fn restore_hub_asar(asar_path: &Path) -> Result<(), String> {
+    let bak_path = asar_path.with_file_name("app.asar.lang.bak");
+    let has_third_party = asar_has_third_party_patch(asar_path);
+
+    // 若包内存在第三方补丁（如 context-viewer）或缺少备份，优先原位剥离 preload.js 的
+    // AnyBridge 汉化段，避免整包备份覆盖把第三方补丁与 BYOK 抹掉。
+    if has_third_party || !bak_path.exists() {
+        let mut f = fs::File::open(asar_path).map_err(|e| format!("读取 app.asar 失败: {e}"))?;
+        let (_, payload_start, header) = read_asar_header(&mut f)?;
+        let original_code = read_asar_dist_file(&mut f, &header, payload_start, "preload.js")?;
+        drop(f);
+
+        if let Some(cleaned) = strip_hub_localization_code(&original_code) {
+            let final_code = if cleaned.is_empty() || cleaned.ends_with('\n') {
+                cleaned
+            } else {
+                format!("{cleaned}\n")
+            };
+            write_asar_preload(asar_path, &final_code)?;
+            if bak_path.exists() {
+                let _ = fs::remove_file(&bak_path);
+            }
+            return Ok(());
+        }
+        return Err("未找到汉化前备份或汉化标记（可能尚未应用过汉化），无需还原".to_string());
+    }
+
     // 只从汉化前备份还原。绝不回退到 app.asar.official.bak——那是 BYOK 接入前的
     // 纯净官方版，用它还原会连带抹掉 BYOK 端点补丁，造成接入静默失效。
-    let bak_path = asar_path.with_file_name("app.asar.lang.bak");
-    if !bak_path.exists() {
-        return Err("未找到汉化前备份（可能尚未应用过汉化），无需还原".to_string());
-    }
     // 反方向同理：lang.bak 是「汉化前」快照，先汉化后接入时它同样不含 BYOK 补丁。
     // 覆盖前记录接入状态，覆盖后立即把 BYOK 补丁打回去——否则 settings.json 仍指向
     // 本地网关（UI 显示已接入），而 asar 里的端点补丁已被抹掉（实际失效，静默）。

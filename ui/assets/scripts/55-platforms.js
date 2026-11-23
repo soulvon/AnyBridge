@@ -10,6 +10,7 @@ import './platforms/codex_models.js';
 import './platforms/codex_editor.js';
 import './platforms/antigravity_console.js';
 import './platforms/antigravity_localization.js';
+import './platforms/antigravity_enhance.js';
 import './platforms/antigravity_models.js';
 import './platforms/antigravity_modals.js';
 import './platforms/antigravity_add.js';

@@ -365,6 +365,10 @@ function refreshAllHeroVersions() {
   if (ideTarget && ['windsurf', 'devin', 'cursor'].includes(ideTarget)) {
     renderHeroVersion(ideTarget, 'proxy-platform-version');
   }
+  const agTarget =
+    typeof getAntigravityTarget === 'function'
+      ? getAntigravityTarget()
+      : (globalThis._currentAntigravityTarget === 'antigravity-ide' ? 'antigravity-ide' : 'antigravity');
   const ids = [
     ['codebuddy', 'codebuddy-platform-version'],
     ['workbuddy', 'workbuddy-platform-version'],
@@ -372,7 +376,7 @@ function refreshAllHeroVersions() {
     ['pi', 'pi-platform-version'],
     ['hermes', 'hermes-platform-version'],
     ['deepseek-harness', 'deepseek-harness-platform-version'],
-    ['antigravity', 'antigravity-platform-version'],
+    [agTarget, 'antigravity-platform-version'],
     // Claude Desktop：其页面自身的 refresh 函数前置了多次 await
     // （loadProxyRoutes / get_claude_desktop_status），任一处挂起就永远
     // 到不了版本行渲染（实测一直停在「检测中」）。统一在此兜住。

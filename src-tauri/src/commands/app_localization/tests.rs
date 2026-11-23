@@ -66,6 +66,15 @@ fn platform_meta_known_and_unknown() {
 }
 
 #[test]
+fn antigravity_ide_meta_does_not_fallback_to_hub_dir() {
+    assert_eq!(
+        platform_meta("antigravity-ide"),
+        Some(("Antigravity IDE", &["Antigravity IDE"][..])),
+        "Antigravity IDE 状态目录不得回落到白底桌面端 Antigravity"
+    );
+}
+
+#[test]
 fn builds_cursor_script_from_baseline_dictionary() {
     let script = build_script_from_dictionary(CURSOR_BASELINE_DICT)
         .expect("内置 Cursor 词典应能组装出脚本");

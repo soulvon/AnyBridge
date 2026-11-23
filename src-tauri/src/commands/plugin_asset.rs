@@ -363,6 +363,18 @@ fn strip_path(path: &Path, strip: usize) -> Option<PathBuf> {
 }
 
 fn extract_zip(archive: &Path, target: &Path, strip: usize) -> Result<(), String> {
+    extract_zip_filtered(archive, target, strip, |_| true)
+}
+
+pub(crate) fn extract_zip_filtered<F>(
+    archive: &Path,
+    target: &Path,
+    strip: usize,
+    mut allow_rel: F,
+) -> Result<(), String>
+where
+    F: FnMut(&Path) -> bool,
+{
     let file = fs::File::open(archive).map_err(|e| format!("无法打开 zip 包：{}", e))?;
     let mut zip = zip::ZipArchive::new(file).map_err(|e| format!("无效的 zip 包：{}", e))?;
 
@@ -374,6 +386,9 @@ fn extract_zip(archive: &Path, target: &Path, strip: usize) -> Result<(), String
         let Some(rel) = strip_path(&enclosed, strip) else {
             continue;
         };
+        if !allow_rel(&rel) {
+            continue;
+        }
         let out = target.join(&rel);
 
         if entry.is_dir() {

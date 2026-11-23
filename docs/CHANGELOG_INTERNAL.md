@@ -9,6 +9,26 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.15（Antigravity IDE 全链路汉化修复）
+
+- **路径契约修复（`app_localization/{mod,lang_pack,apply_and_keeper}.rs`）**：Antigravity IDE 的 `dataFolderName` 为 `.antigravity-ide`，扩展目录与 `argv.json` 位于 `~/.antigravity-ide`，仅 `languagepacks.json` 留在 `%APPDATA%/Antigravity IDE`。新增 `ide_home_dot_dir` 与 `ide_argv_path` 统一映射；还原路径同步回滚此前误写入 `ide_state_dir/argv.json` 的残留。
+- **语言包兼容降级与 `-universal` 注册（`app_localization/{workbench_checks,lang_pack}.rs`）**：Open VSX 官方简体中文语言包无 `1.107.0` 仅提供 `1.106.0`，新增 `parse_semver_prefix` / `is_lang_pack_compatible` / `pick_compatible_lang_pack_version` 支持同主版本向下兼容最多 5 个次版本；新增 `register_language_pack_at` 优先从 `package.json` 取真实版本算 MD5 并指向真实解压目录。
+- **首屏 6 秒白屏与词条补齐（`windsurf-localization-baseline.js`、`devin-localization-baseline.js`、`antigravity-ide-dictionary-baseline.json`）**：隐藏首屏下 `_abWaitReady()` 原读 `innerText` 按 HTML 规范恒为空串导致 60 次轮询超时，改用 `textContent` 后 3 秒内即显现；补充欢迎页缺失的 3 条词条（总计 2537 条）。
+- **CDP 本地回环绕过代理与重启保活（`antigravity_cdp.rs`、`system/restart.rs`、`ui/assets/scripts/platforms/antigravity_localization.js`）**：`http_client()` 增加 `.no_proxy()` 防止 Windows 系统代理劫持 `127.0.0.1` 探测；新增 `is_antigravity_ide_ua` 与 `merge_antigravity_ide_cdp_args`，普通重启保活 `--remote-debugging-port` 并清除 `ELECTRON_RUN_AS_NODE`；前端去掉错误的语言包触发词库下载分支，使用 `setLoading`/`clearLoading` 并在重启后后台轮询补调设置页/面板 CDP 注入。
+- **验证方式**：`lang_pack_tests.rs` 新增 4 条、`antigravity_cdp.rs` 新增/扩展 2 条、`system/tests.rs` 新增 1 条回归测试；通过独立隔离探针（`--user-data-dir` 与 `--extensions-dir` 在系统临时目录）验证 3 秒内显示已翻译欢迎页及 `extensionView=true` iframe 注入。
+
+### 全链路二次巡检修复（8 项问题）
+- **CDP 动态端口父目录读取与 Kite 端口跟随（`antigravity_cdp.rs`、`system/restart.rs`）**：抽出 `read_devtools_active_port_from_dir` 优先读 `%APPDATA%/Antigravity IDE/DevToolsActivePort`（`User/` 的父目录，Chromium/Electron `--user-data-dir` 根），仅将 `User/DevToolsActivePort` 作回退；`restart_antigravity_ide_with_cdp` 改为调用 `preferred_launch_port()` + `build_cdp_restart_args(port)`，不再写死 `9333`。
+- **增强插件安装对称恢复汉化（`enhance.rs`）**：抽出 `restore_hub_patches_if_lost` 统一服务 `install_antigravity_enhance` 与 `uninstall_antigravity_enhance`，在 `cli.js` 重写 `app.asar` 后同时保留 BYOK 与 Hub 汉化补丁。
+- **老代汉化升级备份保护与 IDE 目录隔离（`antigravity_localization/hub_patch.rs`、`app_localization/mod.rs`）**：抽出唯一判据 `code_has_hub_localization`（覆盖三代标记），阻止前两代旧汉化升级时覆盖 `app.asar.lang.bak`；移除 `platform_meta("antigravity-ide")` 中回退 `"Antigravity"` 的候选名，防止误写桌面端 `%APPDATA%/Antigravity`。
+- **接入策略弹窗全链路打通与交互并发保护（`config/types.rs`、`mocks-and-handshake.js`、`catalog-models.js`、`local-proxy.js`、`antigravity_{modals,add,enhance,localization}.js`、`i18n/{zh-CN,en-US}.js`）**：打通 `antigravitySettingsModal` 读写 `antigravityContextWindow` 与 `antigravityMockCredits`（同步现有与新增模型 `contextWindow`，并由 `resolveAntigravityQuotaPolicy` 控制 `retrieveUserQuota*` 配额伪装与模型目录默认窗口）；`loadAntigravityEnhanceData` 补齐 `loadSeq` 防切换乱序覆盖；重启日志改用精确 i18n 文案。
+- **新增回归单测**：Rust 新增 5 组单元测试（`antigravity_cdp.rs`、`enhance.rs`、`antigravity_localization/tests.rs`、`app_localization/tests.rs`、`system/tests.rs`）；Node 新增 4 个用例（`sidecar/antigravity.test.js`、`scripts/antigravity-refresh-and-isolation.test.mjs`）；`docs/pitfalls.json` 补入 `ag-ide-devtools-port-parent-dir` 与 `ag-hub-enhance-and-legacy-backup-symmetry`。
+
+### 增强插件弹窗独立化、GitHub 在线拉取与双端分离重构
+- **消除硬编码路径与阻塞探测（`enhance.rs`、`plugin_asset.rs`、`extensions/`、`hygiene-and-portability.mjs`）**：移除开发机本地路径硬编码并扩充路径可移植守卫规则；改用直接读取 `app.asar` 头与 `dist/meter-manifest.json` 毫秒级探测，消除同步 Node 子进程阻塞；新增 `check_antigravity_enhance_update` 与 GitHub Release tag 压缩包自动拉取解压（经 `extract_zip_filtered` 过滤非运行期资源），子进程统一走 `HideWindow` 与 `env_remove("ELECTRON_RUN_AS_NODE")`。
+- **剥离式还原共存保护（`antigravity_localization/hub_patch.rs`、`tests.rs`）**：抽取 `read_asar_header` / `read_asar_node_text` / `write_asar_preload` / `strip_hub_localization_code`，当 `app.asar` 存在第三方增强补丁或缺失 `.lang.bak` 时执行就地剥离而非覆盖还原；新增 `restore_hub_asar_strips_in_place_preserving_third_party_preload_and_utils` 等单测。
+- **双端独立弹窗、导航高亮与原项目命名（`platform-antigravity.html`、`antigravity-enhance.css`、`antigravity_enhance.js`、`antigravity_console.js`、`platform-rail.js`、`cursor_add.js`、`hero_and_agents.js`、`i18n/{zh-CN,en-US}.js`、`scripts/antigravity-settings-and-enhance.test.mjs`）**：修复 `syncPlatformRailForPage` 与 `openPlatformPage` 点击 `Antigravity IDE` 后高亮被重置回桌面端的导航 Bug，移除回归的 `#antigravity-platform-subtitle` 并在版本切换时先清空旧 DOM；拆分为完全独立的 `#antigravityEnhanceModal` 与 `#antigravityIdeEnhanceModal`，桌面端聚焦内置汉化的 `antigravity-context-viewer` 单卡（移除冗余桌面汉化卡片与检测，启用 `is-single` 自适应窄宽），IDE 端保留 `Antigravity-Chinese-Localization` 与 CDP 注入卡，有上游原项目的插件一律显示原项目名并附仓库按钮。
+
 ## 未发版（v1.1.14 跨平台门控与 CI 全绿加固）
 
 ### 根因复盘：v1.1.14 连续 4 轮非 Windows 发布失败 + HEAD 三平台 CI 隐性全红

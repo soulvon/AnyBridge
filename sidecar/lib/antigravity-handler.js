@@ -36,6 +36,7 @@ import {
   mockAntigravityUserInfo,
   mockAntigravityUserQuotaSummary,
   mockAntigravityUserSettings,
+  resolveAntigravityQuotaPolicy,
 } from './antigravity/mocks-and-handshake.js';
 
 export {
@@ -52,6 +53,7 @@ export {
   mockAntigravityUserInfo,
   mockAntigravityUserQuotaSummary,
   mockAntigravityUserSettings,
+  resolveAntigravityQuotaPolicy,
 };
 
 // Singleflight 状态管理与平滑短效缓存（杜绝 IDE 启动阶段的请求风暴与重复探测）

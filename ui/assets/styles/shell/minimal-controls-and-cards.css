@@ -251,11 +251,13 @@
   box-shadow: var(--shadow-card-hover) !important;
 }
 
+/* 当前激活项：极简微灰浮岛，告别泛蓝透底 */
+
 [data-style="minimal"] .codex-config-card.current,
 [data-style="minimal"] .codex-config-card.official.current {
-  background: color-mix(in srgb, var(--accent) 4%, var(--bg-card)) !important;
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--border)) !important;
-  box-shadow: var(--shadow-card) !important;
+  background: var(--bg-primary) !important;
+  border-color: var(--border-strong) !important;
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.04) !important;
 }
 
 [data-style="minimal"] .codex-config-title strong {

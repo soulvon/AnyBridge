@@ -5371,8 +5371,9 @@
 			anybridgeLocStart();
 			return;
 		}
-		const hasRoot = !!document.querySelector('.monaco-workbench, #workbench\.parts, #workbench');
-		const textLen = (document.body && document.body.innerText || '').trim().length;
+		const rootEl = document.querySelector('.monaco-workbench, #workbench\\.parts, #workbench');
+		const hasRoot = !!rootEl;
+		const textLen = (rootEl && rootEl.textContent || '').trim().length;
 		if ((hasRoot && textLen > 200) || ++_abWaitCount > 60) {
 			anybridgeLocStart();
 			return;

@@ -13,6 +13,7 @@ pub mod config;
 pub mod cursor_auth;
 pub mod cursor_core;
 pub mod cursor_models;
+pub mod enhance;
 pub mod eval;
 pub mod extensions;
 pub mod field_restore;

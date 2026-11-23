@@ -65,13 +65,14 @@ pub(super) fn ensure_locale_zh_cn(platform: &str) -> Result<bool, String> {
     if !lang_pack_installed(platform) {
         return Ok(false);
     }
-    // argv.json 必须落在 user-data-dir 根（%APPDATA%\<name>）——
-    // Electron 启动器只读这个位置。Windsurf 的 user-data-dir 与扩展目录
-    // 是分裂的（扩展在 ~/.<name>/extensions），写错地方 locale 完全无效。
-    let Some(state) = ide_state_dir(platform) else {
+    // argv.json 必须在 Electron 主进程实际读取的路径（见 ide_argv_path 注释）：
+    // Windsurf/Devin/Antigravity IDE 在 ~/.<name>/argv.json，不能只写 %APPDATA% 目录。
+    let Some(argv_path) = ide_argv_path(platform) else {
         return Ok(false);
     };
-    let argv_path = state.join("argv.json");
+    if let Some(parent) = argv_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
     // argv.json 是 JSONC：解析失败时绝不用空对象覆盖，避免丢用户原有配置
     let mut doc: Value = if argv_path.exists() {
         let raw = fs::read_to_string(&argv_path).map_err(|e| e.to_string())?;
@@ -205,27 +206,21 @@ pub(super) fn install_language_pack(platform: &str) -> Result<bool, String> {
     let Some(engine) = engine_version(platform) else {
         return Err("无法读取 IDE 引擎版本，请在扩展市场手动安装语言包".to_string());
     };
-    let want: Vec<u32> = engine.split('.').filter_map(|p| p.parse::<u32>().ok()).collect();
+    let engine_ver = parse_semver_prefix(&engine);
 
-    // 清理不兼容的旧语言包（如引擎 1.110.1 配了 1.126.0）：对当前引擎无效，
+    // 清理不兼容的旧语言包（如高于当前引擎或落后过多）：对当前引擎无效，
     // 留着会让 VS Code 的语言包选择器选中它导致界面回退英文。
     // 重命名为点前缀目录（VS Code 忽略隐藏目录），不直接删用户文件。
     if let Some(ext_dir) = ide_extensions_dir(platform) {
-        if let Ok(entries) = fs::read_dir(&ext_dir) {
+        if let (Some(want_ver), Ok(entries)) = (engine_ver, fs::read_dir(&ext_dir)) {
             for e in entries.flatten() {
                 let name = e.file_name().to_string_lossy().to_string();
-                if !name.starts_with(LANG_PACK_DIR_PREFIX) {
+                let Some(rest) = name.strip_prefix(LANG_PACK_DIR_PREFIX) else {
                     continue;
-                }
-                let ver: Vec<u32> = name
-                    .strip_prefix(LANG_PACK_DIR_PREFIX)
-                    .unwrap_or("")
-                    .trim_start_matches('-')
-                    .split('.')
-                    .filter_map(|p| p.parse::<u32>().ok())
-                    .collect();
-                let compatible = ver.len() >= 2 && want.len() >= 2
-                    && ver[0] == want[0] && ver[1] == want[1];
+                };
+                let compatible = parse_semver_prefix(rest)
+                    .map(|ver| is_lang_pack_compatible(ver, want_ver))
+                    .unwrap_or(false);
                 if !compatible {
                     let renamed = e.path().with_file_name(format!(".incompatible-{}", name));
                     let _ = fs::rename(e.path(), &renamed);
@@ -264,17 +259,11 @@ pub(super) fn install_language_pack(platform: &str) -> Result<bool, String> {
         .and_then(|v| v.as_object())
         .ok_or_else(|| "Open VSX 响应缺少 allVersions".to_string())?;
 
-    // 选与 IDE 引擎 major.minor 一致的最大版本
-    let mut pick: Option<(String, Vec<u32>)> = None;
-    for key in all.keys() {
-        let ver: Vec<u32> = key.split('.').filter_map(|p| p.parse::<u32>().ok()).collect();
-        if ver.len() >= 2 && want.len() >= 2 && ver[0] == want[0] && ver[1] == want[1] {
-            if pick.as_ref().map(|(_, pv)| ver > *pv).unwrap_or(true) {
-                pick = Some((key.clone(), ver));
-            }
-        }
-    }
-    let Some((version, _)) = pick else {
+    // 选与 IDE 引擎兼容的最大版本（优先同 minor，缺发时向下兼容至多 5 个 minor）
+    let Some(version) = pick_compatible_lang_pack_version(
+        all.keys().map(String::as_str),
+        &engine,
+    ) else {
         return Err(format!(
             "Open VSX 上没有与 IDE 引擎 {engine} 匹配的中文语言包版本，请在扩展市场手动安装"
         ));
@@ -321,7 +310,7 @@ pub(super) fn install_language_pack(platform: &str) -> Result<bool, String> {
     clear_obsolete_mark(platform, LANG_PACK_EXTENSION_ID);
     // 注册到 languagepacks.json（VS Code 1.90+ 语言包解析机制）：启动时 IDE 按
     // 此文件把 locale 映射到语言包扩展，不注册 = 装了也不生效。
-    register_language_pack(platform, &version);
+    register_language_pack(platform, &target);
     Ok(true)
 }
 
@@ -334,21 +323,10 @@ pub(super) fn to_ide_path(p: &Path) -> String {
     s
 }
 
-/// 在 languagepacks.json 注册语言包（user-data-dir 下）。
-///
-/// 必须写 IDE 自己会生成的**完整结构**（{locale: {hash, extensions, translations, label}}）：
-/// NLS 在主进程最早阶段读这个文件，简化格式（{id: version}）会被 IDE 启动后
-/// 重写成完整结构——但那时 UI 已用英文初始化完，于是要重启两次才见中文。
-/// 提前写好完整结构，第一次启动的 NLS 就能拿到中文，一次重启生效。
-pub(super) fn register_language_pack(platform: &str, version: &str) {
-    let Some(state) = ide_state_dir(platform) else {
-        return;
-    };
-    let Some(ext_dir) = ide_extensions_dir(platform) else {
-        return;
-    };
-    let pack_dir = ext_dir.join(format!("{}-{}", LANG_PACK_DIR_PREFIX, version));
-    // 语言包的 localizations 声明（languageId / label / translations 映射来源）
+/// 在指定 state 目录写入 languagepacks.json。
+/// 优先从 `pack_dir/package.json` 读取真实语义版本号计算 MD5（避免 `-universal` 后缀错位），
+/// 并以传入的真实 `pack_dir` 拼接 `translations` 绝对路径。
+pub(super) fn register_language_pack_at(state: &Path, pack_dir: &Path) {
     let pkg: Value = fs::read_to_string(pack_dir.join("package.json"))
         .ok()
         .and_then(|s| serde_json::from_str(&s).ok())
@@ -368,6 +346,22 @@ pub(super) fn register_language_pack(platform: &str, version: &str) {
         .get("localizedLanguageName")
         .and_then(|v| v.as_str())
         .unwrap_or(language_id);
+    let dir_ver = pack_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .and_then(|n| n.strip_prefix(LANG_PACK_DIR_PREFIX))
+        .map(|s| s.trim_start_matches('-'))
+        .map(|s| s.strip_suffix("-universal").unwrap_or(s))
+        .unwrap_or("");
+    let version = pkg
+        .get("version")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(dir_ver);
+    if version.is_empty() {
+        return;
+    }
 
     // translations: {扩展id: 翻译文件绝对路径}（IDE 格式：小写盘符 + 反斜杠）
     let mut translations = serde_json::Map::new();
@@ -384,10 +378,9 @@ pub(super) fn register_language_pack(platform: &str, version: &str) {
         }
     }
 
+    let _ = fs::create_dir_all(state);
     let path = state.join("languagepacks.json");
     // hash 算法实测复刻：IDE 用 md5(扩展id + 版本)（无分隔符直接拼接）。
-    // 自己算出 IDE 认可的 hash，从零注册也能一次启动生效——
-    // hash 不匹配时 IDE 会重算重写，而重写发生在 NLS 初始化之后，就要重启两次。
     use md5::{Digest, Md5};
     let mut hasher = Md5::new();
     hasher.update(LANG_PACK_EXTENSION_ID.as_bytes());
@@ -411,13 +404,13 @@ pub(super) fn register_language_pack(platform: &str, version: &str) {
             "label": label,
         }),
     );
-    let _ = fs::write(&path, serde_json::to_string(&doc).unwrap_or_default());
+    let _ = write_atomic(&path, &serde_json::to_string(&doc).unwrap_or_default());
 }
 
-/// 已安装（与引擎兼容）的语言包版本号，从目录名提取。
-pub(super) fn installed_lang_pack_version(platform: &str) -> Option<String> {
-    let dir = compatible_lang_pack_dir(platform)?;
-    let name = dir.file_name()?.to_string_lossy().to_string();
-    let rest = name.strip_prefix(LANG_PACK_DIR_PREFIX)?;
-    Some(rest.trim_start_matches('-').to_string())
+/// 在 languagepacks.json 注册语言包（user-data-dir 下）。
+pub(super) fn register_language_pack(platform: &str, pack_dir: &Path) {
+    let Some(state) = ide_state_dir(platform) else {
+        return;
+    };
+    register_language_pack_at(&state, pack_dir);
 }

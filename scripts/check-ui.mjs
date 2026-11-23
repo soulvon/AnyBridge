@@ -48,6 +48,7 @@ const platformModuleImportOrder = [
   'platforms/codex_editor.js',
   'platforms/antigravity_console.js',
   'platforms/antigravity_localization.js',
+  'platforms/antigravity_enhance.js',
   'platforms/antigravity_models.js',
   'platforms/antigravity_modals.js',
   'platforms/antigravity_add.js',

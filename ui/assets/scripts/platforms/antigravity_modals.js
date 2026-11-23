@@ -120,6 +120,19 @@ function editAntigravityProviderConfig(providerId) {
 
 function openAntigravitySettingsModal() {
   const modal = document.getElementById('antigravitySettingsModal');
+  const select = document.getElementById('modal-antigravity-context-window');
+  const mockCheck = document.getElementById('modal-antigravity-mock-credits');
+  if (select) {
+    const savedWindow = Number(providerStore?.antigravityContextWindow)
+      || Number(providerStore?.antigravityConfigs?.[0]?.contextWindow)
+      || 262144;
+    const candidate = String(savedWindow);
+    const hasOpt = Array.from(select.options || []).some((opt) => opt.value === candidate);
+    select.value = hasOpt ? candidate : '262144';
+  }
+  if (mockCheck) {
+    mockCheck.checked = providerStore?.antigravityMockCredits !== false;
+  }
   if (modal) modal.classList.add('active');
 }
 
@@ -128,11 +141,36 @@ function closeAntigravitySettingsModal() {
   if (modal) modal.classList.remove('active');
 }
 
-function saveAntigravitySettingsModal() {
+async function saveAntigravitySettingsModal() {
   const select = document.getElementById('modal-antigravity-context-window');
-  if (select) {
-    const val = select.value;
-    showBottomToast(`上下文压缩容量已设为 ${Math.round(parseInt(val, 10) / 1024)}K`, 'success');
+  const mockCheck = document.getElementById('modal-antigravity-mock-credits');
+  const parsedWindow = parseInt(select?.value || '262144', 10);
+  const contextWindow = Number.isFinite(parsedWindow) && parsedWindow > 0 ? parsedWindow : 262144;
+  const mockCredits = mockCheck ? mockCheck.checked === true : true;
+
+  if (typeof mutateProviderStore !== 'function') {
+    closeAntigravitySettingsModal();
+    return;
+  }
+  const ok = await mutateProviderStore((store) => {
+    store.antigravityContextWindow = contextWindow;
+    store.antigravityMockCredits = mockCredits;
+    if (Array.isArray(store.antigravityConfigs)) {
+      store.antigravityConfigs.forEach((cfg) => {
+        if (cfg && typeof cfg === 'object') {
+          cfg.contextWindow = contextWindow;
+        }
+      });
+    }
+  });
+  if (!ok) return;
+
+  if (typeof showBottomToast === 'function') {
+    const prefix = typeof t === 'function' ? t('agSettings.savedPrefix') : 'context ';
+    const suffix = typeof t === 'function'
+      ? t(mockCredits ? 'agSettings.mockCreditsOn' : 'agSettings.mockCreditsOff')
+      : '';
+    showBottomToast(`${prefix}${Math.round(contextWindow / 1024)}K${suffix}`, 'success');
   }
   closeAntigravitySettingsModal();
 }

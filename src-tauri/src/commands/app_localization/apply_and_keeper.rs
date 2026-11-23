@@ -37,8 +37,8 @@ pub(super) fn apply(platform: &str, elevate: bool) -> Result<LocalizationOperati
     // 只在「当前还没有生效中的中文包」时才注册官方包：
     // 用户已装并生效了第三方中文包（如 openubmc）时不抢注册，避免覆盖用户选择
     if !lang_pack_installed(platform) {
-        if let Some(ver) = installed_lang_pack_version(platform) {
-            register_language_pack(platform, &ver);
+        if let Some(pack_dir) = compatible_lang_pack_dir(platform) {
+            register_language_pack(platform, &pack_dir);
         }
     }
     if !lang_pack_installed(platform) {
@@ -358,20 +358,35 @@ pub(super) fn restore(platform: &str, elevate: bool) -> Result<LocalizationOpera
     // 用户中途手动改过 locale 的（值 != zh-cn）保留用户选择，绝不覆盖。
     let locale_note = match take_locale_record(platform) {
         Ok(Some(record)) => {
-            let reverted = ide_state_dir(platform).and_then(|state| {
-                let argv_path = state.join("argv.json");
-                let raw = fs::read_to_string(&argv_path).ok()?;
+            let revert_argv_file = |argv_path: &Path| -> bool {
+                let Ok(raw) = fs::read_to_string(argv_path) else {
+                    return false;
+                };
                 let current_is_ours = parse_jsonc(&raw)
                     .and_then(|d| d.get("locale").and_then(|v| v.as_str()).map(String::from))
                     .as_deref()
                     == Some("zh-cn");
                 if !current_is_ours {
-                    return None;
+                    return false;
                 }
-                let new_text = revert_locale_in_argv(&raw, &record)?;
-                write_atomic(&argv_path, &new_text).ok()?;
+                let Some(new_text) = revert_locale_in_argv(&raw, &record) else {
+                    return false;
+                };
+                write_atomic(argv_path, &new_text).is_ok()
+            };
+            let primary_argv = ide_argv_path(platform);
+            let primary_reverted = primary_argv.as_deref().map(revert_argv_file).unwrap_or(false);
+            let legacy_argv = ide_state_dir(platform).map(|s| s.join("argv.json"));
+            let legacy_reverted = match (&legacy_argv, &primary_argv) {
+                (Some(leg), Some(pri)) if leg != pri => revert_argv_file(leg),
+                (Some(leg), None) => revert_argv_file(leg),
+                _ => false,
+            };
+            let reverted = if primary_reverted || legacy_reverted {
                 Some(true)
-            });
+            } else {
+                None
+            };
             match reverted {
                 Some(true) => Some("；显示语言已还原为改前设置".to_string()),
                 _ => None,

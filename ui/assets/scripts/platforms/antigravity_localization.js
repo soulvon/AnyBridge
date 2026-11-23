@@ -42,33 +42,23 @@ function closeAntigravityLangModal() {
 }
 
 async function refreshAntigravityLangStatus(updateModal = false) {
+  if (!updateModal) {
+    if (typeof syncAntigravityEnhanceEntryButton === 'function') {
+      return syncAntigravityEnhanceEntryButton();
+    }
+    return;
+  }
   if (typeof invoke !== 'function') return;
   const target = getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
   const isIde = target === 'antigravity-ide';
 
-  // Antigravity IDE 与 Windsurf/Devin/Cursor 同构（workbench 注入 + 保活），
-  // 走通用 app_localization 命令；独立桌面端（Hub）走 asar 注入的专用命令。
-  const langBtnEl = document.getElementById('antigravityLangBtn');
-  if (langBtnEl) langBtnEl.style.display = '';
-
   try {
     const status = target === 'antigravity-ide'
       ? await invoke('get_app_localization_status', { platform: 'antigravity-ide' })
       : await invoke('get_antigravity_localization_status', { target });
-    const btnText = document.getElementById('antigravityLangBtnText');
-    const langBtn = document.getElementById('antigravityLangBtn');
-
-    if (btnText && langBtn) {
-      if (status?.localized) {
-        btnText.textContent = '已汉化';
-        langBtn.classList.add('success');
-        langBtn.classList.remove('secondary');
-      } else {
-        btnText.textContent = '一键汉化';
-        langBtn.classList.remove('success');
-        langBtn.classList.add('secondary');
-      }
+    if (typeof syncAntigravityEnhanceEntryButton === 'function') {
+      void syncAntigravityEnhanceEntryButton();
     }
 
     if (updateModal) {
@@ -124,8 +114,8 @@ async function refreshAntigravityLangStatus(updateModal = false) {
 }
 
 // 汉化专用重启确认：复用与「一键接入」同一套精致重启弹窗，仅文案按汉化语义定制
-async function confirmRestartAntigravityClient(actionDesc) {
-  const target = getAntigravityTarget();
+async function confirmRestartAntigravityClient(actionDesc, targetOverride = null) {
+  const target = targetOverride || getAntigravityTarget();
   const platName = target === 'antigravity-ide' ? 'Antigravity IDE' : 'Antigravity';
   if (typeof promptRestartIde !== 'function') return false;
 
@@ -142,7 +132,8 @@ async function confirmRestartAntigravityClient(actionDesc) {
   );
 
   if (restarted) {
-    appendAntigravityLangLog(`${platName} 已重启，中文界面已生效`, 'ok');
+    const restartedMsg = typeof t === 'function' ? t('agLoc.restartedApplied') : 'restarted, changes applied';
+    appendAntigravityLangLog(`${platName} ${restartedMsg}`, 'ok');
     // 重启成功后关掉汉化面板
     document.getElementById('antigravityLangModal')?.classList.remove('active');
   } else {
@@ -159,22 +150,15 @@ async function applyAntigravityLocalizationAction() {
   appendAntigravityLangLog(`----------------------------------------`);
   setPlatformBusy(target, true);
   try {
-    // 词库策略（对齐反馈）：apply 不做更新检查，本地有词库直接用；
-    // 仅当本地完全没有词库时（antigravity-ide 首次）自动下载。
+    // 词库策略（对齐反馈）：apply 不做更新检查，本地有词库直接用（内置基线已包含完整词典）。
     appendAntigravityLangLog(`[1/4] 正在准备中文词库...`);
     try {
       const st = isIde
         ? await invoke('get_app_localization_status', { platform: 'antigravity-ide' })
         : null;
-      if (isIde && !st?.langPackInstalled) {
-        appendAntigravityLangLog(`本地暂无词库，正在下载...`);
-        const dl = await invoke('download_app_localization_update', { platform: 'antigravity-ide' });
-        appendAntigravityLangLog(`词库下载成功: ${dl?.message}`, 'ok');
-      } else {
-        appendAntigravityLangLog(`词库已就绪 (v${st?.currentVersion || 'baseline'}）`);
-      }
+      appendAntigravityLangLog(`词库已就绪 (v${st?.currentVersion || 'baseline'})`);
     } catch (e) {
-      appendAntigravityLangLog(`词库准备失败（可点「检查在线词库更新」重试）: ${e}`, 'warn');
+      appendAntigravityLangLog(`状态读取失败，将直接使用内置词库: ${e}`, 'warn');
     }
     // 第二步：应用汉化
     appendAntigravityLangLog(`[2/4] 正在检测 ${platName} 安装与写入权限...`);
@@ -187,7 +171,20 @@ async function applyAntigravityLocalizationAction() {
     if (typeof showBottomToast === 'function') {
       showBottomToast(res?.message || `${platName} 汉化成功`, 'success');
     }
-    await confirmRestartAntigravityClient('汉化补丁已成功注入');
+    const restarted = await confirmRestartAntigravityClient('汉化补丁已成功注入');
+    if (isIde && restarted) {
+      void (async () => {
+        for (let i = 0; i < 8; i += 1) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const cdpSt = await invoke('get_antigravity_cdp_status').catch(() => null);
+          if (cdpSt?.available) {
+            const res2 = await invoke('apply_antigravity_cdp_localization').catch(() => null);
+            if (res2) renderAntigravityCdpState(res2);
+            break;
+          }
+        }
+      })();
+    }
   } catch (e) {
     appendAntigravityLangLog(`汉化失败: ${e?.message || e}`, 'err');
     showCustomAlert(String(e?.message || e), '汉化失败', 'error');
@@ -301,25 +298,19 @@ async function handleAntigravityCdpAction() {
   if (getAntigravityTarget() !== 'antigravity-ide') return;
   if (typeof invoke !== 'function') return;
   const btn = document.getElementById('antigravityLangCdpBtn');
-  const prevText = btn?.textContent || '';
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = '正在检测…';
-  }
+  setLoading(btn, '检测中…');
   try {
     const st = await invoke('get_antigravity_cdp_status');
     if (st?.available) {
-      if (btn) btn.textContent = '正在注入…';
+      setLoading(btn, '注入中…');
       const res = await invoke('apply_antigravity_cdp_localization');
+      clearLoading(btn);
       renderAntigravityCdpState(res);
       appendAntigravityLangLog(res?.message || '已完成运行期注入', 'ok');
       return;
     }
 
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = prevText;
-    }
+    clearLoading(btn);
     const ok = await showCustomConfirm(
       '需要先关闭 Antigravity IDE，再以汉化模式重新打开，未保存的编辑会丢失。继续吗？',
       '以汉化模式重启 Antigravity IDE',
@@ -327,10 +318,7 @@ async function handleAntigravityCdpAction() {
     );
     if (!ok) return;
 
-    if (btn) {
-      btn.disabled = true;
-      btn.textContent = '正在重启…';
-    }
+    setLoading(btn, '重启中…');
     appendAntigravityLangLog('正在关闭 IDE 并以汉化模式启动…');
     const msg = await invoke('restart_antigravity_ide_with_cdp');
     appendAntigravityLangLog(msg || '已完成重启', 'ok');
@@ -346,19 +334,21 @@ async function handleAntigravityCdpAction() {
       }
     }
     if (!ready) {
+      clearLoading(btn);
       renderAntigravityCdpState(null);
       appendAntigravityLangLog('调试端口未在 30 秒内就绪，请等 IDE 打开后点一次「立即注入」', 'warn');
       return;
     }
     const res2 = await invoke('apply_antigravity_cdp_localization');
+    clearLoading(btn);
     renderAntigravityCdpState(res2);
     appendAntigravityLangLog(res2?.message || '已完成运行期注入，打开设置页即为中文', 'ok');
   } catch (e) {
+    clearLoading(btn);
     appendAntigravityLangLog(`深度汉化失败: ${e?.message || e}`, 'err');
     showCustomAlert(String(e?.message || e), '深度汉化失败', 'error');
-    if (btn) btn.textContent = prevText;
   } finally {
-    if (btn) btn.disabled = false;
+    clearLoading(btn);
   }
 }
 

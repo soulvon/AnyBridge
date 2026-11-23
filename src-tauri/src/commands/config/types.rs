@@ -710,6 +710,20 @@ pub struct ProviderStore {
         skip_serializing_if = "Option::is_none"
     )]
     pub antigravity_mode: Option<String>,
+    /// Antigravity 全局默认上下文压缩阈值（token），默认 262144 (256K)。
+    #[serde(
+        rename = "antigravityContextWindow",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub antigravity_context_window: Option<u64>,
+    /// Antigravity 是否开启官方配额健康伪装（None 或 true 表示开启，false 表示关闭）。
+    #[serde(
+        rename = "antigravityMockCredits",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub antigravity_mock_credits: Option<bool>,
     // `current`/激活概念已废弃，改用每槽位 targets 故障转移。保留字段仅为兼容旧文件反序列化，不再读写。
     #[serde(default, skip_serializing)]
     #[allow(dead_code)]

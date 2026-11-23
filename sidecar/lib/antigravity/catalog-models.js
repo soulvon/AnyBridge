@@ -196,6 +196,7 @@ export function mergeAntigravityModelsResponseWithSlots(officialResponse = {}, p
       .map(p => [p.id, p.name])
   );
 
+  const fallbackWindow = Number(providersJson?.antigravityContextWindow) || 262144;
   for (const identity of buildAntigravityCustomModelIdentities(providersJson, supportedRuntimeModels)) {
     const { config, upstreamModel, runtimeModelId, catalogKey } = identity;
     const providerName = (config.sourceProviderId && sourceProviderNames.get(config.sourceProviderId))
@@ -223,7 +224,7 @@ export function mergeAntigravityModelsResponseWithSlots(officialResponse = {}, p
       roles: ['agent'],
       inputModalities: supportsImages ? ['text', 'image'] : ['text'],
       outputModalities: ['text'],
-      maxTokens: Number(config.contextWindow) || 262144,
+      maxTokens: Number(config.contextWindow) || fallbackWindow,
       maxOutputTokens: 65536,
       supportedGenerationMethods: ['generateContent', 'streamGenerateContent'],
       supportedMimeTypes: supportsImages ? COMMON_IMAGE_MIMES : {},

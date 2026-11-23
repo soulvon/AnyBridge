@@ -163,7 +163,7 @@ export function runCommitHygiene({ root, ok }) {
 }
 
 export function runPathPortability({ root, ok }) {
-  const HARDCODED = /([A-Za-z]:[\\/](?:Program|Users|Windows|ProgramData))|(C:[\\/]Users[\\/][A-Za-z0-9._-]+)|(\/[Uu]sers\/[A-Za-z0-9._-]+)|(\/home\/[A-Za-z0-9._-]+)/;
+  const HARDCODED = /([A-Za-z]:[\\/](?:Program|Users|Windows|ProgramData|project|order))|(C:[\\/]Users[\\/][A-Za-z0-9._-]+)|(\/[Uu]sers\/[A-Za-z0-9._-]+)|(\/home\/[A-Za-z0-9._-]+)/i;
   const isComment = (line) => /^\s*(\/\/|\/\*|\*|#|<!--|""")/.test(line);
 
   const scanFiles = (dirs, exts) => {

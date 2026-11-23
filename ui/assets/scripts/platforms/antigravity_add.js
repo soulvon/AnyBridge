@@ -190,6 +190,7 @@ async function confirmAddAntigravityModelsPage() {
             name: modelId,
             defaultModel: modelId,
             models: [modelId],
+            contextWindow: Number(store.antigravityContextWindow) || 262144,
             enabled: true,
             injectModels: true,
             sourceProviderId: provider.providerId,

@@ -326,13 +326,12 @@ function openPlatformPage(platformId) {
   }
   if (platformId === 'antigravity' || platformId === 'antigravity-ide') {
     globalThis._currentAntigravityTarget = platformId;
-    // navigateTo 会按页面映射把侧边栏高亮重置为「反重力」，此处需按实际目标纠正
-    if (typeof setPlatformRailActive === 'function') {
-      setPlatformRailActive(platformId);
-    }
   }
   const targetPage = builtinPageId;
   navigateTo(targetPage);
+  if ((platformId === 'antigravity' || platformId === 'antigravity-ide') && typeof setPlatformRailActive === 'function') {
+    setPlatformRailActive(platformId);
+  }
   renderPlatformDetailStatuses();
   renderPlatformProviderOptions();
   if (platformId === 'cursor') {

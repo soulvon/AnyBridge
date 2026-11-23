@@ -1207,6 +1207,68 @@
       },
       "regression_test": "scripts/platform-guards.test.mjs::cross-platform CI gates: Antigravity 注入模板在 win32 / darwin / linux 三平台模拟下真执行均读出端点",
       "severity": "high"
+    },
+    {
+      "id": "ag-ide-langpack-home-dir-and-minor-fallback",
+      "title": "Antigravity IDE 扩展与 argv.json 在家目录点目录，且语言包需兼容前序 minor 与 -universal 后缀及首屏 textContent 检测",
+      "symptom": "Antigravity IDE（基于 Electron / VS Code 1.107.0）一键汉化失败：① product.json 的 dataFolderName 为 .antigravity-ide，扩展与 argv.json 都在 ~/.antigravity-ide，只有 languagepacks.json 在 %APPDATA%/Antigravity IDE；旧逻辑将 argv 写错目录且未查点目录；② Open VSX 语言包缺 1.107.0 仅提供 1.106.0，要求 major.minor 严等会直接报错，且注册时未剥离 -universal 目录后缀导致 MD5 hash 算错；③ 首屏预设 visibility: hidden 后，_abWaitReady 读 body.innerText 按规范恒为空串导致每次白屏死等 6 秒超时",
+      "lesson": "① 通过 ide_home_dot_dir / ide_argv_path 统一按产品契约映射到 ~/.antigravity-ide，并确保卸载/还原同步回滚旧版误写路径；② 语言包探测与下载安装允许同 major 下向下兼容至多 5 个 minor，register_language_pack_at 优先从 package.json 取纯语义版本算 MD5；③ 隐藏首屏节点存活检测必须读 textContent 而非受布局可见性影响的 innerText",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/app_localization/workbench_checks.rs",
+        "must_contain": "fn pick_compatible_lang_pack_version"
+      },
+      "regression_test": "src-tauri/src/commands/app_localization/lang_pack_tests.rs::compatible_version_accepts_previous_minor_and_universal_suffix",
+      "severity": "high"
+    },
+    {
+      "id": "ag-ide-cdp-noproxy-and-restart-port",
+      "title": "Antigravity IDE 本地 CDP 必须绕过系统代理、保留重启调试端口并兼容带空格 UA",
+      "symptom": "设置页与 Agent 面板挂载在本地跨源 iframe，无法只靠 workbench.html 注入翻译，但此前：① http_client 未调 .no_proxy()，在 Windows 系统开启代理（含 127.* 绕过规则时部分 HTTP 客户端仍走代理）导致本机 127.0.0.1 CDP 探测超时；② 汉化后重启 IDE 未保留/注入 --remote-debugging-port；③ User-Agent 匹配与本地目标判断漏掉带空格 'Antigravity IDE' 及 localhost",
+      "lesson": "① 面向 127.0.0.1/localhost 的内部诊断或 CDP 客户端必须显式调用 .no_proxy()；② 重启与拉起汉化后客户端须经 merge_antigravity_ide_cdp_args 保留已有端口或在开启汉化时自动注入固定调试端口，并移除 ELECTRON_RUN_AS_NODE 防静默退出；③ 前端在触发重启后需异步轮询补调设置页/面板运行期注入",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/system/restart.rs",
+        "must_contain": "fn merge_antigravity_ide_cdp_args"
+      },
+      "regression_test": "src-tauri/src/commands/system/tests.rs::antigravity_ide_restart_args_preserve_or_enable_cdp_port",
+      "severity": "high"
+    },
+    {
+      "id": "ag-ide-devtools-port-parent-dir",
+      "title": "DevToolsActivePort 位于 user-data-dir 根目录而非 User/ 子目录，且 CDP 重启端口必须跟随 Kite",
+      "symptom": "devtools_active_port() 原直接读取 antigravity_ide_config_dir()（%APPDATA%/Antigravity IDE/User）下的 DevToolsActivePort 导致动态端口探测永远返回 None；同时 restart_antigravity_ide_with_cdp 写死 CDP_PORT(9333) 未跟随 Kite 配置的 antigravityKite.cdpPort",
+      "lesson": "① read_devtools_active_port_from_dir 必须优先读取 config_dir.parent()/DevToolsActivePort，仅将 config_dir/DevToolsActivePort 作次级回退；② restart_antigravity_ide_with_cdp 必须复用 preferred_launch_port()",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/antigravity_cdp.rs",
+        "must_contain": "fn read_devtools_active_port_from_dir"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "src-tauri/src/commands/system/restart.rs",
+        "must_not_match": "let port = crate::commands::antigravity_cdp::CDP_PORT;"
+      },
+      "regression_test": "src-tauri/src/commands/antigravity_cdp.rs::devtools_active_port_reads_user_data_root_before_user_subdir",
+      "severity": "high"
+    },
+    {
+      "id": "ag-hub-enhance-and-legacy-backup-symmetry",
+      "title": "增强插件安装须对称保留 Hub 汉化、旧代汉化升级不得污染备份、IDE 状态目录禁回退 Hub",
+      "symptom": "① install_antigravity_enhance 重写 app.asar 后仅补回 BYOK 未补回 Hub 汉化（仅 uninstall 对称）；② patch_hub_asar 仅检当前 HUB_PATCH_FLAG，导致前两代旧补丁升级时被误判为原厂覆盖污染 app.asar.lang.bak；③ platform_meta(\"antigravity-ide\") 把 \"Antigravity\" 当二级候选导致未运行过 IDE 时状态目录写错到桌面端目录",
+      "lesson": "① 通过 restore_hub_patches_if_lost 结构级统一安装/卸载后的 BYOK + 汉化对称恢复；② 提取 code_has_hub_localization 供 is_hub_localized 与 patch_hub_asar 共用唯一判据；③ IDE 状态目录严格限定 [\"Antigravity IDE\"] 不回落到桌面端",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/enhance.rs",
+        "must_contain": "fn restore_hub_patches_if_lost"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "src-tauri/src/commands/app_localization/mod.rs",
+        "must_not_match": "\"antigravity-ide\" => Some\\(\\(\"Antigravity IDE\", &\\[\"Antigravity IDE\", \"Antigravity\"\\]\\)\\)"
+      },
+      "regression_test": "src-tauri/src/commands/antigravity_localization/tests.rs::patch_hub_asar_preserves_clean_backup_when_upgrading_legacy_localization",
+      "severity": "high"
     }
   ]
 }

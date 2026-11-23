@@ -489,20 +489,9 @@
   overflow: hidden;
   transition: transform var(--duration-fast) var(--ease), border-color var(--duration-fast) var(--ease), box-shadow var(--duration-fast) var(--ease);
 }
-.proxy-metric::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 3px;
-  height: 100%;
-  background: var(--metric-accent, var(--accent));
-  opacity: 0.7;
-}
 .proxy-metric:hover {
   transform: translateY(-1px);
-  border-color: var(--metric-accent, var(--border-strong));
-  box-shadow: 0 4px 10px -4px color-mix(in srgb, var(--metric-accent, var(--accent)) 25%, transparent);
+  border-color: var(--border-strong);
 }
 .proxy-metric span {
   color: var(--text-muted);

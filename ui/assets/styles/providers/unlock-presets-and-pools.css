@@ -175,18 +175,8 @@
   background: var(--accent);
   flex-shrink: 0;
 }
-.provider-card-builtin {
-  border-color: var(--accent) !important;
-  background: linear-gradient(180deg, var(--accent-dim, rgba(var(--accent-rgb), 0.06)), var(--bg-card));
-}
 .provider-card-builtin .provider-id {
-  color: var(--accent);
-}
-.provider-list-row-builtin {
-  background: var(--accent-dim, rgba(var(--accent-rgb), 0.04));
-}
-.provider-list-row-builtin:hover {
-  background: var(--accent-dim, rgba(var(--accent-rgb), 0.08));
+  color: var(--text-muted);
 }
 
 .provider-unlock-row {

@@ -13,6 +13,9 @@ async function renderHeroVersion(platformId, elId) {
   const el = document.getElementById(elId);
   if (!el || _heroVersionBusy[platformId]) return;
   if (typeof invoke !== 'function' && !(typeof bindTauriBridge === 'function' && bindTauriBridge())) return;
+  if (el.dataset.versionTarget && el.dataset.versionTarget !== platformId) {
+    el.innerHTML = '';
+  }
   _heroVersionBusy[platformId] = true;
   // 请求序号：共用同一版本行元素时（windsurf/devin/cursor 共页），
   // 只有**最后一次发起**的请求结果可以落盘。比 platformId 比较更严格

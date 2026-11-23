@@ -94,10 +94,10 @@ async function antigravityRefreshConsole(options = {}) {
   const info = platformInfoOf(target);
   const managed = !!info?.managedByAnyBridge;
 
-  // 1. 更新头部图标、标题与副标题
+  // 1. 更新头部图标与标题
   const iconImg = document.getElementById('antigravity-platform-icon');
   const titleEl = document.getElementById('antigravity-platform-title');
-  const subtitleEl = document.getElementById('antigravity-platform-subtitle');
+  const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
   if (iconImg) {
     iconImg.src = isIde ? './assets/icons/platform-antigravity-ide.png' : './assets/icons/platform-antigravity-hub.png';
     iconImg.alt = isIde ? 'Antigravity IDE' : 'Antigravity';
@@ -105,10 +105,9 @@ async function antigravityRefreshConsole(options = {}) {
   if (titleEl) {
     titleEl.textContent = isIde ? 'Antigravity IDE' : 'Antigravity';
   }
-  if (subtitleEl) {
-    subtitleEl.textContent = isIde
-      ? 'Google 编程 IDE · 管理端点重定向与模型映射'
-      : 'Google 桌面 Agent · 管理端点重定向与模型映射';
+  const enhanceBtn = document.getElementById('antigravityEnhanceBtn');
+  if (enhanceBtn) {
+    enhanceBtn.dataset.action = isIde ? 'openAntigravityIdeEnhanceModal' : 'openAntigravityEnhanceModal';
   }
   // 版本行跟随当前客户端（Hub ⇄ IDE）——两者版本号不同，切换时必须重渲
   if (typeof renderHeroVersion === 'function') {
@@ -120,12 +119,23 @@ async function antigravityRefreshConsole(options = {}) {
   const mainBtnText = document.getElementById('antigravity-main-btn-text');
   const mainBtnIcon = mainBtn?.querySelector('.proxy-btn-icon');
   const restoreBtn = document.getElementById('antigravityRestoreBtn');
+  const bulkRemoveBtn = document.getElementById('antigravity-bulk-remove-btn');
+  const settingsTitleEl = document.getElementById('antigravitySettingsModalTitle');
+  const emptySubtitleEl = document.querySelector('#antigravity-model-empty .wb-empty-subtitle');
   const clientName = isIde ? 'Antigravity IDE' : 'Antigravity';
+  if (bulkRemoveBtn) {
+    bulkRemoveBtn.textContent = _t(isIde ? 'ag.removeFromIde' : 'ag.removeFromHub');
+  }
+  if (settingsTitleEl) {
+    settingsTitleEl.textContent = _t(isIde ? 'ag.policyTitleIde' : 'ag.policyTitleHub');
+  }
+  if (emptySubtitleEl) {
+    emptySubtitleEl.textContent = _t(isIde ? 'ag.emptySubIde' : 'ag.emptySubHub');
+  }
 
   if (mainBtn && mainBtnText) {
     mainBtn.classList.add('platform-proxy-primary');
     mainBtn.classList.remove('platform-proxy-active');
-    const _t = (k, p) => (typeof window.t === 'function' ? window.t(k, p) : k);
     if (managed) {
       mainBtn.classList.add('is-connected');
       if (mainBtnIcon) {

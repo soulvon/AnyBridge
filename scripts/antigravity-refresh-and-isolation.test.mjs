@@ -378,8 +378,12 @@ test('Sidecar antigravity.test.js 运行时不向宿主机真实配置目录写 
       encoding: 'utf8',
     });
     assert.equal(res.status, 0, `sidecar/antigravity.test.js 执行失败:\n${res.stdout}\n${res.stderr}`);
-    assert.match(res.stdout, /# tests 12\b/, 'sidecar/antigravity.test.js 应完整执行全部 12 项用例');
-    assert.match(res.stdout, /# pass 12\b/, 'sidecar/antigravity.test.js 全部 12 项用例应通过');
+    const totalMatch = /# tests (\d+)\b/.exec(res.stdout);
+    const passMatch = /# pass (\d+)\b/.exec(res.stdout);
+    const total = Number(totalMatch?.[1] || 0);
+    const passed = Number(passMatch?.[1] || 0);
+    assert.ok(total >= 14, `sidecar/antigravity.test.js 应完整执行 >= 14 项用例，实际 ${total}`);
+    assert.equal(passed, total, 'sidecar/antigravity.test.js 全部用例均应通过');
     assert.match(res.stdout, /# fail 0\b/, 'sidecar/antigravity.test.js 失败项应为 0');
 
     const leakedLog = path.join(fakeAnyBridgeDir, 'ag-handshake.log');
@@ -603,4 +607,135 @@ test('Antigravity 拖拽导入含 sourceProviderId 的 JSON 时，不写入污�
     false,
     'models_table_factory.js 导入 antigravityConfigs 时不得对带 sourceProviderId 的条目强制写入静态 apiFormat 快照',
   );
+});
+
+test('左侧栏切换 Antigravity IDE 时保留高亮、切齐标题路径，且 refreshAllHeroVersions 不将版本号覆写回桌面端', async () => {
+  const dom = setupAntigravityDom();
+  const rail = dom.window.document.createElement('div');
+  rail.className = 'platform-rail';
+  rail.innerHTML = `
+    <button type="button" class="platform-rail-item active" data-platform-rail="antigravity"></button>
+    <button type="button" class="platform-rail-item" data-platform-rail="antigravity-ide"></button>
+  `;
+  dom.window.document.body.appendChild(rail);
+
+  const platSrc = readAllPlatformScripts();
+  const railSrc = readRepoFile('ui/assets/scripts/shell/platform-rail.js');
+  const heroVersionCalls = [];
+  const infos = [
+    { id: 'antigravity', installed: true, managedByAnyBridge: true, configPath: '%APPDATA%/Antigravity/User/settings.json' },
+    { id: 'antigravity-ide', installed: true, managedByAnyBridge: false, configPath: '%APPDATA%/Antigravity IDE/User/settings.json' },
+  ];
+
+  const ctx = {
+    platformInfos: infos,
+    providerStore: { antigravityMode: 'pure', antigravityConfigs: [] },
+    _antigravitySelectedSet: new Set(),
+    PLATFORM_UI_COPY: {
+      antigravity: { configHint: 'Antigravity/User/settings.json' },
+      'antigravity-ide': { configHint: 'Antigravity IDE/User/settings.json' },
+    },
+    _agentRegistryCache: { at: 0, list: [] },
+    invoke: async (cmd) => (cmd === 'detect_platforms' ? infos : null),
+    loadProviders: async () => {},
+    renderPlatformCards: () => {},
+    renderPlatformProviderOptions: () => {},
+    ensureRegistryRailItems: async () => {},
+    renderHeroVersion: (pid, elId) => heroVersionCalls.push({ pid, elId }),
+    bindRevealPathLabel: (id, p) => {
+      const el = dom.window.document.getElementById(id);
+      if (el) el.textContent = p;
+    },
+    antigravityRenderTableRows: () => {},
+    antigravityUpdateBulkActionButtons: () => {},
+    refreshAntigravityLangStatus: async () => {},
+    addLog: () => {},
+    renderCodexPageStatus: () => {},
+    renderClaudeCodePageStatus: () => {},
+    renderOpenCodePageStatus: () => {},
+    renderGrokPageStatus: () => {},
+  };
+
+  const factory = new Function(
+    'ctx',
+    `
+    let platformInfos = ctx.platformInfos;
+    let providerStore = ctx.providerStore;
+    let _antigravitySelectedSet = ctx._antigravitySelectedSet;
+    const PLATFORM_UI_COPY = ctx.PLATFORM_UI_COPY;
+    const _agentRegistryCache = ctx._agentRegistryCache;
+    const invoke = ctx.invoke;
+    const loadProviders = ctx.loadProviders;
+    const renderPlatformCards = ctx.renderPlatformCards;
+    const renderPlatformProviderOptions = ctx.renderPlatformProviderOptions;
+    const ensureRegistryRailItems = ctx.ensureRegistryRailItems;
+    const renderHeroVersion = ctx.renderHeroVersion;
+    const bindRevealPathLabel = ctx.bindRevealPathLabel;
+    const antigravityRenderTableRows = ctx.antigravityRenderTableRows;
+    const antigravityUpdateBulkActionButtons = ctx.antigravityUpdateBulkActionButtons;
+    const refreshAntigravityLangStatus = ctx.refreshAntigravityLangStatus;
+    const addLog = ctx.addLog;
+    const renderCodexPageStatus = ctx.renderCodexPageStatus;
+    const renderClaudeCodePageStatus = ctx.renderClaudeCodePageStatus;
+    const renderOpenCodePageStatus = ctx.renderOpenCodePageStatus;
+    const renderGrokPageStatus = ctx.renderGrokPageStatus;
+    const normalizeProxyPlatform = (p) => p;
+    const getTargetIde = () => 'windsurf';
+    const updateProxyPlatformCopy = () => {};
+    const setLoading = () => {};
+    const clearLoading = () => {};
+    const navigateTo = (pageId) => syncPlatformRailForPage(pageId);
+
+    ${extractFn(platSrc, 'platformInfoOf')}
+    ${extractFn(platSrc, 'platformMetaIds')}
+    ${extractFn(platSrc, 'platformDef')}
+    ${extractFn(platSrc, 'getAntigravityTarget')}
+    ${extractFn(railSrc, 'setPlatformRailActive')}
+    ${extractFn(railSrc, 'syncPlatformRailForPage')}
+    ${extractFn(platSrc, 'currentRailPlatform')}
+    ${extractFn(platSrc, 'refreshAllHeroVersions')}
+    ${extractFn(platSrc, 'renderPlatformDetailStatuses')}
+    ${extractFn(platSrc, 'antigravityPageRoot')}
+    ${extractFn(platSrc, 'getAntigravityCurrentMode')}
+    ${extractFn(platSrc, 'syncAntigravityModeUi')}
+    ${extractFn(platSrc, 'renderAntigravityPageStatus')}
+    ${extractFn(platSrc, 'antigravityRefreshConsole')}
+    ${extractFn(platSrc, 'refreshPlatforms')}
+    ${extractFn(platSrc, 'openPlatformPage')}
+    return { openPlatformPage };
+    `,
+  );
+
+  const { openPlatformPage } = factory(ctx);
+
+  openPlatformPage('antigravity-ide');
+  await new Promise((r) => setTimeout(r, 30));
+
+  const activeRail = dom.window.document.querySelector('.platform-rail-item.active')?.dataset.platformRail;
+  assert.equal(activeRail, 'antigravity-ide', '切到 Antigravity IDE 后左侧高亮必须留在 antigravity-ide');
+  assert.equal(dom.window.document.getElementById('antigravity-platform-title').textContent, 'Antigravity IDE');
+  assert.ok(
+    dom.window.document.getElementById('antigravity-platform-icon').src.includes('platform-antigravity-ide.png'),
+    '图标必须切为 platform-antigravity-ide.png',
+  );
+  assert.equal(dom.window.document.getElementById('antigravity-config-view-btn')?.dataset.arg, 'antigravity-ide');
+  const agVersionCallsAfterIde = heroVersionCalls.filter((c) => c.elId === 'antigravity-platform-version');
+  assert.ok(agVersionCallsAfterIde.length >= 2, '切换后应触发控制台及 refreshAllHeroVersions 版本探测');
+  assert.equal(
+    agVersionCallsAfterIde.some((c) => c.pid === 'antigravity'),
+    false,
+    '切到 Antigravity IDE 后 refreshAllHeroVersions 不得将版本号覆写回桌面端 antigravity',
+  );
+  assert.equal(agVersionCallsAfterIde[agVersionCallsAfterIde.length - 1].pid, 'antigravity-ide');
+
+  heroVersionCalls.length = 0;
+  openPlatformPage('antigravity');
+  await new Promise((r) => setTimeout(r, 30));
+
+  assert.equal(dom.window.document.querySelector('.platform-rail-item.active')?.dataset.platformRail, 'antigravity');
+  assert.equal(dom.window.document.getElementById('antigravity-platform-title').textContent, 'Antigravity');
+  assert.ok(dom.window.document.getElementById('antigravity-platform-icon').src.includes('platform-antigravity-hub.png'));
+  const agVersionCallsAfterHub = heroVersionCalls.filter((c) => c.elId === 'antigravity-platform-version');
+  assert.ok(agVersionCallsAfterHub.length >= 2);
+  assert.equal(agVersionCallsAfterHub.every((c) => c.pid === 'antigravity'), true);
 });

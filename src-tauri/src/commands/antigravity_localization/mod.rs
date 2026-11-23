@@ -213,7 +213,7 @@ static STATUS_CACHE: std::sync::OnceLock<
 > = std::sync::OnceLock::new();
 const STATUS_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(3);
 
-fn invalidate_status_cache() {
+pub(crate) fn invalidate_status_cache() {
     if let Some(m) = STATUS_CACHE.get() {
         if let Ok(mut slot) = m.lock() {
             *slot = None;

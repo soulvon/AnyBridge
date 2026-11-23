@@ -7,7 +7,7 @@ use super::archive_and_config::*;
 use super::cpa_settings_and_scan::*;
 use super::github_download::*;
 
-pub(super) fn normalize_version(raw: &str) -> String {
+pub(crate) fn normalize_version(raw: &str) -> String {
     raw.trim()
         .trim_start_matches('v')
         .trim_start_matches('V')
@@ -22,7 +22,7 @@ pub(super) fn numeric_version_parts(version: &str) -> Vec<u32> {
         .collect()
 }
 
-pub(super) fn is_newer_version(latest: &str, current: &str) -> Option<bool> {
+pub(crate) fn is_newer_version(latest: &str, current: &str) -> Option<bool> {
     let latest_parts = numeric_version_parts(latest);
     let current_parts = numeric_version_parts(current);
     if latest_parts.is_empty() || current_parts.is_empty() {
