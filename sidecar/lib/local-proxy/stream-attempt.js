@@ -37,9 +37,18 @@ export function finalizeNonStreamResult(conn, r, json, effective, tracker, extra
   const normalizedJson = conn?.format === 'gemini' ? normalizeGeminiResponseJson(json) : json;
   const text = extractText(conn, normalizedJson);
   const reasoningText = upstreamReasoningText(conn, normalizedJson);
-  const toolCalls = extractToolCalls(conn, normalizedJson);
+  const fromWire = typeof effective?._toolNameCodec?.fromWire === 'function'
+    ? (name) => effective._toolNameCodec.fromWire(name)
+    : null;
+  const rawToolCalls = extractToolCalls(conn, normalizedJson);
+  const toolCalls = fromWire ? rawToolCalls.map((tc) => ({ ...tc, name: fromWire(tc.name) })) : rawToolCalls;
   const usage = usageFrom(conn, normalizedJson, estimateTokens(effective.messages, effective.system), Math.ceil(text.length / 4));
   const responseObj = conn.wireApi === 'chat' && normalizedJson ? chatCompletionToResponse(normalizedJson, conn.model) : null;
+  if (fromWire && Array.isArray(responseObj?.output)) {
+    for (const item of responseObj.output) {
+      if (item?.type === 'function_call' && item.name) item.name = fromWire(item.name);
+    }
+  }
   tracker.endAttempt({ status: 'ok', statusCode: r.statusCode, ms: r.durationMs, usage });
   tracker.finish();
   return {

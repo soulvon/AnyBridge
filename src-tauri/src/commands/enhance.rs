@@ -1,11 +1,23 @@
-//! 增强插件（Antigravity Hub 第三方增强项）管理命令。
+//! 增强插件（Antigravity 桌面端社区增强项）管理命令。
 //!
-//! 当前内置管理：`antigravity-context-viewer`。
-//! 状态探测直接轻量读取 `app.asar` header 与指定文件片段（毫秒级，不阻塞启动 Node）；
-//! 安装器优先使用 `ANYBRIDGE_CONTEXT_VIEWER_DIR`，否则托管在数据目录
-//! `AnyBridge/enhance/antigravity-context-viewer`，缺失或更新时复用扩展下载链路从 GitHub 拉取。
+//! 当前内置管理：
+//! - `antigravity-context-viewer`（修改 `app.asar`，注入顶栏看板与内置汉化）
+//! - `antigravity-usage-monitor`（Antigravity 原生插件，零改包提供实时速率、上下文与配额面板）
+//! - `antigravity-codex-theme`（本地 CDP 通道注入 Codex 昼夜双主题与四态用量）
+//! - `chuanban-antigravity-theme-patch`（本地 CDP 通道注入莫兰迪/暖纸五段主题与统计面板）
+//!
+//! 状态探测直接轻量读取文件与 `app.asar` header（毫秒级，不阻塞启动 Node）；
+//! 安装器托管在数据目录 `AnyBridge/enhance/<id>`，缺失或更新时复用扩展下载链路从 GitHub 拉取。
+
+mod cdp_themes;
+mod conflicts;
+mod github_detail;
+mod native_plugins;
+#[cfg(test)]
+mod tests;
 
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -22,29 +34,48 @@ use super::platforms::patch_antigravity_hub_asar;
 use super::plugin_asset::extract_zip_filtered;
 use super::system::HideWindow;
 
+use cdp_themes::{
+    build_cdp_theme_status, find_cdp_theme_spec, has_active_hub_cdp_theme, install_cdp_theme,
+    uninstall_cdp_theme, CDP_THEME_SPECS,
+};
+use conflicts::{apply_conflict_matrix, EnhanceConflict};
+use github_detail::{
+    fetch_enhance_github_detail, fetch_enhance_github_image, EnhanceGithubDetail,
+};
+use native_plugins::{
+    build_native_plugin_status, find_native_plugin_spec, has_active_native_cdp_plugin,
+    install_native_plugin, uninstall_native_plugin, NATIVE_PLUGIN_SPECS,
+};
+
+/// 供 IDE 重启链路复用：若白色 Antigravity 装了任一依赖本地调试通道的增强插件，重启时保留 `--remote-debugging-port=0`。
+pub(crate) fn has_active_hub_cdp_consumer() -> bool {
+    has_active_hub_cdp_theme() || has_active_native_cdp_plugin()
+}
+
 const CONTEXT_VIEWER_ID: &str = "antigravity-context-viewer";
 const CONTEXT_VIEWER_REPO: &str = "elviscjn-cjn/antigravity-context-viewer";
 
-static LATEST_VERSION_CACHE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+static LATEST_VERSION_CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 
-fn cached_latest_version() -> Option<String> {
+pub(super) fn cached_latest_version(id: &str) -> Option<String> {
     LATEST_VERSION_CACHE
-        .get_or_init(|| Mutex::new(None))
+        .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .clone()
+        .get(id)
+        .cloned()
 }
 
-fn set_cached_latest_version(ver: &str) {
+pub(super) fn set_cached_latest_version(id: &str, ver: &str) {
     let norm = normalize_version(ver);
     if norm.is_empty() {
         return;
     }
     let mut slot = LATEST_VERSION_CACHE
-        .get_or_init(|| Mutex::new(None))
+        .get_or_init(|| Mutex::new(HashMap::new()))
         .lock()
         .unwrap_or_else(|e| e.into_inner());
-    *slot = Some(norm);
+    slot.insert(id.to_string(), norm);
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,6 +93,10 @@ pub struct EnhanceItemStatus {
     pub host_installed: bool,
     pub host_version: Option<String>,
     pub compatible: bool,
+    #[serde(default)]
+    pub conflicts_with: Vec<String>,
+    #[serde(default)]
+    pub conflicts: Vec<EnhanceConflict>,
     pub detail: String,
 }
 
@@ -82,18 +117,20 @@ pub(crate) struct AsarContextViewerProbe {
     pub host_version: Option<String>,
 }
 
-fn enhance_installer_dir() -> PathBuf {
-    if let Ok(raw) = std::env::var("ANYBRIDGE_CONTEXT_VIEWER_DIR") {
-        let trimmed = raw.trim();
-        if !trimmed.is_empty() {
-            return PathBuf::from(trimmed);
+pub(super) fn enhance_installer_dir(id: &str) -> PathBuf {
+    if id == CONTEXT_VIEWER_ID {
+        if let Ok(raw) = std::env::var("ANYBRIDGE_CONTEXT_VIEWER_DIR") {
+            let trimmed = raw.trim();
+            if !trimmed.is_empty() {
+                return PathBuf::from(trimmed);
+            }
         }
     }
     dirs::data_dir()
         .unwrap_or_else(std::env::temp_dir)
         .join("AnyBridge")
         .join("enhance")
-        .join(CONTEXT_VIEWER_ID)
+        .join(id)
 }
 
 fn read_installer_version(dir: &Path) -> Option<String> {
@@ -159,9 +196,9 @@ fn build_context_viewer_status(
 ) -> EnhanceItemStatus {
     let installer_dir = dir_override
         .map(PathBuf::from)
-        .unwrap_or_else(enhance_installer_dir);
+        .unwrap_or_else(|| enhance_installer_dir(CONTEXT_VIEWER_ID));
     let installer_version = read_installer_version(&installer_dir);
-    let latest_version = cached_latest_version();
+    let latest_version = cached_latest_version(CONTEXT_VIEWER_ID);
 
     let asar_path = asar_override.map(PathBuf::from).or_else(hub_asar_path);
     let mut installed = false;
@@ -216,11 +253,13 @@ fn build_context_viewer_status(
         host_installed,
         host_version,
         compatible,
+        conflicts_with: Vec::new(),
+        conflicts: Vec::new(),
         detail,
     }
 }
 
-fn should_keep_archive_entry(rel: &Path) -> bool {
+pub(super) fn should_keep_archive_entry(rel: &Path) -> bool {
     let first = rel
         .components()
         .next()
@@ -243,31 +282,199 @@ fn should_keep_archive_entry(rel: &Path) -> bool {
     true
 }
 
-fn replace_dir_atomically(staging: &Path, target: &Path) -> Result<(), String> {
+fn is_transient_win_fs_error(err: &std::io::Error) -> bool {
+    if err.kind() == std::io::ErrorKind::PermissionDenied {
+        return true;
+    }
+    matches!(err.raw_os_error(), Some(5 | 32 | 33 | 145))
+}
+
+fn should_fallback_to_dir_sync(err: &std::io::Error) -> bool {
+    is_transient_win_fs_error(err)
+        || matches!(err.kind(), std::io::ErrorKind::CrossesDevices)
+        || matches!(err.raw_os_error(), Some(17))
+}
+
+const RENAME_BACKOFF_MS: &[u64] = &[50, 100];
+const IO_BACKOFF_MS: &[u64] = &[100, 150, 250, 400, 600, 800, 1000, 1200];
+
+fn retry_transient_fs<T, F>(delays: &[u64], mut op: F) -> std::io::Result<T>
+where
+    F: FnMut() -> std::io::Result<T>,
+{
+    let mut attempt = 0usize;
+    loop {
+        match op() {
+            Ok(val) => return Ok(val),
+            Err(err) if attempt < delays.len() && is_transient_win_fs_error(&err) => {
+                std::thread::sleep(std::time::Duration::from_millis(delays[attempt]));
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
+}
+
+fn clear_readonly_attr(path: &Path) {
+    if let Ok(meta) = fs::metadata(path) {
+        let mut perms = meta.permissions();
+        if perms.readonly() {
+            perms.set_readonly(false);
+            let _ = fs::set_permissions(path, perms);
+        }
+    }
+}
+
+pub(super) fn remove_dir_with_retry(dir: &Path) -> Result<(), String> {
+    retry_transient_fs(IO_BACKOFF_MS, || match fs::symlink_metadata(dir) {
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err),
+        Ok(_) => fs::remove_dir_all(dir),
+    })
+    .map_err(|e| format!("清理目录失败 {}：{e}", dir.display()))
+}
+
+fn remove_file_with_retry(file: &Path) -> Result<(), String> {
+    retry_transient_fs(IO_BACKOFF_MS, || {
+        clear_readonly_attr(file);
+        match fs::remove_file(file) {
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            res => res,
+        }
+    })
+    .map_err(|e| format!("清理旧文件失败 {}：{e}", file.display()))
+}
+
+fn copy_file_with_retry(src: &Path, dst: &Path) -> Result<(), String> {
+    if let Some(parent) = dst.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("创建目标子目录失败 {}：{e}", parent.display()))?;
+    }
+    retry_transient_fs(IO_BACKOFF_MS, || {
+        clear_readonly_attr(dst);
+        fs::copy(src, dst).map(|_| ())
+    })
+    .map_err(|e| format!("写入增强插件文件失败 {}：{e}", dst.display()))
+}
+
+fn copy_dir_contents(src: &Path, dst: &Path) -> Result<(), String> {
+    fs::create_dir_all(dst)
+        .map_err(|e| format!("创建目标目录失败 {}：{e}", dst.display()))?;
+    let entries = fs::read_dir(src)
+        .map_err(|e| format!("读取临时目录失败 {}：{e}", src.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("遍历临时目录失败 {}：{e}", src.display()))?;
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("读取文件类型失败 {}：{e}", entry.path().display()))?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        let src_child = entry.path();
+        let dst_child = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            if dst_child.is_file() {
+                remove_file_with_retry(&dst_child)?;
+            }
+            copy_dir_contents(&src_child, &dst_child)?;
+        } else {
+            if dst_child.is_dir() {
+                remove_dir_with_retry(&dst_child)?;
+            }
+            copy_file_with_retry(&src_child, &dst_child)?;
+        }
+    }
+    Ok(())
+}
+
+fn prune_stale_entries(staging: &Path, target: &Path) -> Result<(), String> {
+    let entries = match fs::read_dir(target) {
+        Ok(rd) => rd,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(format!("读取目标目录失败 {}：{err}", target.display())),
+    };
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("遍历目标目录失败 {}：{e}", target.display()))?;
+        let name = entry.file_name();
+        let staging_child = staging.join(&name);
+        let target_child = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("读取目标项类型失败 {}：{e}", target_child.display()))?;
+        if !staging_child.exists() {
+            if file_type.is_dir() {
+                remove_dir_with_retry(&target_child)?;
+            } else {
+                remove_file_with_retry(&target_child)?;
+            }
+        } else if file_type.is_dir() && staging_child.is_dir() {
+            prune_stale_entries(&staging_child, &target_child)?;
+        }
+    }
+    Ok(())
+}
+
+// Windows 上运行中的 Antigravity（language_server）或杀软实时监控插件目录时，
+// MoveFileExW 整目录重命名会持续返回 os error 5；退化为目录树文件级同步可绕开整目录句柄锁定。
+fn sync_dir_from_staging(staging: &Path, target: &Path) -> Result<(), String> {
+    let existed_before = target.exists();
+    if let Err(err) = copy_dir_contents(staging, target) {
+        if !existed_before {
+            let _ = remove_dir_with_retry(target);
+        }
+        return Err(err);
+    }
+    if existed_before {
+        prune_stale_entries(staging, target)?;
+    }
+    let _ = remove_dir_with_retry(staging);
+    Ok(())
+}
+
+pub(super) fn replace_dir_atomically(id: &str, staging: &Path, target: &Path) -> Result<(), String> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("创建增强插件目录失败 {}：{e}", parent.display()))?;
     }
-    let backup = target.with_file_name(format!("{}-bak-{}", CONTEXT_VIEWER_ID, std::process::id()));
+    let backup = target.with_file_name(format!("{id}-bak-{}", std::process::id()));
     if backup.exists() {
-        let _ = fs::remove_dir_all(&backup);
+        let _ = remove_dir_with_retry(&backup);
     }
     let moved_old = if target.exists() {
-        fs::rename(target, &backup).map_err(|e| format!("准备更新安装器目录失败：{e}"))?;
-        true
+        match retry_transient_fs(RENAME_BACKOFF_MS, || fs::rename(target, &backup)) {
+            Ok(()) => true,
+            Err(err) if should_fallback_to_dir_sync(&err) => {
+                return sync_dir_from_staging(staging, target);
+            }
+            Err(err) => return Err(format!("准备更新安装器目录失败：{err}")),
+        }
     } else {
         false
     };
-    match fs::rename(staging, target) {
+    match retry_transient_fs(RENAME_BACKOFF_MS, || fs::rename(staging, target)) {
         Ok(()) => {
             if moved_old {
-                let _ = fs::remove_dir_all(&backup);
+                let _ = remove_dir_with_retry(&backup);
             }
             Ok(())
         }
+        Err(e) if should_fallback_to_dir_sync(&e) => {
+            let sync_res = sync_dir_from_staging(staging, target);
+            if sync_res.is_ok() {
+                if moved_old {
+                    let _ = remove_dir_with_retry(&backup);
+                }
+                Ok(())
+            } else {
+                if moved_old && fs::rename(&backup, target).is_err() {
+                    let _ = sync_dir_from_staging(&backup, target);
+                }
+                sync_res
+            }
+        }
         Err(e) => {
             if moved_old {
-                let _ = fs::rename(&backup, target);
+                let _ = retry_transient_fs(RENAME_BACKOFF_MS, || fs::rename(&backup, target));
             }
             Err(format!("写入增强插件安装器失败：{e}"))
         }
@@ -277,7 +484,7 @@ fn replace_dir_atomically(staging: &Path, target: &Path) -> Result<(), String> {
 async fn ensure_context_viewer_installer(
     force_download: bool,
 ) -> Result<(PathBuf, Option<String>), String> {
-    let dir = enhance_installer_dir();
+    let dir = enhance_installer_dir(CONTEXT_VIEWER_ID);
     if !force_download && dir.join("cli.js").is_file() {
         return Ok((dir, None));
     }
@@ -316,7 +523,7 @@ async fn ensure_context_viewer_installer(
         if !staging.join("cli.js").is_file() || !staging.join("package.json").is_file() {
             return Err("下载的源码包结构异常，缺少 cli.js 或 package.json".to_string());
         }
-        replace_dir_atomically(&staging, &dir)
+        replace_dir_atomically(CONTEXT_VIEWER_ID, &staging, &dir)
     })();
 
     let _ = fs::remove_file(&archive_path);
@@ -326,7 +533,7 @@ async fn ensure_context_viewer_installer(
     extract_res?;
 
     let ver = read_installer_version(&dir).unwrap_or_else(|| normalize_version(&clean_tag));
-    set_cached_latest_version(&ver);
+    set_cached_latest_version(CONTEXT_VIEWER_ID, &ver);
     Ok((dir, Some(ver)))
 }
 
@@ -354,25 +561,62 @@ fn run_node(dir: &Path, args: &[&str]) -> Result<(bool, String), String> {
 
 #[tauri::command]
 pub async fn get_antigravity_enhance_status() -> Result<Vec<EnhanceItemStatus>, String> {
-    tauri::async_runtime::spawn_blocking(|| vec![build_context_viewer_status(None, None)])
-        .await
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(|| {
+        let viewer = build_context_viewer_status(None, None);
+        let mut items = Vec::with_capacity(1 + NATIVE_PLUGIN_SPECS.len() + CDP_THEME_SPECS.len());
+        let host_installed = viewer.host_installed;
+        let host_version = viewer.host_version.clone();
+        items.push(viewer);
+        for spec in NATIVE_PLUGIN_SPECS {
+            items.push(build_native_plugin_status(
+                spec,
+                host_installed,
+                host_version.clone(),
+            ));
+        }
+        for spec in CDP_THEME_SPECS {
+            items.push(build_cdp_theme_status(
+                spec,
+                host_installed,
+                host_version.clone(),
+            ));
+        }
+        apply_conflict_matrix(&mut items);
+        items
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn check_antigravity_enhance_update(id: String) -> Result<EnhanceUpdateInfo, String> {
-    if id != CONTEXT_VIEWER_ID {
+    let repo = if id == CONTEXT_VIEWER_ID {
+        CONTEXT_VIEWER_REPO
+    } else if let Some(spec) = find_native_plugin_spec(&id) {
+        spec.repo
+    } else if let Some(spec) = find_cdp_theme_spec(&id) {
+        spec.repo
+    } else {
         return Err(format!("暂不支持该增强项：{id}"));
-    }
-    let tag = latest_release_tag(CONTEXT_VIEWER_REPO).await?;
+    };
+
+    let tag = latest_release_tag(repo).await?;
     let latest = normalize_version(&tag);
     if latest.is_empty() {
         return Err("上游版本号为空".to_string());
     }
-    set_cached_latest_version(&latest);
+    set_cached_latest_version(&id, &latest);
 
-    let (current_version, installer_version) = tauri::async_runtime::spawn_blocking(|| {
-        let status = build_context_viewer_status(None, None);
+    let id_clone = id.clone();
+    let (current_version, installer_version) = tauri::async_runtime::spawn_blocking(move || {
+        let status = if id_clone == CONTEXT_VIEWER_ID {
+            build_context_viewer_status(None, None)
+        } else if let Some(spec) = find_native_plugin_spec(&id_clone) {
+            build_native_plugin_status(spec, hub_asar_path().is_some(), None)
+        } else {
+            let spec = find_cdp_theme_spec(&id_clone).unwrap();
+            build_cdp_theme_status(spec, hub_asar_path().is_some(), None)
+        };
         let cur = if status.installed {
             status.version.clone()
         } else {
@@ -418,14 +662,23 @@ pub async fn install_antigravity_enhance(
     id: String,
     force_update: Option<bool>,
 ) -> Result<String, String> {
+    if let Some(spec) = find_native_plugin_spec(&id) {
+        return install_native_plugin(spec, force_update.unwrap_or(false)).await;
+    }
+    if let Some(spec) = find_cdp_theme_spec(&id) {
+        return install_cdp_theme(spec, force_update.unwrap_or(false)).await;
+    }
     if id != CONTEXT_VIEWER_ID {
         return Err(format!("暂不支持该增强项：{id}"));
     }
 
-    let local_dir = enhance_installer_dir();
+    let local_dir = enhance_installer_dir(CONTEXT_VIEWER_ID);
     let has_cli = local_dir.join("cli.js").is_file();
     let local_ver = read_installer_version(&local_dir);
-    let cached_newer = match (cached_latest_version(), local_ver.as_deref()) {
+    let cached_newer = match (
+        cached_latest_version(CONTEXT_VIEWER_ID),
+        local_ver.as_deref(),
+    ) {
         (Some(latest), Some(cur)) => is_newer_version(&latest, cur) == Some(true),
         _ => false,
     };
@@ -464,6 +717,12 @@ pub async fn install_antigravity_enhance(
 
 #[tauri::command]
 pub async fn uninstall_antigravity_enhance(id: String) -> Result<String, String> {
+    if let Some(spec) = find_native_plugin_spec(&id) {
+        return uninstall_native_plugin(spec).await;
+    }
+    if let Some(spec) = find_cdp_theme_spec(&id) {
+        return uninstall_cdp_theme(spec).await;
+    }
     if id != CONTEXT_VIEWER_ID {
         return Err(format!("暂不支持该增强项：{id}"));
     }
@@ -495,158 +754,15 @@ pub async fn uninstall_antigravity_enhance(id: String) -> Result<String, String>
     .map_err(|e| e.to_string())?
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::commands::antigravity_localization::asar_padding_len;
+#[tauri::command]
+pub async fn get_enhance_github_detail(
+    repo: String,
+    force_refresh: Option<bool>,
+) -> Result<EnhanceGithubDetail, String> {
+    fetch_enhance_github_detail(repo, force_refresh.unwrap_or(false)).await
+}
 
-    fn build_test_asar(entries: &[(&str, &str)]) -> Vec<u8> {
-        let mut payload = Vec::new();
-        let mut root_files = serde_json::Map::new();
-        let mut dist_files = serde_json::Map::new();
-
-        for (rel, body) in entries {
-            let offset = payload.len();
-            payload.extend_from_slice(body.as_bytes());
-            let node = serde_json::json!({
-                "size": body.len(),
-                "offset": offset.to_string(),
-                "integrity": {
-                    "algorithm": "SHA256",
-                    "hash": "test",
-                    "blockSize": 4194304,
-                    "blocks": ["test"]
-                }
-            });
-            if let Some(sub) = rel.strip_prefix("dist/") {
-                dist_files.insert(sub.to_string(), node);
-            } else {
-                root_files.insert((*rel).to_string(), node);
-            }
-        }
-        if !dist_files.is_empty() {
-            root_files.insert(
-                "dist".to_string(),
-                serde_json::json!({ "files": serde_json::Value::Object(dist_files) }),
-            );
-        }
-
-        let header = serde_json::json!({ "files": serde_json::Value::Object(root_files) });
-        let header_json = serde_json::to_string(&header).unwrap();
-        let padding = asar_padding_len(header_json.len());
-        let mut out = Vec::new();
-        out.extend_from_slice(&4u32.to_le_bytes());
-        out.extend_from_slice(&((header_json.len() + 8 + padding) as u32).to_le_bytes());
-        out.extend_from_slice(&((header_json.len() + 4 + padding) as u32).to_le_bytes());
-        out.extend_from_slice(&(header_json.len() as u32).to_le_bytes());
-        out.extend_from_slice(header_json.as_bytes());
-        out.extend(std::iter::repeat(0u8).take(padding));
-        out.extend_from_slice(&payload);
-        out
-    }
-
-    #[test]
-    fn inspect_hub_asar_detects_clean_and_patched_states() {
-        let dir = std::env::temp_dir().join("anybridge-test-enhance-probe");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let asar = dir.join("app.asar");
-
-        let clean = build_test_asar(&[
-            ("package.json", r#"{"version":"2.34.0"}"#),
-            ("dist/utils.js", "function createWindow() {}"),
-        ]);
-        fs::write(&asar, &clean).unwrap();
-        let probe_clean = inspect_hub_asar_context_viewer(&asar).unwrap();
-        assert!(!probe_clean.installed);
-        assert_eq!(probe_clean.disk_version, None);
-        assert_eq!(probe_clean.host_version.as_deref(), Some("2.34.0"));
-
-        let patched = build_test_asar(&[
-            ("package.json", r#"{"version":"2.34.0"}"#),
-            ("dist/utils.js", "installContextMeter(win);"),
-            ("dist/meter-manifest.json", r#"{"version":"0.8.10"}"#),
-        ]);
-        fs::write(&asar, &patched).unwrap();
-        let probe_patched = inspect_hub_asar_context_viewer(&asar).unwrap();
-        assert!(probe_patched.installed);
-        assert_eq!(probe_patched.disk_version.as_deref(), Some("0.8.10"));
-        assert_eq!(probe_patched.host_version.as_deref(), Some("2.34.0"));
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn status_stays_compatible_even_without_local_installer() {
-        let dir = std::env::temp_dir().join("anybridge-test-enhance-status");
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        let asar = dir.join("app.asar");
-        let missing_installer = dir.join("missing-installer");
-
-        let clean = build_test_asar(&[
-            ("package.json", r#"{"version":"2.34.0"}"#),
-            ("dist/utils.js", "function createWindow() {}"),
-        ]);
-        fs::write(&asar, &clean).unwrap();
-
-        let status = build_context_viewer_status(Some(&asar), Some(&missing_installer));
-        assert_eq!(status.name, "antigravity-context-viewer");
-        assert!(status.host_installed);
-        assert!(status.compatible, "仅缺本地安装器时应保持可安装，不得误标为不兼容");
-        assert!(!status.installed);
-        assert_eq!(status.host_version.as_deref(), Some("2.34.0"));
-        assert_eq!(status.installer_version, None);
-
-        let _ = fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn archive_filter_skips_demo_media_and_keeps_runtime_files() {
-        assert!(!should_keep_archive_entry(Path::new("assets/demo.mp4")));
-        assert!(!should_keep_archive_entry(Path::new("docs/preview.gif")));
-        assert!(!should_keep_archive_entry(Path::new(".github/workflows/ci.yml")));
-        assert!(should_keep_archive_entry(Path::new("cli.js")));
-        assert!(should_keep_archive_entry(Path::new("src/main.js")));
-    }
-
-    #[test]
-    fn restore_hub_patches_reapplies_lost_localization_when_previously_localized() {
-        let stamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "anybridge-test-enhance-loc-sym-{}-{stamp}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        let asar = dir.join("app.asar");
-
-        let clean = build_test_asar(&[
-            ("package.json", r#"{"version":"2.34.0"}"#),
-            ("dist/preload.js", "console.log('preload base');"),
-            ("dist/utils.js", "function createWindow() {}"),
-        ]);
-        fs::write(&asar, &clean).unwrap();
-
-        // 1. 原客户端已汉化，生成 app.asar.lang.bak
-        patch_hub_asar(&asar).expect("初始汉化应成功");
-        assert!(is_hub_localized(&asar));
-
-        // 2. 模拟安装/更新增强插件重写 app.asar 后汉化标记丢失
-        fs::write(&asar, &clean).unwrap();
-        assert!(!is_hub_localized(&asar));
-
-        // 3. 对称补回丢失的汉化补丁
-        restore_hub_patches_if_lost(&asar, false, true).expect("应自动补回汉化补丁");
-        assert!(is_hub_localized(&asar), "安装或重装增强插件后必须保留已有汉化");
-
-        // 4. 原本未汉化时不得误打补丁
-        fs::write(&asar, &clean).unwrap();
-        restore_hub_patches_if_lost(&asar, false, false).expect("未汉化时应保持原状");
-        assert!(!is_hub_localized(&asar));
-
-        let _ = fs::remove_dir_all(&dir);
-    }
+#[tauri::command]
+pub async fn get_enhance_github_image(url: String) -> Result<String, String> {
+    fetch_enhance_github_image(url).await
 }

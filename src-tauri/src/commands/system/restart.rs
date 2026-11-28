@@ -219,14 +219,37 @@ pub(crate) fn merge_antigravity_ide_cdp_args(
     out
 }
 
+/// 合并白色 Antigravity 重启时的 `--remote-debugging-port` 参数：
+/// 若已装任一 CDP 主题插件且未显式传入调试端口，自动附带 `--remote-debugging-port=0`，
+/// 兼容自定义安装盘符/路径，避免重启后 CDP 主题失效。
+pub(crate) fn merge_antigravity_hub_cdp_args(
+    extra_args: &[String],
+    has_cdp_theme: bool,
+) -> Vec<String> {
+    let mut out = extra_args.to_vec();
+    let has_port_arg = out.iter().any(|a| {
+        a == "--remote-debugging-port" || a.starts_with("--remote-debugging-port=")
+    });
+    if !has_port_arg && has_cdp_theme {
+        out.push("--remote-debugging-port=0".to_string());
+    }
+    out
+}
+
 pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Result<String, String> {
     let t = if target == "auto" {
         detect_target_ide()
     } else {
         target
     };
-    // 非 Windows 平台暂不支持附加启动参数；显式消费变量，避免 mac/linux 编译告警。
-    let _ = &extra_args;
+    let hub_extra_args: Vec<String> = if t == "antigravity" {
+        let has_cdp = crate::commands::enhance::has_active_hub_cdp_consumer();
+        merge_antigravity_hub_cdp_args(&extra_args, has_cdp)
+    } else {
+        Vec::new()
+    };
+    // 显式消费变量，避免仅在部分平台分支使用的参数产生编译告警。
+    let _ = (&extra_args, &hub_extra_args);
     #[cfg(target_os = "windows")]
     {
         // 收集 taskkill 失败原因（拒绝访问等），最终报错时附带给用户，便于自助定位。
@@ -234,7 +257,7 @@ pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Resul
         let exe = find_ide_exe(&t)
             .ok_or_else(|| format!("未找到 {} 安装位置，请手动重启", ide_dir_name(&t)))?;
 
-        // 在杀进程前读取当前活跃的 CDP 端口与汉化开启态，确保普通重启也保留调试端口。
+        // 在杀进程前读取当前活跃的 CDP 端口与汉化/CDP 主题开启态，确保普通重启也保留调试端口。
         let effective_extra_args: Vec<String> = if t == "antigravity-ide" {
             let prev_port = if crate::commands::antigravity_cdp::probe().is_ok() {
                 Some(crate::commands::antigravity_cdp::active_port())
@@ -244,6 +267,8 @@ pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Resul
             let loc_enabled = crate::commands::app_localization::is_enabled("antigravity-ide");
             let fallback_port = crate::commands::antigravity_cdp::preferred_launch_port();
             merge_antigravity_ide_cdp_args(&extra_args, loc_enabled, prev_port, fallback_port)
+        } else if t == "antigravity" {
+            hub_extra_args.clone()
         } else {
             extra_args.clone()
         };
@@ -496,9 +521,12 @@ pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Resul
             stop_devin_daemon_if_running(&app);
         }
 
-        Command::new("open")
-            .args(["-a"])
-            .arg(&app)
+        let mut open_cmd = Command::new("open");
+        open_cmd.args(["-a"]).arg(&app);
+        if !hub_extra_args.is_empty() {
+            open_cmd.arg("--args").args(&hub_extra_args);
+        }
+        open_cmd
             .spawn()
             .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))?;
 
@@ -564,7 +592,11 @@ pub(super) fn restart_ide_impl(target: String, extra_args: Vec<String>) -> Resul
             stop_devin_daemon_if_running(&bin);
         }
 
-        Command::new(&bin)
+        let mut spawn_cmd = Command::new(&bin);
+        if !hub_extra_args.is_empty() {
+            spawn_cmd.args(&hub_extra_args);
+        }
+        spawn_cmd
             .spawn()
             .map_err(|e| format!("重启 {} 失败: {}", ide_dir_name(&t), e))?;
 

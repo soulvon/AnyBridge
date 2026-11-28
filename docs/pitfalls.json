@@ -1269,6 +1269,91 @@
       },
       "regression_test": "src-tauri/src/commands/antigravity_localization/tests.rs::patch_hub_asar_preserves_clean_backup_when_upgrading_legacy_localization",
       "severity": "high"
+    },
+    {
+      "id": "ag-list-experiments-empty-disables-plugins-and-mcp",
+      "title": "Antigravity /v1internal:listExperiments 不得回空对象 {}（否则插件、MCP 与高阶内置工具整体被关）",
+      "symptom": "用户反馈反代接入 Antigravity 后无法使用自带工具与安装的插件/MCP。真机抓包确认：纯 BYOK 模式（默认）及混合模式离线兜底将 /v1internal:listExperiments 秒回 {}，导致客户端缺失 enable-agent-plugins-spec、mcp-lazy-load-tools、enable-customization-kind-* 与 agy-plugin-marketplaces 等开关，系统提示词抹除 <mcp_servers> 且工具列表从 18 个砍剩 12 个（丢失 call_mcp_tool、invoke_subagent、run_workflow、update_steps 等）",
+      "lesson": "纯 BYOK 模式与混合模式失败回退必须通过 mockAntigravityListExperiments 下发本地插件/MCP/技能/子代理/工作流及插件市场目录开关（且纯 BYOK 下将 invoke-subagent-config.always_inherit_model 设为 true 跟随当前 BYOK 模型）；混合模式走 ensureAntigravityExperiments 优先保留官方开关并补齐缺失基线",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/local-proxy.js",
+        "must_contain": "if (method === 'listExperiments')"
+      },
+      "regression_test": "sidecar/antigravity-tools-and-plugins.test.js::Antigravity pure BYOK mode: /v1internal:listExperiments returns capability flags enabling plugins, MCP, skills, subagents and marketplaces",
+      "severity": "high"
+    },
+    {
+      "id": "ag-tool-schema-jsonschema-string-ints-and-name-codec",
+      "title": "Antigravity 工具转换必须保留 parametersJsonSchema、将字符串数值约束转为整数并做跨协议工具名双向映射",
+      "symptom": "① Eager MCP 与新版工具通过 parametersJsonSchema 声明参数时被 normalizeGeminiTools 忽略并降为空壳 {type:'object',properties:{}}；② Antigravity Protobuf JSON 将 minLength/maxItems 等 int64 序列化为字符串（如 \"1\"、\"12\"），且 call_mcp_tool.Arguments 无 type，触发严格校验的 OpenAI/Anthropic/Vertex 上游直接 400；③ 含冒号/点号的工具名发往 OpenAI/Anthropic 报 400；④ 多轮无 id 同名 functionCall 拼固定 call_${name} 发生 ID 碰撞且忽略 functionResponse.parts",
+      "lesson": "① normalizeGeminiTools / geminiTools / buildGeminiNativePassthroughPayload 统一兼容 parametersJsonSchema；② normalizeToolParameters 与 sanitizeGeminiSchema 将数值约束字符串转为 Number 并为缺 type 的子属性补 OBJECT；③ 非 Gemini 上游统一经 buildCrossProtocolToolNameCodec 做双向无损名称编解码；④ messagesForNonGeminiUpstream 为无 id 调用分配递增唯一序号、提取 functionResponse.parts 并剔除空 thought 轮次",
+      "check": {
+        "type": "source_contains",
+        "file": "sidecar/lib/local-proxy/tool-name-codec.js",
+        "must_contain": "export function buildCrossProtocolToolNameCodec"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "sidecar/lib/local-proxy/normalize.js",
+        "must_not_match": "parameters:\\s*fn\\.parameters\\s*\\|\\|"
+      },
+      "regression_test": "sidecar/antigravity-tools-and-plugins.test.js::Antigravity tool schema normalization: preserves parametersJsonSchema and coerces protobuf string numeric constraints to JSON integers",
+      "severity": "high"
+    },
+    {
+      "id": "ag-enhance-detail-csp-scroll-and-html-sanitize",
+      "title": "增强插件 GitHub 详情须允许 HTTPS 媒体 CSP、块级滚动容器与 DOM 白名单清洗（禁正则硬扒与 flex 截断）",
+      "symptom": "① tauri.conf.json 原 CSP img-src 'self' data: 拦截了全部远程 GitHub 截图与 shields 徽章；② .enhance-detail-scroll 采用 flex-direction: column 且子容器 .enhance-detail-readme-card 默认 flex-shrink: 1 叠加 overflow: hidden 导致 scrollHeight === clientHeight 完全无法滚动；③ 正则 Markdown 解析器漏处理 <h1>/<code>、被 alt 中的 >= 截断并泄露 T0/T5 占位符",
+      "lesson": "① tauri.conf.json 放开 img-src 'self' data: https: 与 media-src 'self' https:，并配白名单 get_enhance_github_image 后端代理兜底；② 详情升格为独立叠层二级模态框 #antigravityEnhanceDetailModal，滚动区采用 display: block + min-height: 0 + overflow-y: auto 且 README 卡片 overflow: visible；③ 优先拉取 GitHub 官方渲染 HTML 经 DOMParser 白名单 sanitizeEnhanceGithubHtml 清洗渲染，降级 Markdown 解析器同步支持引号含 > 与纯 ASCII 占位符",
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/platforms/antigravity_enhance_render.js",
+        "must_contain": "function sanitizeEnhanceGithubHtml"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "src-tauri/tauri.conf.json",
+        "must_not_match": "img-src 'self' data:;"
+      },
+      "regression_test": "scripts/antigravity-settings-and-enhance.test.mjs::antigravity_enhance 双端独立弹窗、原项目命名、四卡分级冲突提醒与并发防覆盖",
+      "severity": "high"
+    },
+    {
+      "id": "ag-enhance-img-width-percent-not-parseint",
+      "title": "GitHub 详情图片/单元格 width=\"100%\" 严禁裸用 parseInt 截断成 100px 缩略图，非徽章图表禁入 badge 白名单",
+      "symptom": "① createCleanImageNode 用 parseInt(widthAttr, 10) 解析 width=\"100%\" 得 100 并写回 width=\"100\"，将 usage-monitor 的全宽截图缩成 100px 迷你图；② isBadgeImageUrl 误含 star-history.com 把折线图压成 20px 高小条；③ 多列 33.3% 截图表格未加 table-layout: fixed 导致横向溢出",
+      "lesson": "① 统一由 parseSafeDimension 与 buildSafeImageProps 严格区分百分比（/^(...)%$/ -> is-full-width / 受控 style.width）与纯像素尺寸，禁止裸 parseInt(widthAttr)；② star-history.com 与大图图表走 enhance-md-shot；③ 全百分比列表格加 is-fixed-layout 并在降级 Markdown 中用 sanitizeEnhanceGithubHtml 完整保留 <table>",
+      "check": {
+        "type": "source_contains",
+        "file": "ui/assets/scripts/platforms/antigravity_enhance_render.js",
+        "must_contain": "function parseSafeDimension"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "ui/assets/scripts/platforms/antigravity_enhance_render.js",
+        "must_not_match": "parseInt\\((?:widthAttr|heightAttr)"
+      },
+      "regression_test": "scripts/antigravity-settings-and-enhance.test.mjs::antigravity_enhance 双端独立弹窗、原项目命名、四卡分级冲突提醒与并发防覆盖",
+      "severity": "high"
+    },
+    {
+      "id": "ag-enhance-dir-replace-win-lock-and-staging",
+      "title": "增强插件原生目录暂存区须避开 plugins/ 监听树，replace_dir_atomically 须支持跨卷与 os error 5/32 目录同步回退",
+      "symptom": "Antigravity (language_server.exe) 与 Windows 杀软过滤驱动长期监控 ~/.gemini/config/plugins/。在 plugins/ 内直接创建暂存目录并调用单次 fs::rename 会在触发 MoveFileExW 整目录锁定后直接报 os error 5 安装失败；卸载刚写入的多文件插件目录时也会因空子目录扫描句柄未释放短暂触发 os error 32",
+      "lesson": "① native_plugins 将临时解压目录移至 plugins/ 之外的 cfg_dir/.{id}-staging-{pid} 完成树校验后再部署；② enhance 的 replace_dir_atomically 对目录 rename 短退避重试并在 os error 5/32 或跨卷时安全退化为 sync_dir_from_staging（清只读并裁剪旧项）；③ remove_dir_with_retry 为卸载与目录清理提供瞬态句柄退避重试",
+      "check": {
+        "type": "source_contains",
+        "file": "src-tauri/src/commands/enhance.rs",
+        "must_contain": "fn sync_dir_from_staging"
+      },
+      "check_not": {
+        "type": "source_not_regex",
+        "file": "src-tauri/src/commands/enhance/native_plugins.rs",
+        "must_not_match": "let staging = plugins_root\\.join"
+      },
+      "regression_test": "src-tauri/src/commands/enhance/tests.rs::replace_dir_atomically_and_dir_sync_handle_fresh_reinstall_readonly_and_stale_prune",
+      "severity": "high"
     }
   ]
 }

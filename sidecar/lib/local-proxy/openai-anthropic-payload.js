@@ -35,7 +35,8 @@ export function applyChatAssistantReasoning(assistantMsg, thinkingParts = [], ha
   return assistantMsg;
 }
 
-export function openAIChatMessages(system, messages) {
+export function openAIChatMessages(system, messages, codec = null) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
   const out = [];
   if (system) out.push({ role: 'system', content: system });
   for (const m of messages) {
@@ -48,7 +49,7 @@ export function openAIChatMessages(system, messages) {
         toolCalls.push({
           id: p.id || `call_${crypto.randomUUID().replace(/-/g, '').slice(0, 24)}`,
           type: 'function',
-          function: { name: p.name, arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}) },
+          function: { name: toWire(p.name), arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}) },
         });
       } else if (p.type === 'tool_result') {
         const contentStr = toolResultOutputText(p.content);
@@ -77,15 +78,31 @@ export function openAIChatMessages(system, messages) {
   return out;
 }
 
-export function responsesToolChoice(choice) {
-  if (!choice || typeof choice !== 'object') return choice;
+export function chatToolChoice(choice, codec = null) {
+  if (!choice || !codec || typeof choice !== 'object') return choice;
   if (choice.type === 'function' && choice.function?.name) {
-    return { type: 'function', name: choice.function.name };
+    return {
+      ...choice,
+      function: { ...choice.function, name: codec.toWire(choice.function.name) },
+    };
   }
   return choice;
 }
 
-export function openAIResponsesInput(messages) {
+export function responsesToolChoice(choice, codec = null) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
+  if (!choice || typeof choice !== 'object') return choice;
+  if (choice.type === 'function' && choice.function?.name) {
+    return { type: 'function', name: toWire(choice.function.name) };
+  }
+  if (choice.type === 'function' && choice.name) {
+    return { ...choice, name: toWire(choice.name) };
+  }
+  return choice;
+}
+
+export function openAIResponsesInput(messages, codec = null) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
   const out = [];
   for (const m of messages) {
     const role = m.role === 'assistant' ? 'assistant' : 'user';
@@ -102,7 +119,7 @@ export function openAIResponsesInput(messages) {
         out.push({
           type: 'function_call',
           call_id: String(p.id || ''),
-          name: String(p.name || ''),
+          name: toWire(String(p.name || '')),
           arguments: typeof p.input === 'string' ? p.input : JSON.stringify(p.input || {}),
         });
       } else if (p?.type === 'tool_result') {
@@ -125,7 +142,8 @@ export function openAIResponsesInput(messages) {
   return out;
 }
 
-export function anthropicToolChoice(choice) {
+export function anthropicToolChoice(choice, codec = null) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
   if (!choice) return undefined;
   if (typeof choice === 'string') {
     const lower = choice.toLowerCase();
@@ -134,20 +152,22 @@ export function anthropicToolChoice(choice) {
     return undefined;
   }
   if (typeof choice === 'object') {
-    if (choice.type === 'auto' || choice.type === 'any' || choice.type === 'tool') return choice;
+    if (choice.type === 'auto' || choice.type === 'any') return choice;
+    if (choice.type === 'tool' && choice.name) return { ...choice, name: toWire(choice.name) };
     const name = choice.name || choice.function?.name;
-    if (name) return { type: 'tool', name };
+    if (name) return { type: 'tool', name: toWire(name) };
   }
   return undefined;
 }
 
-export function anthropicTools(tools) {
+export function anthropicTools(tools, codec = null) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
   const out = [];
   for (const tool of tools || []) {
     const descriptor = toolDescriptor(tool);
     if (!descriptor) continue;
     out.push({
-      name: descriptor.name,
+      name: toWire(descriptor.name),
       description: descriptor.description,
       input_schema: normalizeToolParameters(descriptor.schema) || { type: 'object', properties: {} },
     });
@@ -155,22 +175,25 @@ export function anthropicTools(tools) {
   return out.length ? out : undefined;
 }
 
-export function openAITools(tools, { chatCompletions = true } = {}) {
+export function openAITools(tools, { chatCompletions = true, codec = null } = {}) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
   const out = [];
   for (const tool of tools || []) {
     const descriptor = toolDescriptor(tool);
     if (!descriptor) continue;
+    const wireName = toWire(descriptor.name);
     const parameters = normalizeToolParameters(descriptor.schema) || { type: 'object', properties: {} };
     if (chatCompletions) {
-      out.push({ type: 'function', function: { name: descriptor.name, description: descriptor.description, parameters } });
+      out.push({ type: 'function', function: { name: wireName, description: descriptor.description, parameters } });
     } else {
-      out.push({ type: 'function', name: descriptor.name, description: descriptor.description, parameters });
+      out.push({ type: 'function', name: wireName, description: descriptor.description, parameters });
     }
   }
   return out.length ? out : undefined;
 }
 
-export function anthropicMessagesWithoutSignature(messages) {
+export function anthropicMessagesWithoutSignature(messages, codec = null) {
+  const toWire = codec ? (n) => codec.toWire(n) : (n) => n;
   return (messages || [])
     .map((m) => {
       const cleanContent = (m.content || [])
@@ -178,6 +201,9 @@ export function anthropicMessagesWithoutSignature(messages) {
           if (!block || typeof block !== 'object') return null;
           if (block.type === 'thinking' && !block.signature) return null;
           const { thoughtSignature, toolName, ...rest } = block;
+          if (rest.type === 'tool_use' && rest.name) {
+            return { ...rest, name: toWire(rest.name) };
+          }
           return rest;
         })
         .filter(Boolean);
@@ -219,8 +245,8 @@ function finishAnthropicBody(conn, ctx, body) {
   return body;
 }
 
-export function buildAnthropicUpstreamBody(conn, ctx, messages, extras = {}) {
-  const anthropicMessages = anthropicMessagesWithoutSignature(messages);
+export function buildAnthropicUpstreamBody(conn, ctx, messages, extras = {}, codec = null) {
+  const anthropicMessages = anthropicMessagesWithoutSignature(messages, codec);
   const claudeCodeUnlock = claudeCodeUnlockForTarget(conn);
   if (claudeCodeUnlock) {
     return buildClaudeCodeUnlockPayload({
@@ -229,8 +255,8 @@ export function buildAnthropicUpstreamBody(conn, ctx, messages, extras = {}) {
       messages: anthropicMessages,
       maxTokens: ctx.maxTokens,
       stream: false,
-      tools: anthropicTools(ctx.tools),
-      toolChoice: anthropicToolChoice(ctx.toolChoice),
+      tools: anthropicTools(ctx.tools, codec),
+      toolChoice: anthropicToolChoice(ctx.toolChoice, codec),
     });
   }
   return finishAnthropicBody(conn, ctx, cleanBody({
@@ -242,12 +268,12 @@ export function buildAnthropicUpstreamBody(conn, ctx, messages, extras = {}) {
     temperature: ctx.temperature,
     stream: false,
     thinking: ctx.rawBody?.thinking || undefined,
-    tools: anthropicTools(ctx.tools),
-    tool_choice: anthropicToolChoice(ctx.toolChoice),
+    tools: anthropicTools(ctx.tools, codec),
+    tool_choice: anthropicToolChoice(ctx.toolChoice, codec),
   }));
 }
 
-export function buildOpenAIUpstreamBody(conn, ctx, messages, extras = {}) {
+export function buildOpenAIUpstreamBody(conn, ctx, messages, extras = {}, codec = null) {
   const codexUnlock = codexUnlockForTarget(conn);
   if (!codexUnlock && conn.wireApi === 'chat' && ctx.kind === 'responses' && ctx.rawBody) {
     const chatBody = responsesToChatCompletions(ctx.rawBody, conn.codexChatReasoning);
@@ -257,8 +283,8 @@ export function buildOpenAIUpstreamBody(conn, ctx, messages, extras = {}) {
   const useResponses = String(conn.apiPath || '').toLowerCase().includes('/responses');
   const clientEffort = clientReasoningEffort(conn, ctx) || clientChatReasoningEffort(conn, ctx) || clientAnthropicEffort(conn, ctx);
   if (useResponses) {
-    const rawInput = ctx.kind === 'responses' ? ctx.rawBody?.input : undefined;
-    const input = Array.isArray(rawInput) && rawInput.length > 0 ? rawInput : openAIResponsesInput(messages);
+    const rawInput = ctx.kind === 'responses' && !codec ? ctx.rawBody?.input : undefined;
+    const input = Array.isArray(rawInput) && rawInput.length > 0 ? rawInput : openAIResponsesInput(messages, codec);
     const body = {
       ...extras,
       model: conn.model,
@@ -267,8 +293,8 @@ export function buildOpenAIUpstreamBody(conn, ctx, messages, extras = {}) {
       max_output_tokens: codexUnlock ? undefined : ctx.maxTokens,
       temperature: ctx.temperature,
       stream: false,
-      tools: openAITools(ctx.tools, { chatCompletions: false }),
-      tool_choice: responsesToolChoice(ctx.toolChoice) || undefined,
+      tools: openAITools(ctx.tools, { chatCompletions: false, codec }),
+      tool_choice: responsesToolChoice(ctx.toolChoice, codec) || undefined,
       store: false,
     };
     if (clientEffort) body.reasoning = { effort: clientEffort };
@@ -278,12 +304,12 @@ export function buildOpenAIUpstreamBody(conn, ctx, messages, extras = {}) {
   const chatBody = {
     ...extras,
     model: conn.model,
-    messages: openAIChatMessages(ctx.system, messages),
+    messages: openAIChatMessages(ctx.system, messages, codec),
     max_tokens: ctx.maxTokens,
     temperature: ctx.temperature,
     stream: false,
-    tools: openAITools(ctx.tools),
-    tool_choice: ctx.toolChoice || undefined,
+    tools: openAITools(ctx.tools, { chatCompletions: true, codec }),
+    tool_choice: chatToolChoice(ctx.toolChoice, codec) || undefined,
   };
   if (chatBody.reasoning_effort === undefined && clientEffort) {
     chatBody.reasoning_effort = clientEffort;

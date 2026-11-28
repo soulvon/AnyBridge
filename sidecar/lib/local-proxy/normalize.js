@@ -222,12 +222,13 @@ function normalizeGeminiTools(tools) {
     for (const fn of declarations) {
       const name = String(fn?.name || '').trim();
       if (!name) continue;
+      const rawParams = fn.parameters ?? fn.parametersJsonSchema ?? fn.parameters_json_schema;
       out.push({
         type: 'function',
         function: {
           name,
           description: String(fn.description || ''),
-          parameters: fn.parameters || { type: 'object', properties: {} },
+          parameters: isPlainObject(rawParams) ? rawParams : { type: 'object', properties: {} },
         },
       });
     }
@@ -320,7 +321,24 @@ const GOOGLE_SCHEMA_TYPE_BY_NAME = {
   BOOLEAN: 'boolean', ARRAY: 'array', OBJECT: 'object',
 };
 
+const NUMERIC_SCHEMA_CONSTRAINT_KEYS = [
+  'minLength',
+  'maxLength',
+  'minItems',
+  'maxItems',
+  'minProperties',
+  'maxProperties',
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+];
+
 function normalizeSchemaTypeValue(type) {
+  if (Array.isArray(type)) {
+    return type.map((item) => normalizeSchemaTypeValue(item));
+  }
   if (typeof type === 'number' && Number.isInteger(type) && type >= 1 && type <= 6) {
     return GOOGLE_SCHEMA_TYPE_BY_INDEX[type - 1];
   }
@@ -330,20 +348,61 @@ function normalizeSchemaTypeValue(type) {
   return type;
 }
 
-export function normalizeToolParameters(schema) {
+function coerceNumericSchemaConstraints(out) {
+  for (const key of NUMERIC_SCHEMA_CONSTRAINT_KEYS) {
+    const val = out[key];
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+        const num = Number(trimmed);
+        if (Number.isFinite(num)) out[key] = num;
+      }
+    }
+  }
+}
+
+export function normalizeToolParameters(schema, { isRoot = true } = {}) {
   if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return schema;
   const out = { ...schema };
   if (out.type !== undefined) out.type = normalizeSchemaTypeValue(out.type);
-  if (out.properties && typeof out.properties === 'object') {
+  coerceNumericSchemaConstraints(out);
+  if (out.properties && typeof out.properties === 'object' && !Array.isArray(out.properties)) {
     const props = {};
     for (const [key, value] of Object.entries(out.properties)) {
-      props[key] = normalizeToolParameters(value);
+      props[key] = normalizeToolParameters(value, { isRoot: false });
     }
     out.properties = props;
   }
-  if (out.items) out.items = normalizeToolParameters(out.items);
+  if (Array.isArray(out.items)) {
+    out.items = out.items.map((item) => normalizeToolParameters(item, { isRoot: false }));
+  } else if (out.items) {
+    out.items = normalizeToolParameters(out.items, { isRoot: false });
+  }
+  if (isPlainObject(out.additionalProperties)) {
+    out.additionalProperties = normalizeToolParameters(out.additionalProperties, { isRoot: false });
+  }
+  for (const defsKey of ['$defs', 'definitions']) {
+    if (isPlainObject(out[defsKey])) {
+      const nextDefs = {};
+      for (const [k, v] of Object.entries(out[defsKey])) {
+        nextDefs[k] = normalizeToolParameters(v, { isRoot: false });
+      }
+      out[defsKey] = nextDefs;
+    }
+  }
   for (const key of ['anyOf', 'oneOf', 'allOf']) {
-    if (Array.isArray(out[key])) out[key] = out[key].map(normalizeToolParameters);
+    if (Array.isArray(out[key])) out[key] = out[key].map((item) => normalizeToolParameters(item, { isRoot: false }));
+  }
+  if (isPlainObject(out.not)) {
+    out.not = normalizeToolParameters(out.not, { isRoot: false });
+  }
+  if (isRoot) {
+    if (out.type === undefined && !out.anyOf && !out.oneOf && !out.allOf) {
+      out.type = 'object';
+    }
+    if (out.type === 'object' && out.properties === undefined && out.additionalProperties === undefined) {
+      out.properties = {};
+    }
   }
   return out;
 }

@@ -6963,39 +6963,44 @@
 
         <!-- ═══════ ANTIGRAVITY 增强插件弹窗 ═══════ -->
         <div class="modal-overlay" id="antigravityEnhanceModal" data-enhance-app="antigravity" role="dialog" aria-modal="true" aria-labelledby="antigravityEnhanceModalTitle" data-action="closeAntigravityEnhanceModal" data-only-self>
-          <div class="modal-container antigravity-enhance-modal is-single">
+          <div class="modal-container antigravity-enhance-modal">
             <div class="modal-header antigravity-enhance-head">
               <div class="antigravity-enhance-head-main">
                 <div class="antigravity-enhance-head-icon" aria-hidden="true">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
                   </svg>
                 </div>
                 <div class="antigravity-enhance-head-copy">
                   <div class="modal-title antigravity-enhance-title" id="antigravityEnhanceModalTitle">Antigravity 增强插件</div>
-                  <p class="antigravity-enhance-subtitle" id="antigravityEnhanceModalSubtitle">管理 Antigravity 社区增强插件（已内置界面汉化与多账号能力），改写安装资源前自动快照备份。</p>
+                  <p class="antigravity-enhance-subtitle" id="antigravityEnhanceModalSubtitle">点击「GitHub 详情」可弹出查看仓库说明；互斥扩展切换时自动卸载旧款。</p>
                 </div>
               </div>
               <div class="antigravity-enhance-head-right">
-                <button type="button" class="btn-ghost icon-btn antigravity-enhance-close" data-action="closeAntigravityEnhanceModal" aria-label="关闭">✕</button>
+                <button type="button" class="antigravity-enhance-close" data-action="closeAntigravityEnhanceModal" aria-label="关闭">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
               </div>
             </div>
             <div class="modal-body antigravity-enhance-body">
-              <div class="antigravity-enhance-notice">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="16" x2="12" y2="12"/>
-                  <line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                <span>增强补丁作用于客户端本地资源，客户端官方升级覆盖后可在这里一键重新应用。</span>
+              <div class="antigravity-enhance-scroll" id="antigravityEnhanceListView">
+                <div id="antigravityEnhanceList" class="antigravity-enhance-list"></div>
               </div>
-              <div id="antigravityEnhanceList" class="antigravity-enhance-list"></div>
-              <div class="antigravity-enhance-log-block">
-                <div class="antigravity-enhance-log-head">
-                  <span>执行日志</span>
+              <div class="antigravity-enhance-log-drawer" id="antigravityEnhanceLogDrawer">
+                <div class="antigravity-enhance-log-bar">
+                  <button type="button" class="antigravity-enhance-log-toggle" data-action="toggleAntigravityEnhanceLog" data-arg="antigravity" aria-expanded="false">
+                    <svg class="enhance-log-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                    <span class="enhance-log-title">执行日志</span>
+                    <span class="enhance-log-preview" id="antigravityEnhanceLogPreview">准备就绪</span>
+                  </button>
                   <button type="button" class="antigravity-enhance-log-clear" data-action="clearAntigravityEnhanceLog" data-arg="antigravity">清空</button>
                 </div>
-                <pre id="antigravityEnhanceLog" class="antigravity-enhance-log"></pre>
+                <pre id="antigravityEnhanceLog" class="antigravity-enhance-log" hidden></pre>
               </div>
             </div>
             <div class="modal-footer antigravity-enhance-foot">
@@ -7015,7 +7020,7 @@
             <div class="modal-header antigravity-enhance-head">
               <div class="antigravity-enhance-head-main">
                 <div class="antigravity-enhance-head-icon" aria-hidden="true">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>
                   </svg>
                 </div>
@@ -7025,25 +7030,30 @@
                 </div>
               </div>
               <div class="antigravity-enhance-head-right">
-                <button type="button" class="btn-ghost icon-btn antigravity-enhance-close" data-action="closeAntigravityIdeEnhanceModal" aria-label="关闭">✕</button>
+                <button type="button" class="antigravity-enhance-close" data-action="closeAntigravityIdeEnhanceModal" aria-label="关闭">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
               </div>
             </div>
             <div class="modal-body antigravity-enhance-body">
-              <div class="antigravity-enhance-notice">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                  <circle cx="12" cy="12" r="10"/>
-                  <line x1="12" y1="16" x2="12" y2="12"/>
-                  <line x1="12" y1="8" x2="12.01" y2="8"/>
-                </svg>
-                <span>增强补丁作用于客户端本地资源，客户端官方升级覆盖后可在这里一键重新应用。</span>
+              <div class="antigravity-enhance-scroll" id="antigravityIdeEnhanceListView">
+                <div id="antigravityIdeEnhanceList" class="antigravity-enhance-list"></div>
               </div>
-              <div id="antigravityIdeEnhanceList" class="antigravity-enhance-list"></div>
-              <div class="antigravity-enhance-log-block">
-                <div class="antigravity-enhance-log-head">
-                  <span>执行日志</span>
+              <div class="antigravity-enhance-log-drawer" id="antigravityIdeEnhanceLogDrawer">
+                <div class="antigravity-enhance-log-bar">
+                  <button type="button" class="antigravity-enhance-log-toggle" data-action="toggleAntigravityEnhanceLog" data-arg="antigravity-ide" aria-expanded="false">
+                    <svg class="enhance-log-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                    <span class="enhance-log-title">执行日志</span>
+                    <span class="enhance-log-preview" id="antigravityIdeEnhanceLogPreview">准备就绪</span>
+                  </button>
                   <button type="button" class="antigravity-enhance-log-clear" data-action="clearAntigravityEnhanceLog" data-arg="antigravity-ide">清空</button>
                 </div>
-                <pre id="antigravityIdeEnhanceLog" class="antigravity-enhance-log"></pre>
+                <pre id="antigravityIdeEnhanceLog" class="antigravity-enhance-log" hidden></pre>
               </div>
             </div>
             <div class="modal-footer antigravity-enhance-foot">
@@ -7056,6 +7066,14 @@
             </div>
           </div>
         </div>
+
+        <!-- ═══════ ANTIGRAVITY 增强插件 GITHUB 详情叠层弹窗 ═══════ -->
+        <div class="modal-overlay enhance-detail-overlay" id="antigravityEnhanceDetailModal" role="dialog" aria-modal="true" aria-labelledby="antigravityEnhanceDetailTitle" data-action="closeAntigravityEnhanceDetail" data-only-self>
+          <div class="modal-container enhance-detail-modal" id="antigravityEnhanceDetailDialog"></div>
+        </div>
+
+        <!-- ═══════ 详情截图放大灯箱 ═══════ -->
+        <div class="modal-overlay enhance-lightbox-overlay" id="antigravityEnhanceImageLightbox" role="dialog" aria-modal="true" data-action="closeAntigravityEnhanceLightbox" data-only-self></div>
         <!-- ═══════ PAGE: PLATFORM · ANTIGRAVITY · 添加模型（独立页面） ═══════ -->
         <div class="page" id="page-platform-antigravity-add" role="tabpanel" aria-labelledby="tab-platforms">
           <div class="platform-console-hero model-add-hero glass-card">

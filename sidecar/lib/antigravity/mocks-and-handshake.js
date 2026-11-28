@@ -220,6 +220,97 @@ export function mockAntigravityUserSettings() {
   };
 }
 
+const ANTIGRAVITY_CORE_BOOL_EXPERIMENT_FLAGS = [
+  'enable-agent-plugins-spec',
+  'enable-customization-kind-plugin',
+  'enable-customization-kind-mcp',
+  'enable-customization-kind-skill',
+  'enable-customization-kind-agent',
+  'enable-customization-kind-workflow',
+  'enable-customization-skills',
+  'enable-plugin-auth',
+  'enable-mcp-plugin-auth',
+  'mcp-lazy-load-tools',
+  'enable-mcp-non-blocking-turn-load',
+  'enable-subagent-hub',
+  'cascade-enable-messaging',
+  'enable-ask-question-tool',
+  'enable-update-steps-tool',
+  'enable-run-workflow-tool',
+  'enable-native-swarm',
+  'enable-swarm-overview',
+  'enable-swarm-graph-tab',
+  'enable-swarm-monitor',
+  'enable-markdown-agents',
+  'send-subagent-initial-prompt-as-message',
+  'enable-browser-subagent-v2',
+  'enable-teamwork-subagent',
+  'enable-image-generator-subagent',
+  'Chat__enable_chat_crescendo_agents',
+  'Chat__enable_agent_mode_slash_commands',
+  'DatacloudMcp__enable_stdio_mcp_proxy',
+];
+
+const ANTIGRAVITY_DEFAULT_MARKETPLACES = [
+  'antigravity-plugins-official=https://www.gstatic.com/antigravity/plugins/marketplace.json',
+  'antigravity-plugins-partners=https://www.gstatic.com/antigravity/plugins-partners/marketplace.json',
+];
+
+export function mockAntigravityListExperiments() {
+  return {
+    experimentIds: [],
+    flags: [
+      ...ANTIGRAVITY_CORE_BOOL_EXPERIMENT_FLAGS.map((name) => ({ name, boolValue: true })),
+      {
+        name: 'invoke-subagent-config',
+        stringValue: '{"enabled": true, "always_inherit_model": true}',
+      },
+      {
+        name: 'agy-plugin-marketplaces',
+        stringListValue: { values: [...ANTIGRAVITY_DEFAULT_MARKETPLACES] },
+      },
+    ],
+  };
+}
+
+export function ensureAntigravityExperiments(response) {
+  try {
+    if (!response || typeof response !== 'object' || Array.isArray(response)) {
+      return mockAntigravityListExperiments();
+    }
+    if (!Array.isArray(response.flags) || response.flags.length === 0) {
+      return {
+        ...response,
+        experimentIds: Array.isArray(response.experimentIds) ? response.experimentIds : [],
+        flags: mockAntigravityListExperiments().flags,
+      };
+    }
+    const existingNames = new Set(response.flags.map((f) => f?.name).filter(Boolean));
+    const extras = [];
+    for (const name of ANTIGRAVITY_CORE_BOOL_EXPERIMENT_FLAGS) {
+      if (!existingNames.has(name)) extras.push({ name, boolValue: true });
+    }
+    if (!existingNames.has('invoke-subagent-config')) {
+      extras.push({
+        name: 'invoke-subagent-config',
+        stringValue: '{"enabled": true, "always_inherit_model": false}',
+      });
+    }
+    if (!existingNames.has('agy-plugin-marketplaces')) {
+      extras.push({
+        name: 'agy-plugin-marketplaces',
+        stringListValue: { values: [...ANTIGRAVITY_DEFAULT_MARKETPLACES] },
+      });
+    }
+    if (extras.length > 0) {
+      response.flags = [...response.flags, ...extras];
+    }
+    return response;
+  } catch {
+    return response;
+  }
+}
+
 export function isAntigravityBypassMetricsPath(pathname) {
   const p = String(pathname || '').toLowerCase();
   return p.includes('recordcodeassistmetrics')

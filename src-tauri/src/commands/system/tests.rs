@@ -540,3 +540,17 @@ fn restart_cdp_command_uses_preferred_launch_port_helper() {
         "restart_antigravity_ide_with_cdp 不得写死 CDP_PORT，应走 preferred_launch_port()"
     );
 }
+
+#[test]
+fn antigravity_hub_restart_args_attach_cdp_port_when_theme_active() {
+    assert_eq!(
+        super::restart::merge_antigravity_hub_cdp_args(&[], true),
+        vec!["--remote-debugging-port=0".to_string()]
+    );
+    assert!(super::restart::merge_antigravity_hub_cdp_args(&[], false).is_empty());
+    let explicit = vec!["--remote-debugging-port=9229".to_string()];
+    assert_eq!(
+        super::restart::merge_antigravity_hub_cdp_args(&explicit, true),
+        explicit
+    );
+}

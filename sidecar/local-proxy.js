@@ -6,6 +6,7 @@ import { executeSearchWithFailover } from './handlers/search-sources.js';
 import {
   antigravityAuthScopeKey,
   ensureAntigravityAdminControls,
+  ensureAntigravityExperiments,
   ensureAntigravityTier,
   fetchOfficialAntigravityModels,
   fetchOfficialAntigravityRaw,
@@ -15,6 +16,7 @@ import {
   isAntigravityPath,
   mergeAntigravityModelsResponse,
   mockAntigravityAdminControls,
+  mockAntigravityListExperiments,
   mockAntigravityLoadCodeAssist,
   mockAntigravityUserInfo,
   mockAntigravityUserQuotaSummary,
@@ -331,6 +333,14 @@ async function handleAntigravityRequest(req, res, body, p, json, attachScope) {
       return;
     }
     sendJson(res, 200, await singleflight('ag_admin_controls', 10000, async () => mockAntigravityAdminControls()));
+    return;
+  }
+  if (method === 'listExperiments') {
+    if (isHybrid) {
+      await handleHybridHandshake(res, req, body, '/v1internal:listExperiments', ensureAntigravityExperiments, mockAntigravityListExperiments);
+      return;
+    }
+    sendJson(res, 200, await singleflight('ag_list_experiments', 10000, async () => mockAntigravityListExperiments()));
     return;
   }
   if (method === 'getCodeAssistGlobalUserSetting' || method === 'setUserSettings') {

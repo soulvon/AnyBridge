@@ -149,11 +149,13 @@ export async function forwardToOfficialAntigravity(req, res, { body, customPath,
   }
 
   for (let round = 0; round < 2; round++) {
+    if (res.headersSent || res.writableEnded) return;
     if (round > 0) {
-      if (res.headersSent) return;
       await handshakeRetryDelay();
+      if (res.headersSent || res.writableEnded) return;
     }
     for (let i = 0; i < hosts.length; i++) {
+      if (res.headersSent || res.writableEnded) return;
       const host = hosts[i];
       const isLast = i === hosts.length - 1;
       try {
@@ -168,6 +170,12 @@ export async function forwardToOfficialAntigravity(req, res, { body, customPath,
           },
           payload,
           (fwdRes, finish, clearHardTimer) => {
+            if (res.headersSent || res.writableEnded) {
+              if (typeof clearHardTimer === 'function') clearHardTimer();
+              fwdRes.resume();
+              finish(true);
+              return;
+            }
             const hasMoreHostsOrRetry = round === 0 || !isLast || typeof onFailed === 'function';
             const status = fwdRes.statusCode || 0;
             if (((status === 401 || status === 403) && typeof onFailed === 'function')
@@ -210,9 +218,10 @@ export async function forwardToOfficialAntigravity(req, res, { body, customPath,
     }
   }
 
+  if (res.headersSent || res.writableEnded) return;
   if (typeof onFailed === 'function') {
     onFailed();
-  } else if (!res.headersSent) {
+  } else {
     res.writeHead(502, { 'content-type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify({ error: { code: 502, message: '官方服务器连接失败' } }));
   }

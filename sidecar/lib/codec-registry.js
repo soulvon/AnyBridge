@@ -370,6 +370,9 @@ export function createProtocolStreamTransform(targetFormat, conn, ctx, opts = {}
   const protocol = resolveUpstreamProtocol(conn);
   const model = ctx.model || '';
   const echoModel = ctx.originalModel || model;
+  const mapToolName = typeof ctx?._toolNameCodec?.fromWire === 'function'
+    ? (name) => ctx._toolNameCodec.fromWire(name)
+    : null;
 
   if (targetFormat === 'openai') {
     const id = opts.id || `chatcmpl-${crypto.randomUUID()}`;
@@ -426,7 +429,7 @@ export function createProtocolStreamTransform(targetFormat, conn, ctx, opts = {}
       };
     }
     if (protocol === 'responses') return createResponsesPassthroughTransform(model);
-    return createResponsesFromDecoderTransform(model, createUpstreamEventDecoder(conn));
+    return createResponsesFromDecoderTransform(model, createUpstreamEventDecoder(conn, { mapToolName }));
   }
 
   if (targetFormat === 'anthropic') {
@@ -443,7 +446,7 @@ export function createProtocolStreamTransform(targetFormat, conn, ctx, opts = {}
       };
     }
     if (protocol === 'anthropic') return createAnthropicPassthroughTransform(echoModel);
-    return createAnthropicFromDecoderTransform(echoModel, createUpstreamEventDecoder(conn));
+    return createAnthropicFromDecoderTransform(echoModel, createUpstreamEventDecoder(conn, { mapToolName }));
   }
 
   if (targetFormat === 'gemini') {
@@ -459,7 +462,7 @@ export function createProtocolStreamTransform(targetFormat, conn, ctx, opts = {}
         formatItem(frame) { return { event: null, data: frame }; },
       };
     }
-    return createGeminiNativeFromDecoderTransform(model, createUpstreamEventDecoder(conn), scope);
+    return createGeminiNativeFromDecoderTransform(model, createUpstreamEventDecoder(conn, { mapToolName }), scope);
   }
 
   // antigravity
@@ -475,7 +478,7 @@ export function createProtocolStreamTransform(targetFormat, conn, ctx, opts = {}
       formatItem(frame) { return { event: null, data: frame }; },
     };
   }
-  return createAntigravityFromDecoderTransform(model, createUpstreamEventDecoder(conn), scope);
+  return createAntigravityFromDecoderTransform(model, createUpstreamEventDecoder(conn, { mapToolName }), scope);
 }
 
 /**

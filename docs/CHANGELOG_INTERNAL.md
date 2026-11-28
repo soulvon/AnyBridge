@@ -9,6 +9,48 @@
 > - `CHANGELOG.md`：一屏能读完、用户能看懂、只讲"你会得到什么"。一个版本 2-4 条。
 > - 本文件：可以写 `hudsucker=debug`、`passthroughParams`、栈追踪、判据与测试名。
 
+## v1.1.19（增强插件 Windows 目录占用容错与非监听区暂存修复）
+
+- **暂存区隔离与目录替换兜底（`src-tauri/src/commands/enhance.rs`、`src-tauri/src/commands/enhance/native_plugins.rs`）**：
+  1. 实测定位到 `Antigravity` (`language_server.exe`) 与杀软过滤驱动（`360FsFlt` / `sysdiag`）对 `~/.gemini/config/plugins/` 持有目录监听与文件扫描锁，导致整目录 `MoveFileExW`（`fs::rename`）即使同盘也报 `os error 5`（`拒绝访问`），且刚写入的 77 个文件在立刻执行 `fs::remove_dir_all` 时会因空子目录句柄尚未释放短暂报 `os error 32`。
+  2. 将 `install_native_plugin` 临时解压暂存区从 `plugins/.{dir}-staging-{pid}` 移出至外层 `cfg_dir/.{dir}-staging-{pid}`，完成完整树结构校验后再部署，避免解压阶段惊动客户端热加载监听；若外层跨卷 `EXDEV` 也统一由下层同步逻辑接管。
+  3. 重构 `replace_dir_atomically` 并抽取共享 helper `retry_transient_fs` / `remove_dir_with_retry` / `copy_file_with_retry` / `prune_stale_entries` / `sync_dir_from_staging`：整目录 `rename` 遇 `os error 5/32/33/145` 先经 `RENAME_BACKOFF_MS` 短退避重试（`50/100ms`），仍受阻或跨卷时退化为 `sync_dir_from_staging`（清只读属性、逐文件覆盖并裁剪目标内过时旧项，全新安装中途失败自动清理，已备份场景失败自动回滚）；`uninstall_native_plugin` 与目录清理同步切至 `remove_dir_with_retry`（`IO_BACKOFF_MS` 累计至 4.5s）。
+- **验证方式**：
+  1. `src-tauri/src/commands/enhance/tests.rs` 新增 `replace_dir_atomically_and_dir_sync_handle_fresh_reinstall_readonly_and_stale_prune` 与 `native_plugin_zip_staging_and_reinstall_roundtrip_outside_plugins_dir`。
+  2. 在运行中 `Antigravity.exe` + `language_server.exe` 真机环境下完成四款插件实测：`antigravity-usage-monitor` (`v1.5.6`) 在真机 `~/.gemini/config/plugins/` 临时目录连续 3 次完成解压/覆写更新/卸载全链路，`antigravity-context-viewer` (`v0.9.3`) 完成隔离 `app.asar` 安装/状态/还原及锁占用校验，`antigravity-codex-theme` (`v1.4.3`) 与 `chuanban-antigravity-theme-patch` (`v6.0.6`) 完成隔离沙箱安装与卸载，并通过全量 `npm run verify`。
+
+## v1.1.18（增强插件百分比大图、多列截图表格与中文回退修复）
+
+- **图片百分比宽度误截断修复（`ui/assets/scripts/platforms/antigravity_enhance_render.js`、`antigravity-enhance-detail.css`）**：
+  1. 修复 `createCleanImageNode` 使用 `parseInt("100%", 10)` 将 `<img width="100%" />` 误截为 `width="100"` 像素导致 `antigravity-usage-monitor` 预览图及 `IDE 与 CLI` 截图被压成 100px 缩略图的问题；抽取统一尺寸解析器 `parseSafeDimension` 与 `buildSafeImageProps` 同时服务在线 DOM 清洗与降级 Markdown 渲染，严格区分百分比（`is-full-width` 或受控百分比样式）与纯像素尺寸（`<= 128px` 标为 `is-inline-logo` 去框）。
+  2. 将 `star-history.com` 从 `isBadgeImageUrl` 移除，防止 Star History 趋势图表被误压成 20px 高徽章；扩展降级 Markdown URL 正则支持含成对括号的徽章链接（如 `node >=22.0.0 (22.13+ Full)`）。
+  3. 保留 `td/th` 安全百分比列宽（如 `33.3%`）并为全百分比列表格加 `.is-fixed-layout`，同时在降级 Markdown 解析器抽取顶层 `<table>...</table>` 交由 `sanitizeEnhanceGithubHtml` 统一渲染并保留 `<sub>`/`<sup>`，使三栏面板截图在弹窗内等分并排且不横向溢出。
+- **中文 README 在线抓包 504 兜底（`src-tauri/src/commands/enhance/github_detail.rs`）**：`fetch_github_blob_rendered_html` 增加 1 次重试并回退 `?plain=0` HTML `<article class="markdown-body">` 解析；若网页接口仍不可达但主页非中文且存在中文 `README`，自动切到镜像中文 Markdown 渲染，避免退回全英文页面。
+- **验证方式**：红-绿回归单测（`scripts/antigravity-settings-and-enhance.test.mjs`）、真实 Chromium 加载 `yuhuan-dev/antigravity-usage-monitor` 实测像素与三图截图（Logo `84x84`、预览与 `IDE`/`CLI` 图 `795–821px` 满宽、三栏表格均分 `249x346px`、Star History 图表 `802x535px`）及全量 `npm run verify`。
+
+## v1.1.17（增强插件 GitHub 详情叠层模态框与在线渲染重构）
+
+- **GitHub 在线官方渲染 HTML 拉取与受控图片代理（`src-tauri/src/commands/enhance/github_detail.rs`、`enhance.rs`、`src-tauri/src/lib.rs`、`src-tauri/tauri.conf.json`）**：
+  1. 解决 `api.github.com` 匿名 60 次/小时限流与手写正则 Markdown 解析缺陷：并发抓取 `api.github.com/repos/{repo}` 与 `https://github.com/{repo}` 页面，直接提取 GitHub 官方服务端渲染的 `<article class="markdown-body">` 与基础元信息；首页非中文时自动通过 `GET /blob/{branch}/{README.zh-CN.md|README_zh.md|README_CN.md}` (`Accept: application/json`) 提取 `payload.codeViewBlobRoute.richText`；断网/不可达时自动降级到 `raw.githubusercontent.com` + 镜像链 Markdown。
+  2. 更新 `tauri.conf.json` CSP 放开 `img-src 'self' data: https:` 与 `media-src 'self' https:`，根治 WebView2 拦截所有远程 GitHub 截图、徽章与演示视频的问题；新增白名单受控命令 `get_enhance_github_image`（仅放行 GitHub/shields/badgen 白名单域名、6 MB 上限、MIME/魔数校验、15 分钟内存缓存、复用系统代理与镜像链），供前端在直连受阻时无感切换 `data:` URI 兜底。
+- **叠层二级模态框、DOM 白名单清洗器与滚动根因修复（`ui-src/partials/pages/platform-antigravity.html`、`ui/assets/scripts/platforms/antigravity_enhance_{catalog,render,detail}.js`、`antigravity_enhance.js`、`antigravity-enhance-detail.css`、`55-platforms.js`、`scripts/check-ui.mjs`、`ui/assets/i18n/{zh-CN,en-US}.js`）**：
+  1. 将原内联替换式详情视图重构为独立叠层二级模态框 `#antigravityEnhanceDetailModal`（`z-index: 10020`）+ 截图放大灯箱 `#antigravityEnhanceImageLightbox`（`z-index: 10040`），打开详情时底层插件列表保持完整可见，按 Escape / 点击遮罩仅关闭当前顶层弹窗。
+  2. 根治无法滚动问题：将 `.enhance-detail-scroll` 从 `display: flex; flex-direction: column` 改为 `display: block; flex: 1 1 auto; min-height: 0; overflow-y: auto`，且 `.enhance-detail-readme-card` 改 `overflow: visible`（消除 `flex-shrink: 1` 叠加 `overflow: hidden` 锁死高度导致 `scrollHeight === clientHeight`）。
+  3. 抽出 `antigravity_enhance_render.js` 实现基于 `DOMParser` 的严格白名单 HTML 清洗器 `sanitizeEnhanceGithubHtml`（剥离 `script`/事件属性/危险协议/GitHub `.anchor` 图标，规范化 `/raw/` 相对图，支持 `<picture>` 主题适配、`<video controls>`、`<details>`、GitHub Alerts 与页内锚点平滑跳转），并同步修复降级 Markdown 解析器的 HTML `<h1>`/`<code>`、引号内 `>=` 截断与占位符泄漏问题。
+- **验证方式**：Rust `enhance::tests`（14/14 含域名白名单与 HTML/MIME 提取单测）、Node `scripts/antigravity-settings-and-enhance.test.mjs`（叠层模态框、降级 Markdown、在线 HTML 安全清洗与 Escape 隔离测试）、真实 Chromium 加载 `nkjDSLcvanv/antigravity-codex-theme` 线上页面验收（18/18 图全出、`scrollHeight: 8217 / clientHeight: 635`、演示视频与亮色视觉截图核验）及全量 `npm run verify`。
+
+## v1.1.16（Antigravity 增强插件体系与反代工具/MCP全链路修复）
+
+- **Antigravity 反代工具与已安装插件/MCP 无法调用根因修复（`sidecar/lib/antigravity/{mocks-and-handshake,official-forwarder}.js`、`sidecar/lib/antigravity-handler.js`、`sidecar/local-proxy.js`、`sidecar/lib/local-proxy/{normalize,tool-name-codec,openai-anthropic-payload,upstream-payload,stream-attempt}.js`、`sidecar/lib/{gemini-schema,upstream-decoder,codec-registry}.js`）**：
+  1. 真机抓包定位纯 BYOK 模式及混合模式回退对 `/v1internal:listExperiments` 返回空 `{}`，导致客户端关闭 `enable-agent-plugins-spec`、`mcp-lazy-load-tools`、`enable-customization-kind-*` 与 `agy-plugin-marketplaces`，抹除 `<mcp_servers>` 并砍掉 `call_mcp_tool`、`invoke_subagent`、`run_workflow`、`update_steps` 等 6 类核心工具；新增 `mockAntigravityListExperiments`（纯 BYOK 下自动令子代理继承活跃 BYOK 模型）与 `ensureAntigravityExperiments` 补齐实验开关基线。
+  2. 修复 `normalizeGeminiTools`、`geminiTools` 与 `buildGeminiNativePassthroughPayload` 忽略 `parametersJsonSchema` / `parameters_json_schema` 导致 Eager MCP 与新版工具参数退化为空对象的问题；在 `normalizeToolParameters` 与 `sanitizeGeminiSchema` 中将 Protobuf JSON 序列化的字符串数值约束（如 `minLength: "1"`、`maxItems: "12"`）统一转为 `Number`，并为 `call_mcp_tool.Arguments` 等无 `type` 子属性补齐 `OBJECT`，根治严格校验上游返回 400。
+  3. 新增 `buildCrossProtocolToolNameCodec` 为含 `:` / `.` 的工具名提供 OpenAI/Responses/Anthropic 出站无损编码与流式/非流式回包原名还原；修复 `messagesForNonGeminiUpstream` 无 `id` 同名并行工具调用 ID 碰撞、提取 `functionResponse.parts` 文本/图片并过滤纯 `thought` 空消息；加固 `forwardToOfficialAntigravity` 全分支 `res.headersSent || res.writableEnded` 守卫防止触发 `ERR_HTTP_HEADERS_SENT` 崩溃。
+  4. 新增 `sidecar/antigravity-tools-and-plugins.test.js`（5 组端到端与单元回归测试）及 `docs/pitfalls.json` 两条判据（`ag-list-experiments-empty-disables-plugins-and-mcp`、`ag-tool-schema-jsonschema-string-ints-and-name-codec`），并通过本机 `agy.exe` 纯 BYOK 真机工具/MCP 实测验收。
+
+- **CDP 零改包主题插件接入（`src-tauri/src/commands/enhance/cdp_themes.rs`、`system/restart.rs`）**：声明式接入 `antigravity-codex-theme`（`nkjDSLcvanv/antigravity-codex-theme`，Node >= 22.13.0，自动识别已装 `antigravity-context-viewer` 时传入 `--without i18n`）与 `chuanban-antigravity-theme-patch`（`Anarcadia/chuanban-antigravity-theme-patch`，Node >= 22.0.0，从 `core/manifest.json` 读取版本）；状态探测校验 `core/daemon.mjs` + `user/config.json` `enabled != false` + OS 服务注册物完整生效链；安装任一款前自动卸载互斥对端。
+- **Antigravity 2.0 原生插件接入（`src-tauri/src/commands/enhance/native_plugins.rs`）**：声明式接入 `antigravity-usage-monitor`（`yuhuan-dev/antigravity-usage-monitor`），优先拉取预打包 Release 资产 `usage-monitor.zip`（失败回退 tag 源码包），保留 `assets/logo.svg` 并原子部署至 `~/.gemini/config/plugins/usage-monitor`，同时原位合并写入 `~/.gemini/config/config.json` 的 `plugins["usage-monitor"].enabled = true`（遇损坏 JSON 显式拒写）；对称卸载移除目录与注册项并保留 `~/.gemini/antigravity/sidecar_data/usage-monitor/` 历史数据；`has_active_hub_cdp_consumer()` 纳入原生 CDP 插件供 `restart_ide` 保留 `--remote-debugging-port=0`。
+- **双级冲突检测矩阵、站内 GitHub 详情视图与弹窗视觉重构（`src-tauri/src/commands/enhance/{conflicts,github_detail}.rs`、`ui/assets/scripts/platforms/antigravity_enhance_{catalog,detail}.js`、`antigravity_enhance.js`、`antigravity-enhance.css`、`55-platforms.js`、`scripts/check-ui.mjs`）**：收敛单一声明式冲突矩阵（`Exclusive` 硬互斥自动替换 + `Overlap` 功能重叠共存建议）；新增白名单受控 `get_enhance_github_detail` 命令（`raw.githubusercontent.com` + `mirror_candidates` 镜像链 + 10 分钟缓存 + 安全 Markdown 渲染）实现弹窗内直览 GitHub README 与预览图；弹窗改为严格三段式 Flex（独立滚动容器 + 默认收起的底部执行日志抽屉），根治 `.antigravity-enhance-list` 因 `min-height` 触发 `flex-shrink` 与日志区穿模叠加、以及关闭按钮受 `.btn-ghost { min-width: 84px }` 拉宽的问题；卡片改紧凑单行元数据与降噪重叠提示。
+
 ## v1.1.15（Antigravity IDE 全链路汉化修复）
 
 - **路径契约修复（`app_localization/{mod,lang_pack,apply_and_keeper}.rs`）**：Antigravity IDE 的 `dataFolderName` 为 `.antigravity-ide`，扩展目录与 `argv.json` 位于 `~/.antigravity-ide`，仅 `languagepacks.json` 留在 `%APPDATA%/Antigravity IDE`。新增 `ide_home_dot_dir` 与 `ide_argv_path` 统一映射；还原路径同步回滚此前误写入 `ide_state_dir/argv.json` 的残留。

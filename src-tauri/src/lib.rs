@@ -232,6 +232,8 @@ pub fn run() {
             commands::enhance::check_antigravity_enhance_update,
             commands::enhance::install_antigravity_enhance,
             commands::enhance::uninstall_antigravity_enhance,
+            commands::enhance::get_enhance_github_detail,
+            commands::enhance::get_enhance_github_image,
             commands::app_localization::get_app_localization_status,
             commands::app_localization::apply_app_localization,
             commands::app_localization::restore_app_localization,

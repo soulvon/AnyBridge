@@ -1,38 +1,22 @@
 // platforms/antigravity_enhance.js — Antigravity 与 Antigravity IDE 独立增强插件弹窗
-// 两款客户端拥有完全独立的弹窗容器、状态槽、执行日志与上游源码卡片。
-
-const LOC_UPSTREAM_REPO = 'liominsb/Antigravity-Chinese-Localization';
-
-const ANTIGRAVITY_ENHANCE_CATALOG = {
-  'antigravity-context-viewer': {
-    icon: 'dashboard',
-    repo: 'elviscjn-cjn/antigravity-context-viewer',
-    tagKeys: ['agEnhance.tagTopbar', 'agEnhance.tagBuiltinHans', 'agEnhance.tagMultiAccount', 'agEnhance.tagTimeline'],
-    descKey: 'agEnhance.viewerDesc',
-    introKeys: ['agEnhance.viewerIntro1', 'agEnhance.viewerIntroHans', 'agEnhance.viewerIntro2', 'agEnhance.viewerIntro3']
-  }
-};
-
-const ENHANCE_APPS = {
-  antigravity: { modalId: 'antigravityEnhanceModal', listId: 'antigravityEnhanceList', logId: 'antigravityEnhanceLog', refreshBtnId: 'antigravityEnhanceRefreshBtn' },
-  'antigravity-ide': { modalId: 'antigravityIdeEnhanceModal', listId: 'antigravityIdeEnhanceList', logId: 'antigravityIdeEnhanceLog', refreshBtnId: 'antigravityIdeEnhanceRefreshBtn' }
-};
-
-const ANTIGRAVITY_ENHANCE_ICONS = {
-  extension:
-    '<path d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5C13 2.12 11.88 1 10.5 1S8 2.12 8 3.5V5H4c-1.1 0-1.99.9-1.99 2v3.8H3.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7 1.49 0 2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.38 0 2.5-1.12 2.5-2.5S21.88 11 20.5 11z"/>',
-  lang:
-    '<path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/>',
-  dashboard:
-    '<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>',
-  external:
-    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>',
-  chevron:
-    '<polyline points="6 9 12 15 18 9"/>'
-};
+// 两款客户端拥有完全独立的弹窗容器、状态槽、执行日志、站内 GitHub 详情视图与上游源码卡片。
 
 function createAppEnhanceState() {
-  return { items: [], locStatus: null, cdpStatus: null, locUpdateInfo: null, expandedIntros: new Set(), busy: false, loadSeq: 0 };
+  return {
+    items: [],
+    locStatus: null,
+    cdpStatus: null,
+    locUpdateInfo: null,
+    expandedIntros: new Set(),
+    activeDetailId: null,
+    detailCache: new Map(),
+    detailLoading: false,
+    detailError: '',
+    detailSeq: 0,
+    logExpanded: false,
+    busy: false,
+    loadSeq: 0
+  };
 }
 
 const _enhanceStates = { antigravity: createAppEnhanceState(), 'antigravity-ide': createAppEnhanceState() };
@@ -54,54 +38,68 @@ function et(key, params) {
   return typeof t === 'function' ? t(key, params) : key;
 }
 
-function enhanceEscape(value) {
-  return String(value == null ? '' : value).replace(/[&<>"']/g, (ch) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-  }[ch]));
+function setEnhanceLogExpanded(appId, expanded) {
+  const id = normalizeEnhanceApp(appId);
+  const state = appState(id);
+  const cfg = appCfg(id);
+  state.logExpanded = Boolean(expanded);
+  const drawer = document.getElementById(cfg.logDrawerId);
+  const box = document.getElementById(cfg.logId);
+  const toggleBtn = drawer?.querySelector?.('.antigravity-enhance-log-toggle');
+  if (drawer) drawer.classList.toggle('is-open', state.logExpanded);
+  if (box) box.hidden = !state.logExpanded;
+  if (toggleBtn) toggleBtn.setAttribute('aria-expanded', String(state.logExpanded));
 }
 
-function antigravityEnhanceIcon(name, size = 20, filled = false) {
-  const body = ANTIGRAVITY_ENHANCE_ICONS[name] || ANTIGRAVITY_ENHANCE_ICONS.extension;
-  if (filled) {
-    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">${body}</svg>`;
-  }
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
+function toggleAntigravityEnhanceLog(triggerOrApp = null, appArg = null) {
+  const id = resolveEnhanceApp(triggerOrApp, appArg);
+  setEnhanceLogExpanded(id, !appState(id).logExpanded);
 }
 
 function appendAntigravityEnhanceLog(text, level = 'info', appId = null) {
-  const box = document.getElementById(appCfg(appId).logId);
-  if (!box) return;
+  const id = normalizeEnhanceApp(appId);
+  const cfg = appCfg(id);
+  const box = document.getElementById(cfg.logId);
+  const preview = document.getElementById(cfg.logPreviewId);
+  const [prefixKey, color] = ENHANCE_LOG_META[level] || ENHANCE_LOG_META.info;
   const time = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-  const prefix = level === 'ok'
-    ? et('agEnhance.logOk')
-    : level === 'warn'
-      ? et('agEnhance.logWarn')
-      : level === 'err'
-        ? et('agEnhance.logErr')
-        : et('agEnhance.logInfo');
+  const firstLine = String(text || '').split(/\r?\n/).find((l) => l.trim()) || '';
+  if (preview) {
+    preview.textContent = firstLine ? `[${time}] ${firstLine}` : et('agEnhance.logReady');
+    preview.classList.remove('is-ok', 'is-warn', 'is-err');
+    if (level === 'ok' || level === 'warn' || level === 'err') preview.classList.add(`is-${level}`);
+  }
+  if (!box) return;
   const line = document.createElement('div');
-  line.textContent = `[${time}] ${prefix} ${text}`;
-  if (level === 'ok') line.style.color = 'var(--success)';
-  else if (level === 'warn') line.style.color = 'var(--accent-warm)';
-  else if (level === 'err') line.style.color = 'var(--danger)';
+  line.textContent = `[${time}] ${et(prefixKey)} ${text}`;
+  if (color) line.style.color = color;
   box.appendChild(line);
   box.scrollTop = box.scrollHeight;
+  if (level === 'err') setEnhanceLogExpanded(id, true);
 }
 
 function clearAntigravityEnhanceLog(appArg = null) {
-  const box = document.getElementById(appCfg(resolveEnhanceApp(null, appArg)).logId);
+  const id = resolveEnhanceApp(null, appArg);
+  const cfg = appCfg(id);
+  const box = document.getElementById(cfg.logId);
+  const preview = document.getElementById(cfg.logPreviewId);
   if (box) box.textContent = '';
+  if (preview) {
+    preview.textContent = et('agEnhance.logReady');
+    preview.classList.remove('is-ok', 'is-warn', 'is-err');
+  }
 }
 
 function setAntigravityEnhanceBusy(appId, busy, activeBtn = null) {
   const id = normalizeEnhanceApp(appId);
   appState(id).busy = busy;
-  document.querySelectorAll(`#${appCfg(id).modalId} button`).forEach((btn) => {
-    if (btn.classList.contains('antigravity-enhance-close') || btn.classList.contains('antigravity-enhance-log-clear')) {
+  const selector = `#${appCfg(id).modalId} button, #${ENHANCE_DETAIL_MODAL_ID}[data-enhance-app="${id}"] button`;
+  document.querySelectorAll(selector).forEach((btn) => {
+    if (btn.classList.contains('antigravity-enhance-close')
+      || btn.classList.contains('antigravity-enhance-log-clear')
+      || btn.classList.contains('antigravity-enhance-log-toggle')
+      || btn.classList.contains('enhance-detail-close')
+      || btn.classList.contains('enhance-detail-open-external')) {
       return;
     }
     if (btn === activeBtn) return;
@@ -164,59 +162,68 @@ function toggleAntigravityEnhanceIntro(triggerOrId, cardId) {
   renderAntigravityEnhanceCards(appId);
 }
 
-function buildKvGridHtml(rows) {
-  if (!rows || !rows.length) return '';
-  return `<div class="enhance-kv-grid">${rows.map((row) => `
-    <div class="enhance-kv-item">
-      <span class="enhance-kv-label">${enhanceEscape(row.label)}</span>
-      <div class="enhance-kv-value-row">
-        <span class="enhance-kv-value" title="${enhanceEscape(row.value)}">${enhanceEscape(row.value)}</span>
-        ${row.pill ? `<span class="enhance-update-pill">${enhanceEscape(row.pill)}</span>` : ''}
-      </div>
-    </div>`).join('')}</div>`;
+function buildMetaLineHtml(items) {
+  if (!items || !items.length) return '';
+  return `<div class="enhance-meta-line">${items.map((item) => `
+    <span class="enhance-meta-entry">
+      <span class="enhance-meta-label">${enhanceEscape(item.label)}</span>
+      <span class="enhance-meta-val" title="${enhanceEscape(item.value)}">${enhanceEscape(item.value)}</span>
+      ${item.pill ? `<span class="enhance-update-pill">${enhanceEscape(item.pill)}</span>` : ''}
+    </span>`).join('<span class="enhance-meta-sep" aria-hidden="true"></span>')}</div>`;
 }
 
 function antigravityEnhanceCard(appId, {
   id, icon = 'extension', tone = 'muted', title, badge, desc,
-  tags = [], kvRows = [], introItems = [], scopeNote = '', detail = '', repo = '', actions = ''
+  tags = [], metaItems = [], introItems = [], scopeNote = '', conflictHtml = '', detail = '', repo = '', actions = ''
 }) {
   const expanded = appState(appId).expandedIntros.has(id);
-  const introToggle = introItems.length
-    ? `<button type="button" class="enhance-intro-toggle${expanded ? ' is-open' : ''}" data-action="toggleAntigravityEnhanceIntro" data-arg="${enhanceEscape(id)}" data-pass-this aria-expanded="${String(expanded)}"><span>${enhanceEscape(et('agEnhance.introToggle'))}</span>${antigravityEnhanceIcon('chevron', 13)}</button>`
-    : '';
-  const introHtml = expanded && introItems.length
+  const titleHtml = repo
+    ? `<button type="button" class="enhance-card-title-btn" data-action="openAntigravityEnhanceDetail" data-arg="${enhanceEscape(id)}" data-pass-this title="${enhanceEscape(et('agEnhance.viewDetailTitle'))}">${enhanceEscape(title)}</button>`
+    : `<h3 class="enhance-card-title">${enhanceEscape(title)}</h3>`;
+  const leftBtn = repo
+    ? `<button type="button" class="enhance-repo-btn" data-action="openAntigravityEnhanceDetail" data-arg="${enhanceEscape(id)}" data-pass-this>${antigravityEnhanceIcon('github', 13)}<span>${enhanceEscape(et('agEnhance.viewDetailBtn'))}</span></button>`
+    : (introItems.length
+      ? `<button type="button" class="enhance-repo-btn${expanded ? ' is-open' : ''}" data-action="toggleAntigravityEnhanceIntro" data-arg="${enhanceEscape(id)}" data-pass-this aria-expanded="${String(expanded)}"><span>${enhanceEscape(et('agEnhance.introToggle'))}</span>${antigravityEnhanceIcon('chevron', 13)}</button>`
+      : '');
+  const introHtml = !repo && expanded && introItems.length
     ? `<div class="enhance-card-intro"><ul>${introItems.map((line) => `<li>${enhanceEscape(line)}</li>`).join('')}</ul></div>`
     : '';
-  const repoButton = repo
-    ? `<button type="button" class="enhance-repo-btn" data-action="openAntigravityEnhanceRepo" data-arg="${enhanceEscape(repo)}">${antigravityEnhanceIcon('external', 13)}<span>${enhanceEscape(et('agEnhance.githubRepo'))}</span></button>`
-    : '';
+
   return `
     <article class="enhance-card${detail ? ' has-issue' : ''}">
       <div class="enhance-card-main">
         <div class="enhance-card-head">
-          <div class="enhance-card-icon tone-${tone}">${antigravityEnhanceIcon(icon, 22, icon === 'extension')}</div>
-          <div class="enhance-card-content">
+          <div class="enhance-card-icon tone-${tone}">${antigravityEnhanceIcon(icon, 18)}</div>
+          <div class="enhance-card-head-body">
             <div class="enhance-card-title-row">
-              <div class="enhance-card-title-group">
-                <h3 class="enhance-card-title">${enhanceEscape(title)}</h3>
-                ${badge ? antigravityEnhanceBadge(badge, tone) : ''}
-              </div>
-              ${introToggle}
+              ${titleHtml}
+              ${badge ? antigravityEnhanceBadge(badge, tone) : ''}
             </div>
             <p class="enhance-card-desc">${enhanceEscape(desc)}</p>
           </div>
         </div>
         ${tags.length ? `<div class="enhance-card-tags">${tags.map((tag) => `<span class="enhance-tag">${enhanceEscape(tag)}</span>`).join('')}</div>` : ''}
-        ${buildKvGridHtml(kvRows)}
+        ${buildMetaLineHtml(metaItems)}
         ${scopeNote ? `<div class="enhance-card-scope-note">${enhanceEscape(scopeNote)}</div>` : ''}
+        ${conflictHtml}
         ${introHtml}
         ${detail ? `<div class="enhance-card-detail">${enhanceEscape(detail)}</div>` : ''}
       </div>
       <div class="enhance-card-actions">
-        <div class="enhance-card-actions-left">${repoButton}</div>
+        <div class="enhance-card-actions-left">${leftBtn}</div>
         <div class="enhance-card-actions-main">${actions}</div>
       </div>
     </article>`;
+}
+
+function buildLocalizationActionsHtml(installed, localized) {
+  return [
+    `<button type="button" class="btn-primary" data-action="applyAntigravityEnhanceLocalization" data-pass-this${!installed ? ' disabled' : ''}>${enhanceEscape(localized ? et('agEnhance.locReapply') : et('agEnhance.locApply'))}</button>`,
+    `<button type="button" class="btn-ghost secondary" data-action="checkAntigravityEnhanceLocUpdate" data-pass-this>${enhanceEscape(et('agEnhance.locUpdateBtn'))}</button>`,
+    localized
+      ? `<button type="button" class="btn-ghost danger" data-action="restoreAntigravityEnhanceLocalization" data-pass-this>${enhanceEscape(et('agEnhance.locRestore'))}</button>`
+      : ''
+  ].join('');
 }
 
 function buildLocalizationCardHtml(appId) {
@@ -230,24 +237,7 @@ function buildLocalizationCardHtml(appId) {
   const tone = !installed ? 'bad' : localized ? 'ok' : (hasLocUpdate ? 'warn' : 'muted');
   const badge = !installed
     ? et('agEnhance.hostMissingBadge')
-    : localized
-      ? et('agEnhance.localized')
-      : et('agEnhance.unlocalized');
-
-  const kvRows = [
-    { label: et('agEnhance.locKvDictLabel'), value: ver, pill: hasLocUpdate ? et('agEnhance.updateAvailablePill') : '' },
-    isHub
-      ? { label: et('agEnhance.locKvModeLabel'), value: et('agEnhance.locModeHub') }
-      : { label: et('agEnhance.locKvLangPackLabel'), value: locStatus?.langPackInstalled ? et('agEnhance.langPackReady') : et('agEnhance.langPackMissing') }
-  ];
-
-  const actions = [
-    `<button type="button" class="btn-primary" data-action="applyAntigravityEnhanceLocalization" data-pass-this${!installed ? ' disabled' : ''}>${enhanceEscape(localized ? et('agEnhance.locReapply') : et('agEnhance.locApply'))}</button>`,
-    `<button type="button" class="btn-ghost secondary" data-action="checkAntigravityEnhanceLocUpdate" data-pass-this>${enhanceEscape(et('agEnhance.locUpdateBtn'))}</button>`,
-    localized
-      ? `<button type="button" class="btn-ghost danger" data-action="restoreAntigravityEnhanceLocalization" data-pass-this>${enhanceEscape(et('agEnhance.locRestore'))}</button>`
-      : ''
-  ].join('');
+    : localized ? et('agEnhance.localized') : et('agEnhance.unlocalized');
 
   return antigravityEnhanceCard(appId, {
     id: 'antigravity-localization',
@@ -257,36 +247,28 @@ function buildLocalizationCardHtml(appId) {
     badge,
     desc: isHub ? et('agEnhance.locHubDesc') : et('agEnhance.locIdeDesc'),
     tags: [et('agEnhance.tagBuiltinDict'), et('agEnhance.tagOffline'), isHub ? et('agEnhance.tagDesktop') : et('agEnhance.tagIdeUi')],
-    kvRows,
+    metaItems: [
+      { label: et('agEnhance.locKvDictLabel'), value: ver, pill: hasLocUpdate ? et('agEnhance.updateAvailablePill') : '' },
+      isHub
+        ? { label: et('agEnhance.locKvModeLabel'), value: et('agEnhance.locModeHub') }
+        : { label: et('agEnhance.locKvLangPackLabel'), value: locStatus?.langPackInstalled ? et('agEnhance.langPackReady') : et('agEnhance.langPackMissing') }
+    ],
     introItems: [et('agEnhance.locIntro1'), et('agEnhance.locIntro2'), isHub ? et('agEnhance.locIntro3Hub') : et('agEnhance.locIntro3Ide')],
     detail: !installed ? et('agEnhance.locHostNotFound') : '',
     repo: LOC_UPSTREAM_REPO,
-    actions
+    actions: buildLocalizationActionsHtml(installed, localized)
   });
 }
 
-function buildContextViewerCardHtml(appId, item) {
-  const catalog = ANTIGRAVITY_ENHANCE_CATALOG[item.id] || {};
+function buildItemActionsHtml(item) {
   const installed = Boolean(item.installed);
   const compatible = item.compatible !== false;
   const hasUpdate = Boolean(item.hasUpdate && item.latestVersion);
-  const tone = !compatible ? 'bad' : hasUpdate ? 'warn' : installed ? 'ok' : 'muted';
-  const badge = !compatible
-    ? et('agEnhance.hostMissingBadge')
-    : hasUpdate
-      ? et('agEnhance.hasUpdateBadge')
-      : installed ? et('agEnhance.installed') : et('agEnhance.notInstalled');
-
-  const verText = item.version ? `v${item.version}` : et('agEnhance.fetchLatestOnInstall');
-  const hostText = item.hostInstalled
-    ? (item.hostVersion ? `Antigravity v${item.hostVersion}` : et('agEnhance.hostDesktopDetected'))
-    : et('agEnhance.hostMissingBadge');
-
   let primaryLabel = et('agEnhance.install');
   if (installed && hasUpdate) primaryLabel = `${et('agEnhance.updateToPrefix')}v${item.latestVersion}`;
   else if (installed) primaryLabel = et('agEnhance.reinstall');
 
-  const actions = [
+  return [
     compatible
       ? `<button type="button" class="btn-primary" data-action="installAntigravityEnhance" data-arg="${enhanceEscape(item.id)}" data-pass-this>${enhanceEscape(primaryLabel)}</button>`
       : `<button type="button" class="btn-primary" disabled title="${enhanceEscape(et('agEnhance.incompatibleTitle'))}">${enhanceEscape(et('agEnhance.unavailable'))}</button>`,
@@ -295,23 +277,40 @@ function buildContextViewerCardHtml(appId, item) {
       ? `<button type="button" class="btn-ghost danger" data-action="uninstallAntigravityEnhance" data-arg="${enhanceEscape(item.id)}" data-pass-this>${enhanceEscape(et('agEnhance.uninstall'))}</button>`
       : ''
   ].join('');
+}
+
+function buildEnhanceItemCardHtml(appId, item) {
+  const catalog = ANTIGRAVITY_ENHANCE_CATALOG[item.id] || {};
+  const installed = Boolean(item.installed);
+  const compatible = item.compatible !== false;
+  const hasUpdate = Boolean(item.hasUpdate && item.latestVersion);
+  const tone = !compatible ? 'bad' : hasUpdate ? 'warn' : installed ? 'ok' : 'muted';
+  const badge = !compatible
+    ? et('agEnhance.hostMissingBadge')
+    : hasUpdate ? et('agEnhance.hasUpdateBadge') : (installed ? et('agEnhance.installed') : et('agEnhance.notInstalled'));
+
+  const verText = item.version ? `v${item.version}` : et('agEnhance.fetchLatestShort');
+  const hostText = item.hostInstalled
+    ? (item.hostVersion ? `Antigravity v${item.hostVersion}` : et('agEnhance.hostDesktopDetected'))
+    : et('agEnhance.hostMissingBadge');
 
   return antigravityEnhanceCard(appId, {
     id: item.id,
     icon: catalog.icon || 'extension',
     tone,
-    title: item.name || et('agEnhance.viewerTitleFallback'),
+    title: item.name || catalog.repo?.split('/').pop() || item.id,
     badge,
-    desc: item.description || (catalog.descKey ? et(catalog.descKey) : ''),
+    desc: (catalog.descKey ? et(catalog.descKey) : '') || item.description || '',
     tags: (catalog.tagKeys || []).map((k) => et(k)),
-    kvRows: [
+    metaItems: [
       { label: et('agEnhance.kvPluginVersion'), value: verText, pill: hasUpdate ? `v${item.latestVersion}` : '' },
       { label: et('agEnhance.kvHostTarget'), value: hostText }
     ],
+    conflictHtml: buildEnhanceConflictCalloutsHtml(appState(appId).items, item, et, 'compact'),
     introItems: (catalog.introKeys || []).map((k) => et(k)),
     detail: item.detail || '',
     repo: item.repo || catalog.repo || '',
-    actions
+    actions: buildItemActionsHtml(item)
   });
 }
 
@@ -326,12 +325,11 @@ function buildIdeCdpCardHtml(appId) {
   const tone = !ideInstalled ? 'bad' : allDone ? 'ok' : available ? 'warn' : 'muted';
   const badge = !ideInstalled
     ? et('agEnhance.hostMissingBadge')
-    : !available
-      ? et('agEnhance.cdpNotReady')
+    : !available ? et('agEnhance.cdpNotReady')
       : allDone ? et('agEnhance.cdpInjected') : (targets > 0 ? et('agEnhance.cdpPending') : et('agEnhance.cdpReady'));
   const hint = cdpStatus?.message
     || (available ? `${et('agEnhance.cdpActivePrefix')}${injected}/${targets}${et('agEnhance.cdpActiveSuffix')}` : et('agEnhance.cdpInactiveHint'));
-  const btnLabel = available ? et('agEnhance.cdpInjectNow') : et('agEnhance.cdpRestartIde');
+
   return antigravityEnhanceCard(appId, {
     id: 'antigravity-ide-cdp',
     icon: 'dashboard',
@@ -340,7 +338,7 @@ function buildIdeCdpCardHtml(appId) {
     badge,
     desc: et('agEnhance.cdpCardDesc'),
     tags: [et('agEnhance.tagCdpRuntime'), et('agEnhance.tagIdeUi'), et('agEnhance.tagAutoReinject')],
-    kvRows: [
+    metaItems: [
       { label: et('agEnhance.cdpKvChannelLabel'), value: available ? et('agEnhance.cdpChannelOpen') : et('agEnhance.cdpChannelClosed') },
       { label: et('agEnhance.cdpKvWindowsLabel'), value: available ? `${injected}/${targets}` : et('agEnhance.cdpWindowsNone') }
     ],
@@ -348,7 +346,7 @@ function buildIdeCdpCardHtml(appId) {
     introItems: [et('agEnhance.cdpIntro1'), et('agEnhance.cdpIntro2'), et('agEnhance.cdpIntro3')],
     detail: !ideInstalled ? et('agEnhance.locHostNotFound') : '',
     actions: [
-      `<button type="button" class="btn-primary" data-action="handleAntigravityEnhanceCdpAction" data-pass-this${!ideInstalled ? ' disabled' : ''}>${enhanceEscape(btnLabel)}</button>`,
+      `<button type="button" class="btn-primary" data-action="handleAntigravityEnhanceCdpAction" data-pass-this${!ideInstalled ? ' disabled' : ''}>${enhanceEscape(available ? et('agEnhance.cdpInjectNow') : et('agEnhance.cdpRestartIde'))}</button>`,
       `<button type="button" class="btn-ghost secondary" data-action="refreshAntigravityEnhance" data-arg="antigravity-ide" data-pass-this>${enhanceEscape(et('agEnhance.cdpRefreshBtn'))}</button>`
     ].join('')
   });
@@ -361,11 +359,12 @@ function renderAntigravityEnhanceCards(appId) {
   const state = appState(id);
   const cards = id === 'antigravity-ide'
     ? [buildLocalizationCardHtml(id), buildIdeCdpCardHtml(id)]
-    : (state.items || []).map((item) => buildContextViewerCardHtml(id, item));
+    : (state.items || []).map((item) => buildEnhanceItemCardHtml(id, item));
   const isSingle = cards.length === 1;
   list.classList.toggle('is-single', isSingle);
   list.closest('.antigravity-enhance-modal')?.classList.toggle('is-single', isSingle);
   list.innerHTML = cards.join('');
+  if (state.activeDetailId) renderActiveEnhanceDetail(id);
 }
 
 async function fetchLocalizationStatusForTarget(target) {
@@ -460,6 +459,8 @@ async function openEnhanceModalForApp(appId) {
   document.getElementById(appCfg(otherId).modalId)?.classList.remove('active');
   const modal = document.getElementById(appCfg(id).modalId);
   if (!modal) return;
+  closeAntigravityEnhanceDetail(id);
+  setEnhanceLogExpanded(id, false);
   modal.classList.add('active');
   clearAntigravityEnhanceLog(id);
   appendAntigravityEnhanceLog(et('agEnhance.modalOpened'), 'info', id);
@@ -467,24 +468,15 @@ async function openEnhanceModalForApp(appId) {
 }
 
 function closeEnhanceModalForApp(appId) {
-  document.getElementById(appCfg(appId).modalId)?.classList.remove('active');
+  const id = normalizeEnhanceApp(appId);
+  closeAntigravityEnhanceDetail(id);
+  document.getElementById(appCfg(id).modalId)?.classList.remove('active');
 }
 
-function openAntigravityEnhanceModal() {
-  return openEnhanceModalForApp('antigravity');
-}
-
-function closeAntigravityEnhanceModal() {
-  closeEnhanceModalForApp('antigravity');
-}
-
-function openAntigravityIdeEnhanceModal() {
-  return openEnhanceModalForApp('antigravity-ide');
-}
-
-function closeAntigravityIdeEnhanceModal() {
-  closeEnhanceModalForApp('antigravity-ide');
-}
+const openAntigravityEnhanceModal = () => openEnhanceModalForApp('antigravity');
+const closeAntigravityEnhanceModal = () => closeEnhanceModalForApp('antigravity');
+const openAntigravityIdeEnhanceModal = () => openEnhanceModalForApp('antigravity-ide');
+const closeAntigravityIdeEnhanceModal = () => closeEnhanceModalForApp('antigravity-ide');
 
 async function openAntigravityEnhanceRepo(triggerOrRepo, repoMaybe = null) {
   const repo = typeof triggerOrRepo === 'string' ? triggerOrRepo : repoMaybe;
@@ -520,8 +512,9 @@ async function confirmAndRunPackageAction(triggerEl, id, opts) {
   const btn = typeof triggerEl === 'string' ? null : triggerEl;
   const appId = resolveEnhanceApp(btn, 'antigravity');
   if (!itemId || typeof invoke !== 'function') return;
+  const confirmMessage = opts.confirmText || et(opts.confirmKey);
   const confirmed = typeof showCustomConfirm === 'function'
-    ? await showCustomConfirm(et(opts.confirmKey), et(opts.confirmTitleKey), 'warn')
+    ? await showCustomConfirm(confirmMessage, et(opts.confirmTitleKey), 'warn')
     : true;
   if (!confirmed) return;
 
@@ -543,9 +536,11 @@ async function confirmAndRunPackageAction(triggerEl, id, opts) {
 
 function installAntigravityEnhance(triggerEl, id) {
   const itemId = typeof triggerEl === 'string' ? triggerEl : id;
-  const item = (appState('antigravity').items || []).find((x) => x.id === itemId);
+  const items = appState('antigravity').items || [];
+  const item = items.find((x) => x.id === itemId) || { id: itemId };
   return confirmAndRunPackageAction(triggerEl, id, {
-    confirmKey: 'agEnhance.installConfirm',
+    confirmText: buildEnhanceInstallConfirmText(items, item, et),
+    confirmKey: getBaseInstallConfirmKey(itemId),
     confirmTitleKey: 'agEnhance.installTitle',
     loadingKey: 'agEnhance.installing',
     startKey: 'agEnhance.installStart',
@@ -559,8 +554,9 @@ function installAntigravityEnhance(triggerEl, id) {
 }
 
 function uninstallAntigravityEnhance(triggerEl, id) {
+  const itemId = typeof triggerEl === 'string' ? triggerEl : id;
   return confirmAndRunPackageAction(triggerEl, id, {
-    confirmKey: 'agEnhance.uninstallConfirm',
+    confirmKey: getBaseUninstallConfirmKey(itemId),
     confirmTitleKey: 'agEnhance.uninstallTitle',
     loadingKey: 'agEnhance.uninstalling',
     startKey: 'agEnhance.uninstallStart',
@@ -649,18 +645,28 @@ async function checkAllAntigravityEnhanceUpdates(triggerEl, appArg = null) {
     startText: et(isIde ? 'agEnhance.checkingIdeUpdates' : 'agEnhance.checkingAllUpdates'),
     toastInsteadOfAlert: true,
     run: async () => {
-      let info = null;
-      try {
-        info = isIde
-          ? await checkLocUpdateCore(appId, true)
-          : await checkAntigravityEnhanceUpdateCore(appId, 'antigravity-context-viewer', true);
-      } catch (err) {
-        const prefixKey = isIde ? 'agEnhance.locCheckSkipped' : 'agEnhance.pluginCheckFailed';
-        appendAntigravityEnhanceLog(`${et(prefixKey)}${err?.message || err}`, 'warn', appId);
+      let anyUpdate = false;
+      if (isIde) {
+        try {
+          const info = await checkLocUpdateCore(appId, true);
+          anyUpdate = Boolean(info?.hasUpdate);
+        } catch (err) {
+          appendAntigravityEnhanceLog(`${et('agEnhance.locCheckSkipped')}${err?.message || err}`, 'warn', appId);
+        }
+      } else {
+        const listed = (appState(appId).items || []).map((x) => x.id).filter(Boolean);
+        const ids = listed.length ? listed : Object.keys(ANTIGRAVITY_ENHANCE_CATALOG);
+        for (const itemId of ids) {
+          try {
+            const info = await checkAntigravityEnhanceUpdateCore(appId, itemId, true);
+            anyUpdate = anyUpdate || Boolean(info?.hasUpdate);
+          } catch (err) {
+            appendAntigravityEnhanceLog(`${itemId}${et('agEnhance.checkOneSkipped')}${err?.message || err}`, 'warn', appId);
+          }
+        }
       }
       await loadAntigravityEnhanceData(appId);
       if (typeof showBottomToast === 'function') {
-        const anyUpdate = Boolean(info?.hasUpdate);
         showBottomToast(et(anyUpdate ? 'agEnhance.allCheckHasUpdateToast' : 'agEnhance.allCheckLatestToast'), anyUpdate ? 'success' : 'info');
       }
     }
@@ -710,13 +716,8 @@ async function runEnhanceLocalizationAction(triggerEl, restore) {
   });
 }
 
-function applyAntigravityEnhanceLocalization(triggerEl) {
-  return runEnhanceLocalizationAction(triggerEl, false);
-}
-
-function restoreAntigravityEnhanceLocalization(triggerEl) {
-  return runEnhanceLocalizationAction(triggerEl, true);
-}
+const applyAntigravityEnhanceLocalization = (el) => runEnhanceLocalizationAction(el, false);
+const restoreAntigravityEnhanceLocalization = (el) => runEnhanceLocalizationAction(el, true);
 
 async function handleAntigravityEnhanceCdpAction(triggerEl) {
   if (typeof invoke !== 'function') return;
@@ -757,7 +758,10 @@ async function handleAntigravityEnhanceCdpAction(triggerEl) {
 
 // ---- P3 globalThis mirror ----
 Object.assign(globalThis, {
-  appendAntigravityEnhanceLog, clearAntigravityEnhanceLog, syncAntigravityEnhanceEntryButton,
+  normalizeEnhanceApp, appCfg, appState, resolveEnhanceApp, et,
+  buildLocalizationActionsHtml, buildItemActionsHtml,
+  appendAntigravityEnhanceLog, clearAntigravityEnhanceLog, toggleAntigravityEnhanceLog,
+  syncAntigravityEnhanceEntryButton,
   openAntigravityEnhanceModal, closeAntigravityEnhanceModal,
   openAntigravityIdeEnhanceModal, closeAntigravityIdeEnhanceModal,
   refreshAntigravityEnhance, toggleAntigravityEnhanceIntro, openAntigravityEnhanceRepo,

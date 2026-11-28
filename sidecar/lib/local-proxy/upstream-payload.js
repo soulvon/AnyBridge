@@ -17,6 +17,7 @@ import {
   textPart,
   toolResultOutputText,
 } from './normalize.js';
+import { buildCrossProtocolToolNameCodec } from './tool-name-codec.js';
 import {
   anthropicTools,
   applyChatAssistantReasoning,
@@ -54,12 +55,45 @@ function geminiPartFromAnthropic(part) {
   return null;
 }
 
-function geminiCallId(call) {
+function geminiCallId(call, assignedCallIds = null) {
+  if (assignedCallIds && call && assignedCallIds.has(call)) {
+    return assignedCallIds.get(call);
+  }
   const name = String(call?.name || '').trim();
   return String(call?.id || '') || (name ? `call_${name}` : '');
 }
 
-function crossProtocolGeminiPart(part, resolveResponseId) {
+function extractGeminiFunctionResponseContent(response) {
+  const raw = response.response ?? response.result ?? response.content ?? response.output;
+  const rawIsEmptyObj = isPlainObject(raw) && Object.keys(raw).length === 0;
+  const rawText = raw !== undefined && !rawIsEmptyObj ? toolResultOutputText(raw) : '';
+
+  const respParts = Array.isArray(response.parts) ? response.parts : [];
+  const partTexts = [];
+  const partImages = [];
+  for (const p of respParts) {
+    if (!p || typeof p !== 'object') continue;
+    if (typeof p.text === 'string' && p.text) partTexts.push(p.text);
+    const inline = p.inlineData || p.inline_data;
+    if (inline?.data) {
+      const mime = String(inline.mimeType || inline.mime_type || 'image/png');
+      if (mime.startsWith('image/')) {
+        partImages.push({ type: 'image', source: { type: 'base64', media_type: mime, data: String(inline.data) } });
+      }
+    }
+  }
+  const combinedText = [rawText, ...partTexts].filter(Boolean).join('\n');
+  if (partImages.length > 0) {
+    const blocks = [];
+    if (combinedText) blocks.push({ type: 'text', text: combinedText });
+    blocks.push(...partImages);
+    return blocks;
+  }
+  if (combinedText) return combinedText;
+  return raw !== undefined ? toolResultOutputText(raw) : '';
+}
+
+function crossProtocolGeminiPart(part, resolveResponseId, assignedCallIds = null) {
   if (!part || part.type !== 'gemini_part' || !part.part) return null;
   const native = part.part;
   const call = native.functionCall || native.function_call;
@@ -69,15 +103,20 @@ function crossProtocolGeminiPart(part, resolveResponseId) {
     const args = call.args ?? call.arguments ?? call.input ?? {};
     return {
       type: 'tool_use',
-      id: geminiCallId(call),
+      id: geminiCallId(call, assignedCallIds),
       name,
       input: typeof args === 'string' ? parseJsonObject(args) : (args && typeof args === 'object' ? args : {}),
     };
   }
   const response = native.functionResponse || native.function_response;
   if (response) {
-    const raw = response.response ?? response.result ?? response.content ?? response.output ?? '';
-    return { type: 'tool_result', tool_use_id: resolveResponseId(response), content: toolResultOutputText(raw) };
+    const name = String(response.name || '').trim();
+    return {
+      type: 'tool_result',
+      tool_use_id: resolveResponseId(response),
+      content: extractGeminiFunctionResponseContent(response),
+      ...(name ? { toolName: name } : {}),
+    };
   }
   const inline = native.inlineData || native.inline_data;
   if (inline) {
@@ -109,15 +148,19 @@ function messagesForNonGeminiUpstream(messages) {
   if (!hasGeminiNativeOnlyParts(messages)) return messages;
   const callIds = [];
   const idsByName = new Map();
+  const assignedCallIds = new WeakMap();
+  let autoCallSeq = 0;
   for (const message of messages || []) {
     for (const part of message.content || []) {
       if (part?.type !== 'gemini_part') continue;
       const call = part.part?.functionCall || part.part?.function_call;
       if (!call) continue;
-      const id = geminiCallId(call);
-      if (!id) continue;
-      callIds.push(id);
       const name = String(call.name || '').trim();
+      const explicitId = String(call.id || '').trim();
+      const safeSlug = (name || 'fn').replace(/[^a-zA-Z0-9_-]+/g, '_').slice(0, 32) || 'fn';
+      const id = explicitId || `call_${safeSlug}_${++autoCallSeq}`;
+      assignedCallIds.set(call, id);
+      callIds.push(id);
       if (name) {
         const queue = idsByName.get(name) || [];
         queue.push(id);
@@ -135,15 +178,17 @@ function messagesForNonGeminiUpstream(messages) {
     if (callIds.length) return callIds[Math.min(sequential++, callIds.length - 1)];
     return explicit || (name ? `call_${name}` : '');
   };
-  return (messages || []).map((message) => ({
-    ...message,
-    content: (message.content || []).map((part) => {
-      if (part?.type !== 'gemini_part') return part;
-      const converted = crossProtocolGeminiPart(part, resolveResponseId);
-      if (converted) return converted;
-      return part.part?.thought === true ? null : textPart('[Gemini Native 内容：跨协议上游不支持该结构，已省略]');
-    }).filter(Boolean),
-  }));
+  return (messages || [])
+    .map((message) => ({
+      ...message,
+      content: (message.content || []).map((part) => {
+        if (part?.type !== 'gemini_part') return part;
+        const converted = crossProtocolGeminiPart(part, resolveResponseId, assignedCallIds);
+        if (converted) return converted;
+        return part.part?.thought === true ? null : textPart('[Gemini Native 内容：跨协议上游不支持该结构，已省略]');
+      }).filter(Boolean),
+    }))
+    .filter((message) => Array.isArray(message.content) && message.content.length > 0);
 }
 
 function geminiToolResponsePayload(part) {
@@ -270,10 +315,11 @@ export function geminiTools(tools, rawGeminiTools = []) {
     const fn = tool?.type === 'function' ? tool.function : tool;
     const name = String(fn?.name || '').trim();
     if (!name) continue;
+    const rawParams = fn.parameters ?? fn.parametersJsonSchema ?? fn.parameters_json_schema ?? fn.input_schema;
     declarations.push({
       name,
       description: String(fn.description || ''),
-      parameters: cleanGeminiToolParameters(fn.parameters || fn.input_schema),
+      parameters: cleanGeminiToolParameters(rawParams),
     });
   }
   if (declarations.length) out.push({ functionDeclarations: declarations });
@@ -356,20 +402,26 @@ const ANTIGRAVITY_INTERNAL_WRAPPER_KEYS = [
   'metadata',
 ];
 
-function schemaNeedsGeminiSanitization(schema) {
+function schemaNeedsGeminiSanitization(schema, isChildProperty = false) {
   if (!schema || typeof schema !== 'object') return false;
-  if (Array.isArray(schema)) return schema.some(schemaNeedsGeminiSanitization);
+  if (Array.isArray(schema)) return schema.some((item) => schemaNeedsGeminiSanitization(item, false));
   if (Array.isArray(schema.type)) return true;
+  if (isChildProperty && schema.type === undefined && !Array.isArray(schema.anyOf) && !Array.isArray(schema.enum) && Object.keys(schema).length > 0) {
+    return true;
+  }
+  for (const k of ['minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength']) {
+    if (typeof schema[k] === 'string') return true;
+  }
   for (const k of ['$schema', '$defs', 'definitions', 'additionalProperties', 'allOf', 'oneOf', 'exclusiveMinimum', 'exclusiveMaximum', 'const']) {
     if (Object.prototype.hasOwnProperty.call(schema, k)) return true;
   }
   if (schema.properties && typeof schema.properties === 'object') {
     for (const v of Object.values(schema.properties)) {
-      if (schemaNeedsGeminiSanitization(v)) return true;
+      if (schemaNeedsGeminiSanitization(v, true)) return true;
     }
   }
-  if (schema.items && schemaNeedsGeminiSanitization(schema.items)) return true;
-  if (Array.isArray(schema.anyOf) && schema.anyOf.some(schemaNeedsGeminiSanitization)) return true;
+  if (schema.items && schemaNeedsGeminiSanitization(schema.items, false)) return true;
+  if (Array.isArray(schema.anyOf) && schema.anyOf.some((item) => schemaNeedsGeminiSanitization(item, false))) return true;
   return false;
 }
 
@@ -446,9 +498,15 @@ export function buildGeminiNativePassthroughPayload(conn, ctx, extras = {}) {
       const decls = entry.functionDeclarations || entry.function_declarations;
       if (!Array.isArray(decls)) return entry;
       const cleanedDecls = decls.map((fn) => {
-        if (!fn || typeof fn !== 'object' || !fn.parameters) return fn;
-        if (!conn?.isVertex && !schemaNeedsGeminiSanitization(fn.parameters)) return fn;
-        return { ...fn, parameters: cleanGeminiToolParameters(fn.parameters) };
+        if (!fn || typeof fn !== 'object') return fn;
+        const hasJsonSchemaField = fn.parametersJsonSchema !== undefined || fn.parameters_json_schema !== undefined;
+        const rawParams = fn.parameters ?? fn.parametersJsonSchema ?? fn.parameters_json_schema;
+        if (!rawParams) return fn;
+        if (!hasJsonSchemaField && !conn?.isVertex && !schemaNeedsGeminiSanitization(rawParams)) return fn;
+        const nextFn = { ...fn, parameters: cleanGeminiToolParameters(rawParams) };
+        delete nextFn.parametersJsonSchema;
+        delete nextFn.parameters_json_schema;
+        return nextFn;
       });
       const out = { ...entry, functionDeclarations: cleanedDecls };
       delete out.function_declarations;
@@ -485,9 +543,12 @@ export function upstreamBody(conn, ctx) {
   };
   const messages = conn.format === 'gemini' ? ctx.messages : messagesForNonGeminiUpstream(ctx.messages);
   if (conn.format === 'anthropic') {
-    return buildAnthropicUpstreamBody(conn, ctx, messages, extras);
+    const codec = buildCrossProtocolToolNameCodec(ctx.tools, messages, ctx.toolChoice);
+    ctx._toolNameCodec = codec;
+    return buildAnthropicUpstreamBody(conn, ctx, messages, extras, codec);
   }
   if (conn.format === 'gemini') {
+    ctx._toolNameCodec = null;
     if (ctx.kind === 'gemini' && isPlainObject(ctx.rawBody) && ctx.visionFallbackApplied !== true) {
       return buildGeminiNativePassthroughPayload(conn, ctx, extras);
     }
@@ -507,5 +568,7 @@ export function upstreamBody(conn, ctx) {
       extras,
     });
   }
-  return buildOpenAIUpstreamBody(conn, ctx, messages, extras);
+  const codec = buildCrossProtocolToolNameCodec(ctx.tools, messages, ctx.toolChoice);
+  ctx._toolNameCodec = codec;
+  return buildOpenAIUpstreamBody(conn, ctx, messages, extras, codec);
 }

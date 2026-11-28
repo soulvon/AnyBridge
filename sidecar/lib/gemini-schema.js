@@ -32,6 +32,22 @@ function normalizeTypeValue(type) {
   return type;
 }
 
+const NUMERIC_KEYS = new Set([
+  'minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength',
+]);
+
+function coerceNumericValue(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return value;
+}
+
 export function sanitizeGeminiSchema(schema) {
   if (schema == null || typeof schema !== 'object') return schema;
   if (Array.isArray(schema)) return schema.map(sanitizeGeminiSchema);
@@ -56,6 +72,11 @@ export function sanitizeGeminiSchema(schema) {
       if (Array.isArray(value)) out.enum = value.filter((item) => item !== null);
       continue;
     }
+    if (NUMERIC_KEYS.has(key)) {
+      const coerced = coerceNumericValue(value);
+      if (typeof coerced === 'number') out[key] = coerced;
+      continue;
+    }
     out[key] = sanitizeGeminiSchema(value);
   }
 
@@ -71,6 +92,16 @@ export function sanitizeGeminiSchema(schema) {
   if (Array.isArray(schema.oneOf) && schema.oneOf.length) {
     const existing = Array.isArray(out.anyOf) ? out.anyOf : [];
     out.anyOf = [...existing, ...schema.oneOf.map(sanitizeGeminiSchema)];
+  }
+
+  // Vertex / Gemini OpenAPI Schema 对缺 type 且无 anyOf/enum 的子属性（如 call_mcp_tool.Arguments）会报 400
+  if (
+    out.type === undefined
+    && !Array.isArray(out.anyOf)
+    && !Array.isArray(out.enum)
+    && Object.keys(out).length > 0
+  ) {
+    out.type = out.items !== undefined ? 'ARRAY' : 'OBJECT';
   }
 
   return out;

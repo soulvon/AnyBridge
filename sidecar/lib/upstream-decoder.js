@@ -88,8 +88,13 @@ export function safeStreamErrMessage(err, conn) {
  * - { type: 'usage', usage }
  * - { type: 'finish', reason }
  */
-export function createUpstreamEventDecoder(conn) {
+export function createUpstreamEventDecoder(conn, options = {}) {
   let protocol = resolveUpstreamProtocol(conn);
+  const mapToolName = typeof options?.mapToolName === 'function' ? options.mapToolName : null;
+  const decodeName = (raw) => {
+    const s = String(raw || '');
+    return s && mapToolName ? String(mapToolName(s)) : s;
+  };
   const scope = buildGeminiSignatureScope(conn);
   const geminiTracker = createGeminiPartCallTracker(scope);
   const sentGeminiCalls = new Set();
@@ -121,7 +126,7 @@ export function createUpstreamEventDecoder(conn) {
       toolAccumulators.set(idx, acc);
     }
     if (init.id) acc.id = String(init.id);
-    if (init.name) acc.name = String(init.name);
+    if (init.name) acc.name = decodeName(init.name);
     if (init.argumentsDelta) acc.argumentsText += String(init.argumentsDelta);
     if (init.rawArgs !== undefined) acc.rawArgs = init.rawArgs;
     if (init.thoughtSignature) acc.thoughtSignature = String(init.thoughtSignature);
@@ -196,7 +201,7 @@ export function createUpstreamEventDecoder(conn) {
         for (const tc of (Array.isArray(src.tool_calls) ? src.tool_calls : [])) {
           const idx = Number.isFinite(Number(tc.index)) ? Number(tc.index) : nextToolIdx++;
           const id = tc.id ? String(tc.id) : '';
-          const name = tc.function?.name ? String(tc.function.name) : '';
+          const name = tc.function?.name ? decodeName(tc.function.name) : '';
           const argumentsDelta = typeof tc.function?.arguments === 'string' ? tc.function.arguments : '';
           const acc = ensureAcc(idx, { id, name, argumentsDelta });
           if (!acc.id) acc.id = newCallId();
@@ -233,7 +238,7 @@ export function createUpstreamEventDecoder(conn) {
               const toolIdx = nextToolIdx++;
               responseIdxMap.set(outIdx, toolIdx);
               const id = String(item.call_id || item.id || newCallId());
-              const name = String(item.name || '');
+              const name = decodeName(item.name);
               ensureAcc(toolIdx, { id, name });
               out.push({ type: 'tool_call_delta', index: toolIdx, id, name, argumentsDelta: '' });
             }
@@ -299,7 +304,7 @@ export function createUpstreamEventDecoder(conn) {
               const toolIdx = nextToolIdx++;
               anthropicIdxMap.set(bIdx, toolIdx);
               const id = String(block.id || newCallId());
-              const name = String(block.name || '');
+              const name = decodeName(block.name);
               ensureAcc(toolIdx, { id, name });
               out.push({ type: 'tool_call_delta', index: toolIdx, id, name, argumentsDelta: '' });
             }
